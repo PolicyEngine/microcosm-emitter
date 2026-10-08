@@ -2,6 +2,7 @@
 name = "policyengine-telemetry"
 version = "0.1.0"
 description = "Telemetry client and local telemetry emitter service module"
+readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
