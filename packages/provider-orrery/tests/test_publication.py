@@ -1,9 +1,11 @@
 """Durable graph jobs use fake HTTP, independently of the visualization app."""
 
 import json
+from dataclasses import FrozenInstanceError
 
 import httpx
 import pytest
+from microcosm_provider_orrery.contracts import ClaimedGraphPublication
 from microcosm_provider_orrery.service.queue import (
     GraphPublicationDelivery,
     GraphPublicationQueue,
@@ -25,10 +27,62 @@ def test_jobs_survive_restart_without_run_registration_or_event_retention(tmp_pa
     queue.enqueue(directory, inventory)
     restarted = GraphPublicationQueue(queue.path)
     job = restarted.claim()
-    assert job["inventory"] == inventory
+    assert isinstance(job, ClaimedGraphPublication)
+    assert job.inventory == inventory
     assert "run_id" not in inventory
-    assert job["publication_id"] == inventory["publication_id"]
+    assert job.publication_id == inventory["publication_id"]
+    assert job.directory == directory.resolve()
     assert restarted.claim() is None
+
+
+def test_claim_is_a_frozen_record_and_expired_leases_can_be_reclaimed(
+    tmp_path, monkeypatch
+):
+    from microcosm_provider_orrery.service.queue import time
+
+    directory, inventory = source(tmp_path)
+    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
+    queue.enqueue(directory, inventory)
+    clock = [1000.0]
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    claimed = queue.claim(lease_seconds=5)
+    assert isinstance(claimed, ClaimedGraphPublication)
+    assert claimed.lease_until == 1005.0
+    with pytest.raises(FrozenInstanceError):
+        claimed.lease_until = 0
+    assert GraphPublicationQueue(queue.path).claim() is None
+    clock[0] = 1005.0
+    replacement = GraphPublicationQueue(queue.path).claim()
+    assert replacement.publication_id == claimed.publication_id
+    assert replacement.lease_until > claimed.lease_until
+
+
+def test_claim_respects_retry_delay_and_published_jobs_are_not_reclaimed(
+    tmp_path, monkeypatch
+):
+    from microcosm_provider_orrery.service.queue import time
+
+    directory, inventory = source(tmp_path)
+    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
+    queue.enqueue(directory, inventory)
+    clock = [1000.0]
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    claimed = queue.claim()
+    queue.finish(
+        claimed.publication_id,
+        error_code="publication_network_error",
+        expected_lease=claimed.lease_until,
+    )
+    assert queue.claim() is None
+    clock[0] = 1002.0
+    retried = queue.claim()
+    assert retried.publication_id == claimed.publication_id
+    queue.finish(
+        retried.publication_id,
+        url="https://runs.example/runs/published/",
+        expected_lease=retried.lease_until,
+    )
+    assert queue.claim() is None
 
 
 def test_queue_rejects_changed_bytes_and_conflicting_inventory(tmp_path):
@@ -161,14 +215,14 @@ def test_expired_worker_cannot_release_a_replacement_workers_lease(tmp_path):
     queue.finish(
         id_,
         error_code="publication_network_error",
-        expected_lease=expired["lease_until"],
+        expected_lease=expired.lease_until,
     )
     assert queue.receipt(id_) == initial
     assert queue.claim() is None
     replacement.finish(
         id_,
         url=f"https://runs.example/runs/{id_}/",
-        expected_lease=current["lease_until"],
+        expected_lease=current.lease_until,
     )
     assert queue.receipt(id_)["status"] == "published"
 

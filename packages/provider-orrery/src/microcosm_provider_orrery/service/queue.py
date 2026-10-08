@@ -13,6 +13,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import cast
 from urllib.parse import urlsplit
 
 import httpx
@@ -23,6 +24,14 @@ from microcosm_provider_core.database import (
 from microcosm_provider_core.migrations import upgrade_spool_database
 from microcosm_provider_core.models import GraphPublicationJob
 from sqlalchemy import select, update
+
+from microcosm_provider_orrery.contracts import (
+    ClaimedGraphPublication,
+    PublicationFile,
+    PublicationFileRole,
+    PublicationInventory,
+    PublicationReceipt,
+)
 
 MAX_GRAPH_FILE_BYTES = 64 * 1024 * 1024
 MAX_GRAPH_TOTAL_BYTES = 512 * 1024 * 1024
@@ -47,26 +56,34 @@ def _digest(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def inventory_digest(inventory: Mapping) -> str:
+def inventory_digest(inventory: PublicationInventory) -> str:
     """Digest the versioned field order shared with the publication API."""
-    inventory = {
+    ordered: PublicationInventory = {
         "version": inventory["version"],
         "publication_id": inventory["publication_id"],
         "files": [
-            {key: item[key] for key in ("name", "role", "bytes", "sha256")}
+            {
+                "name": item["name"],
+                "role": item["role"],
+                "bytes": item["bytes"],
+                "sha256": item["sha256"],
+            }
             for item in sorted(inventory["files"], key=lambda file: file["name"])
         ],
     }
     return _digest(
-        json.dumps(inventory, separators=(",", ":"), ensure_ascii=True).encode()
+        json.dumps(ordered, separators=(",", ":"), ensure_ascii=True).encode()
     )
 
 
 def publication_inventory(
-    directory: Path, roles: Mapping[str, str], *, publication_id: str | None = None
-) -> dict:
+    directory: Path,
+    roles: Mapping[str, PublicationFileRole],
+    *,
+    publication_id: str | None = None,
+) -> PublicationInventory:
     """Hash an explicit allowlist of files; publication identity is not a run ID."""
-    files = []
+    files: list[PublicationFile] = []
     for name, role in sorted(roles.items()):
         if role not in GRAPH_PUBLICATION_ROLES or not re.fullmatch(
             GRAPH_PUBLICATION_ROLES[role], name
@@ -104,14 +121,14 @@ def publication_inventory(
 class GraphPublicationQueue:
     """SQLite job records with leases; retained until publication or operator action."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._engine = create_spool_engine(self.path)
         upgrade_spool_database(self._engine)
         self._sessions = create_spool_session_factory(self._engine)
 
-    def enqueue(self, directory: Path, inventory: dict) -> None:
+    def enqueue(self, directory: Path, inventory: PublicationInventory) -> None:
         """Durably register exact bytes without a telemetry run or credential."""
         directory = Path(directory).resolve()
         expected = publication_inventory(
@@ -159,8 +176,13 @@ class GraphPublicationQueue:
         *,
         lease_seconds: float = GRAPH_PUBLICATION_LEASE_SECONDS,
         publication_id: str | None = None,
-    ) -> dict | None:
-        """Atomically lease one eligible job across concurrent emitter processes."""
+    ) -> ClaimedGraphPublication | None:
+        """Reserve one pending job whose retry delay and previous lease expired.
+
+        A conditional database update allows only one current lease. Workers
+        that exit leave their jobs eligible again after lease expiry; completion
+        uses the returned lease timestamp to reject outdated workers.
+        """
         now = time.time()
         with self._sessions.begin() as session:
             statement = select(GraphPublicationJob.publication_id)
@@ -189,18 +211,19 @@ class GraphPublicationQueue:
             if not result.rowcount:
                 return None
             job = session.get(GraphPublicationJob, id_)
-            return {
-                "publication_id": id_,
-                "directory": job.directory,
-                "inventory": job.inventory,
-                "lease_until": job.lease_until,
-            }
+            return ClaimedGraphPublication(
+                publication_id=id_,
+                directory=Path(job.directory),
+                inventory=cast(PublicationInventory, job.inventory),
+                lease_until=job.lease_until,
+            )
 
-    def receipt(self, id_: str) -> dict | None:
+    def receipt(self, id_: str) -> PublicationReceipt | None:
         """Read the latest local result; old HF receipt snapshots remain unchanged."""
         with self._sessions() as session:
             job = session.get(GraphPublicationJob, id_)
-            return None if job is None else dict(job.receipt)
+            # ORM JSON columns are generic at the persistence boundary.
+            return None if job is None else cast(PublicationReceipt, dict(job.receipt))
 
     def finish(
         self,
@@ -238,7 +261,9 @@ class GraphPublicationQueue:
                 "error_code": error_code,
                 "url": url,
                 "attempts": job.attempts,
-                "inventory_sha256": inventory_digest(job.inventory),
+                "inventory_sha256": inventory_digest(
+                    cast(PublicationInventory, job.inventory)
+                ),
             }
             # This is a separate latest-result file, not the build/HF receipt.
             path = Path(job.directory) / GRAPH_PUBLICATION_STATUS_FILENAME
@@ -268,7 +293,7 @@ class GraphPublicationDelivery:
         origin: str,
         client: httpx.Client | None = None,
         invalidate_credential: Callable[[], None] | None = None,
-    ):
+    ) -> None:
         parsed = urlsplit(origin)
         if parsed.scheme != "https" and not (
             parsed.scheme == "http"
@@ -295,12 +320,12 @@ class GraphPublicationDelivery:
         if job is None:
             return False
         id_, inventory, directory = (
-            job["publication_id"],
-            job["inventory"],
-            Path(job["directory"]),
+            job.publication_id,
+            job.inventory,
+            job.directory,
         )
         error = "publication_unavailable"
-        lease = job["lease_until"]
+        lease = job.lease_until
         try:
             status, token = self.credential()
             if token is None:
