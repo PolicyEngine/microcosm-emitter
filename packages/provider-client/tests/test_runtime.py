@@ -63,12 +63,29 @@ def running(socket_path):
 
     thread = threading.Thread(target=serve)
     thread.start()
-    deadline = time.monotonic() + 3
-    while not path.exists() and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert path.exists()
+    client = SocketClient(path)
     try:
-        yield module, SocketClient(path), errors
+        deadline = time.monotonic() + 3
+        last_error = None
+        while time.monotonic() < deadline:
+            if errors:
+                raise AssertionError(f"Service setup failed: {errors[0]}") from errors[
+                    0
+                ]
+            if not thread.is_alive():
+                raise AssertionError("Service exited before answering a readiness ping")
+            try:
+                client.ping()
+            except LocalServiceError as error:
+                last_error = error
+                time.sleep(0.01)
+            else:
+                break
+        else:
+            raise AssertionError(
+                "Service did not answer a readiness ping"
+            ) from last_error
+        yield module, client, errors
     finally:
         runtime.stop()
         thread.join(timeout=3)
@@ -145,3 +162,68 @@ def test_module_selection_refuses_missing_and_duplicate(monkeypatch):
     monkeypatch.setattr(loading, "entry_points", lambda **kwargs: [entry, entry])
     with pytest.raises(LocalServiceError, match="exactly one"):
         load_module("example", {}, None)
+
+
+@pytest.fixture
+def delayed_listener(monkeypatch):
+    """Hold listen until a real readiness probe sees the bound socket refuse it."""
+    bound = threading.Event()
+    allow_listen = threading.Event()
+    probes = []
+    original_listen = socket.socket.listen
+    original_ping = SocketClient.ping
+
+    def listen(server, backlog):
+        bound.set()
+        if not allow_listen.wait(3):
+            raise TimeoutError("test did not release the listening socket")
+        original_listen(server, backlog)
+
+    def ping(client):
+        probes.append(client.socket_path)
+        if len(probes) == 1:
+            assert bound.wait(3), "test service never bound the socket"
+            try:
+                return original_ping(client)
+            finally:
+                allow_listen.set()
+        return original_ping(client)
+
+    monkeypatch.setattr(socket.socket, "listen", listen)
+    monkeypatch.setattr(SocketClient, "ping", ping)
+    try:
+        yield probes, allow_listen
+    finally:
+        allow_listen.set()
+
+
+@pytest.fixture
+def delayed_running(delayed_listener, request):
+    """Install the delay before starting the ordinary fixture."""
+    return request.getfixturevalue("running")
+
+
+def test_fixture_waits_for_socket_to_accept_requests(delayed_running, delayed_listener):
+    probes, allow_listen = delayed_listener
+    try:
+        assert len(probes) >= 2, "fixture must retry a bound but non-listening socket"
+        module, client, errors = delayed_running
+        client.send({"ready": True})
+        assert module.messages == [{"ready": True}]
+        assert not errors
+    finally:
+        allow_listen.set()
+
+
+def test_fixture_cleans_up_when_initialization_fails(request, monkeypatch):
+    modules = []
+
+    def initialize(module):
+        modules.append(module)
+        raise RuntimeError("synthetic initialization failure")
+
+    monkeypatch.setattr(RecordingModule, "initialize", initialize)
+    with pytest.raises(AssertionError, match="synthetic initialization failure"):
+        request.getfixturevalue("running")
+    assert len(modules) == 1
+    assert modules[0].closed.is_set()
