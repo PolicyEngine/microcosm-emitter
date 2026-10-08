@@ -48,14 +48,14 @@ def test_all_required_checks_include_real_collector_and_matrix():
     assert set(jobs["required"]["needs"]) == {
         "quality",
         "tests",
-        "artifacts",
+        "build-packages",
         "collector",
     }
     assert jobs["tests"]["strategy"]["matrix"] == {
         "os": ["ubuntu-latest", "macos-latest"],
         "python": ["3.13", "3.14"],
     }
-    assert jobs["collector"]["needs"] == "artifacts"
+    assert jobs["collector"]["needs"] == "build-packages"
     assert jobs["collector"]["env"]["TEST_DATABASE_URL"].endswith("/telemetry_test")
 
 

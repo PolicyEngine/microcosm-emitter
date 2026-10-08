@@ -37,7 +37,7 @@ jobs:
       - run: uv run --no-sync pytest -m "not collector"
       - run: bash tools/check-artifacts.sh
 
-  artifacts:
+  build-packages:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -53,7 +53,7 @@ jobs:
           if-no-files-found: error
 
   collector:
-    needs: artifacts
+    needs: build-packages
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -88,7 +88,7 @@ jobs:
   required:
     name: Required checks
     if: always()
-    needs: [quality, tests, artifacts, collector]
+    needs: [quality, tests, build-packages, collector]
     runs-on: ubuntu-latest
     steps:
       - name: Require all validation jobs to succeed
