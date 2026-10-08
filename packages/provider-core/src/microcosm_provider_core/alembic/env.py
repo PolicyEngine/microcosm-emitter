@@ -1,7 +1,7 @@
 """Alembic environment for the local telemetry spool."""
 
 from alembic import context
-from microcosm_provider_telemetry.service.models import SpoolModel
+from microcosm_provider_core.models import SpoolModel
 from sqlalchemy.engine import Connection
 
 _MISSING_CONNECTION_ERROR = (

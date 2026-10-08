@@ -6,6 +6,18 @@ import time
 from collections.abc import Mapping
 
 from microcosm_provider_client.contracts import JsonObject, ModuleContext
+from microcosm_provider_core.auth import (
+    _collector_origin,
+    _development_collector_url,
+    shared_session,
+)
+from microcosm_provider_core.constants import (
+    DEFAULT_HEARTBEAT_SECONDS,
+    DRAIN_RETRY_SECONDS,
+    FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT,
+    MINIMUM_HEARTBEAT_SECONDS,
+    PRODUCTION_COLLECTOR_URL,
+)
 
 from microcosm_provider_telemetry.protocol import (
     EVENT_TYPE_HEARTBEAT,
@@ -18,12 +30,6 @@ from microcosm_provider_telemetry.protocol import (
     UNEXPECTED_PROCESS_EXIT_MESSAGE,
 )
 from microcosm_provider_telemetry.service.collector import CollectorDelivery
-from microcosm_provider_telemetry.service.constants import (
-    DEFAULT_HEARTBEAT_SECONDS,
-    DRAIN_RETRY_SECONDS,
-    FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT,
-    MINIMUM_HEARTBEAT_SECONDS,
-)
 from microcosm_provider_telemetry.service.resources import ProcessTreeSampler
 from microcosm_provider_telemetry.service.spool import EventSpool
 from microcosm_provider_telemetry.service.timestamps import utc_now
@@ -54,6 +60,14 @@ class TelemetryModule:
         self.spool = EventSpool(self.configuration["spool_path"])
         self.delivery = CollectorDelivery(
             self.spool,
+            session=shared_session(
+                self.context.services,
+                _development_collector_url(
+                    self.configuration["development_collector_url"]
+                )
+                if self.configuration.get("development_collector_url")
+                else _collector_origin(PRODUCTION_COLLECTOR_URL),
+            ),
             development_collector_url=self.configuration.get(
                 "development_collector_url"
             ),

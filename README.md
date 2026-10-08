@@ -1,37 +1,96 @@
 # Microcosm local provider
 
-Two Python distributions separate the local process host from telemetry behavior:
+One local service process runs independent telemetry and completed-graph workers.
+The workers share authentication and a durable database, but neither requires the
+other to be active. Graph publication does not require a telemetry run ID.
 
-- `microcosm-provider-client` owns subprocess startup, a private Unix socket, explicit module loading, parent-process monitoring, and shutdown. It has no telemetry, database, or authentication dependencies.
-- `microcosm-provider-telemetry` provides the build-facing client and a separate service module. The service module owns resource sampling, SQLAlchemy ORM persistence, Alembic migrations, authentication, and collector delivery.
+## Packages
 
-The build process imports the client, not the service implementation. It supplies run metadata, its existing queue path, and build identity. Each build starts one local telemetry emitter service automatically. Imports alone create no processes, sockets, files, or network requests.
+- `microcosm-provider-client`: subprocess lifecycle, private Unix socket, explicit
+  module selection, parent monitoring and bounded shutdown. No domain, database
+  or authentication imports.
+- `microcosm-provider-core`: shared collector authentication, SQLAlchemy models
+  and Alembic migrations. The collector protocol is unchanged.
+- `microcosm-provider-telemetry`: build-facing telemetry client and service module.
+- `microcosm-provider-orrery`: explicit graph-file inventory, durable publication
+  queue, service module and `microcosm-provider-publish-graph` retry command.
+- `@policyengine/microcosm-provider-orrery`: TypeScript graph readers. `/browser`
+  fetches and verifies the Orrery document, `/server` reads completed publications
+  through a supplied storage adapter, and `/contract` validates public metadata.
+  The React component, HTTP endpoints and storage credentials remain in the runs app.
 
-## Delivery and persistence
+Imports alone create no processes, sockets, files or network requests. Microcosm
+supplies build identity and registers both workers using `start_services`. The
+generic host creates separate workers and routes messages to the selected module;
+one worker's slow HTTP request or failure does not stop the other worker.
 
-The service commits each event before acknowledging its local socket message. The client bounds socket calls and reports telemetry failures without failing the build. Network requests run on the service worker, outside the message-handling lock.
+## Persistence and delivery
 
-The service uses the existing Hugging Face credential from the environment or local login cache. The collector validates PolicyEngine membership before issuing a short-lived write credential. Missing or rejected credentials permanently mark that producer's events as local-only. Transient collector failures retain events for retry. The production destination belongs to the package; development overrides accept loopback addresses only.
+Telemetry commits each event before acknowledging its socket message. Missing or
+rejected credentials mark that producer's telemetry as local-only, preserving the
+existing policy. In contrast, graph jobs remain eligible for retry after missing,
+rejected or temporarily unavailable credentials. They retain the exact inventory,
+preserved file paths, upload progress and publication ID across restarts. The graph
+client commits a job before waiting for the service; publication is immutable.
+Signed storage uploads never receive the collector bearer credential.
 
-The queue retains the current Microcosm Alembic revision, producer sequences, event IDs, and upload eligibility. Unversioned databases are rejected without schema modification. There is no raw SQL, automatic schema adoption, or parallel legacy implementation. The hosted collector and dashboard do not change.
+The database retains Microcosm's existing revisions and event identities. Alembic
+upgrades revision `20261007_01` to `20261008_02` by adding graph jobs. Unversioned
+databases are rejected without modification; upgrade them using the existing
+Microcosm implementation before migrating. No raw SQL or schema adoption is used.
+
+## Configuration
+
+No new runtime environment variables or secrets are introduced. The service reads
+`HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then the existing Hugging Face login cache.
+It exchanges that credential with the existing collector; both workers share the
+short-lived result. The tracked production destinations are in core constants and
+the Orrery queue module. Collector development overrides accept loopback only.
+`XDG_CACHE_HOME` optionally changes the existing cache root; the default database
+is `~/.cache/microcosm/telemetry/events.sqlite3`. Tests replace credentials and
+destinations with synthetic values and loopback or in-memory transports.
+
+The reader package needs no environment variables. Its server adapter receives
+storage access from the runs app, which continues to own Vercel Blob configuration,
+publication authorization and routes. This change does not modify the calibration
+dashboard or deploy either hosted service.
 
 ## Development
 
-Use Python 3.13 or 3.14 on Linux or macOS.
+Use Python 3.13 or 3.14 on Linux or macOS, and Bun 1.4.2 for TypeScript.
 
 ```bash
 uv sync --all-packages --locked
 bash tools/check-quality.sh
 uv run --no-sync pytest -m 'not collector'
 bash tools/check-artifacts.sh
+bash tools/check-reader.sh
 ```
 
-Tests isolate ambient credentials and use synthetic identities. The artifact check builds source archives and wheels, installs the runtime by itself, then installs telemetry and exercises the real service process and migrations.
+Python artifact checks build and validate all four source archives and wheels,
+install the generic runtime alone, then exercise installed telemetry and combined
+telemetry/publication processes. Reader checks install the built tarball into a
+separate directory and verify that the browser entry bundles without Node imports.
+All new tests use local synthetic data. The pre-existing collector compatibility
+job is retained; it requires a pinned checkout and disposable loopback PostgreSQL.
 
-The collector compatibility job tests installed wheels against a pinned dashboard collector and disposable PostgreSQL. It covers the HTTP exchange, event ingestion, dashboard run documents, rejected identities, and duplicate delivery after a lost acknowledgement. Local execution requires that pinned collector checkout and a loopback test database; `tools/check-collector.sh` verifies these inputs. Never point this test at a deployed database.
+## Release and deferred adoption
 
-## Publication
+All five packages use version `0.1.0`. A published GitHub release verifies tag
+versions and main-branch ancestry, runs CI, then publishes exactly the tested
+Python artifacts through the protected `pypi` environment. Only after that succeeds
+does the reader job publish the tested npm tarball using OIDC and the same approval
+environment. No long-lived registry token is committed or required by the workflow.
 
-Both distributions use the same release version. A published GitHub release triggers version and main-branch ancestry checks, all CI checks, and artifact verification. Only then can the protected `pypi` environment approve publishing the exact tested artifacts. The publish job uses PyPI Trusted Publishing; no long-lived publishing token is supplied through CI.
+The GitHub `pypi` environment and its approval/tag policy have been verified. Four
+PyPI trusted-publisher bindings and the scoped npm package's first-publication and
+trusted-publisher setup require registry-owner confirmation before release; those
+external bindings have not been verified. The workflow cannot create them. Both
+registries must bind `PolicyEngine/microcosm-local-provider`, `publish.yml` and
+environment `pypi`. No release or consumer activation is authorized by this PR.
 
-First publication requires two PyPI pending trusted publishers, one for each distribution, attached to this project's `publish.yml` workflow and `pypi` environment. That external setup must be verified before releasing. No release is created or merged automatically by this project.
+The draft Microcosm and runs-app consumer PRs can pin this branch's exact Git commit
+to install and test before publication. The root private npm manifest exists only
+for that source-based test path. Before merging either consumer, publish these
+packages, replace Git overrides with registry versions, regenerate lockfiles and
+rerun its tests. Neither draft deploys, merges or activates automatically.

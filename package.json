@@ -1,0 +1,15 @@
+{
+  "name": "@policyengine/microcosm-provider-orrery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pinned-source development entry points; publish the built package from typescript/orrery",
+  "exports": {
+    "./contract": "./typescript/orrery/src/contract.ts",
+    "./browser": "./typescript/orrery/src/browser.ts",
+    "./server": "./typescript/orrery/src/server.ts"
+  },
+  "peerDependencies": {
+    "@axiom-foundation/orrery": "0.6.1"
+  }
+}

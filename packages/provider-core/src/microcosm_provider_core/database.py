@@ -8,7 +8,7 @@ from sqlalchemy import URL, create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from microcosm_provider_telemetry.service.constants import (
+from microcosm_provider_core.constants import (
     DATABASE_TIMEOUT_SECONDS,
 )
 

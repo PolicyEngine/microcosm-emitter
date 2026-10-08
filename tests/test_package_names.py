@@ -5,7 +5,12 @@ from importlib.metadata import distribution, entry_points
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_NAMES = {"microcosm-provider-client", "microcosm-provider-telemetry"}
+EXPECTED_NAMES = {
+    "microcosm-provider-client",
+    "microcosm-provider-core",
+    "microcosm-provider-telemetry",
+    "microcosm-provider-orrery",
+}
 
 
 def test_distribution_names_and_source_links():

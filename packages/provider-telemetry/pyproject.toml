@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
     "microcosm-provider-client==0.1.0",
+    "microcosm-provider-core==0.1.0",
     "alembic>=1.13.3,<2",
     "sqlalchemy>=2,<3",
     "huggingface-hub>=0.20,<2",
@@ -20,6 +21,7 @@ Source = "https://github.com/PolicyEngine/microcosm-local-provider"
 telemetry = "microcosm_provider_telemetry.service:create_module"
 
 [tool.uv.sources]
+microcosm-provider-core = { workspace = true }
 microcosm-provider-client = { workspace = true }
 
 [build-system]

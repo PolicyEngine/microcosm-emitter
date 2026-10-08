@@ -51,6 +51,13 @@ class ServiceHandle:
 def start_service(
     module: str, configuration: JsonObject, *, startup_timeout: float = STARTUP_TIMEOUT
 ) -> ServiceHandle:
+    """Start one selected module using the multi-module host."""
+    return start_services({module: configuration}, startup_timeout=startup_timeout)
+
+
+def start_services(
+    modules: JsonObject, *, startup_timeout: float = STARTUP_TIMEOUT
+) -> ServiceHandle:
     """Return after readiness, or reap the child and remove temporary files."""
     directory = None
     process = None
@@ -65,12 +72,10 @@ def start_service(
                 sys.executable,
                 "-m",
                 MODULE_HOST,
-                "--module",
-                module,
+                "--modules-json",
+                json.dumps(modules, allow_nan=False),
                 "--socket",
                 str(path),
-                "--config-json",
-                json.dumps(configuration, allow_nan=False),
                 "--parent-pid",
                 str(parent.pid),
                 "--parent-created-at",

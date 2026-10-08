@@ -50,6 +50,7 @@ def test_all_required_checks_include_real_collector_and_matrix():
         "tests",
         "artifacts",
         "collector",
+        "reader",
     }
     assert jobs["tests"]["strategy"]["matrix"] == {
         "os": ["ubuntu-latest", "macos-latest"],
@@ -64,3 +65,20 @@ def test_release_tag_matches_both_package_versions():
     validate("v0.1.0")
     with pytest.raises(AssertionError, match="Release tag"):
         validate("v9.9.9")
+
+
+def test_reader_publishes_verified_tarball_after_python_with_oidc():
+    jobs = workflow("publish.yml")["jobs"]
+    reader = jobs["publish-reader"]
+    assert reader["needs"] == ["verify", "publish"]
+    assert reader["environment"] == "pypi"
+    assert reader["permissions"]["id-token"] == "write"
+    download = next(
+        s for s in reader["steps"] if "download-artifact@" in s.get("uses", "")
+    )
+    assert download["with"]["name"] == "orrery-reader"
+    assert reader["steps"][-1]["run"] == "bash tools/publish-reader.sh"
+    assert (
+        workflow("ci.yml")["jobs"]["reader"]["steps"][-1]["with"]["name"]
+        == "orrery-reader"
+    )

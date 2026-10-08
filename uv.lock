@@ -6,6 +6,8 @@ requires-python = ">=3.13"
 members = [
     "microcosm-local-provider-workspace",
     "microcosm-provider-client",
+    "microcosm-provider-core",
+    "microcosm-provider-orrery",
     "microcosm-provider-telemetry",
 ]
 
@@ -642,6 +644,40 @@ dependencies = [
 requires-dist = [{ name = "psutil", specifier = ">=6,<8" }]
 
 [[package]]
+name = "microcosm-provider-core"
+version = "0.1.0"
+source = { editable = "packages/provider-core" }
+dependencies = [
+    { name = "alembic" },
+    { name = "huggingface-hub" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.13.3,<2" },
+    { name = "huggingface-hub", specifier = ">=0.20,<2" },
+    { name = "sqlalchemy", specifier = ">=2,<3" },
+]
+
+[[package]]
+name = "microcosm-provider-orrery"
+version = "0.1.0"
+source = { editable = "packages/provider-orrery" }
+dependencies = [
+    { name = "httpx" },
+    { name = "microcosm-provider-client" },
+    { name = "microcosm-provider-core" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27,<1" },
+    { name = "microcosm-provider-client", editable = "packages/provider-client" },
+    { name = "microcosm-provider-core", editable = "packages/provider-core" },
+]
+
+[[package]]
 name = "microcosm-provider-telemetry"
 version = "0.1.0"
 source = { editable = "packages/provider-telemetry" }
@@ -649,6 +685,7 @@ dependencies = [
     { name = "alembic" },
     { name = "huggingface-hub" },
     { name = "microcosm-provider-client" },
+    { name = "microcosm-provider-core" },
     { name = "psutil" },
     { name = "sqlalchemy" },
 ]
@@ -658,6 +695,7 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.13.3,<2" },
     { name = "huggingface-hub", specifier = ">=0.20,<2" },
     { name = "microcosm-provider-client", editable = "packages/provider-client" },
+    { name = "microcosm-provider-core", editable = "packages/provider-core" },
     { name = "psutil", specifier = ">=6,<8" },
     { name = "sqlalchemy", specifier = ">=2,<3" },
 ]

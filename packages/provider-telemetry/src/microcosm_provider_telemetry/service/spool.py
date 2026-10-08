@@ -10,11 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
-
-from microcosm_provider_telemetry.protocol import TELEMETRY_SCHEMA_VERSION
-from microcosm_provider_telemetry.service.constants import (
+from microcosm_provider_core.constants import (
     BATCH_SIZE,
     MAX_QUEUED_BYTES,
     PRUNE_INTERVAL_SECONDS,
@@ -22,18 +18,22 @@ from microcosm_provider_telemetry.service.constants import (
     UPLOAD_STATE_LOCAL_ONLY,
     UPLOAD_STATE_PENDING,
 )
-from microcosm_provider_telemetry.service.database import (
+from microcosm_provider_core.database import (
     create_spool_engine,
     create_spool_session_factory,
 )
-from microcosm_provider_telemetry.service.migrations import (
+from microcosm_provider_core.migrations import (
     upgrade_spool_database,
 )
-from microcosm_provider_telemetry.service.models import (
+from microcosm_provider_core.models import (
     TelemetryEventRecord,
     TelemetryRunRecord,
     serialized_json_length,
 )
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from microcosm_provider_telemetry.protocol import TELEMETRY_SCHEMA_VERSION
 from microcosm_provider_telemetry.service.timestamps import utc_now
 
 

@@ -85,13 +85,27 @@ jobs:
           path: dist
       - run: bash tools/check-collector.sh
 
+  reader:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.2"
+      - run: bash tools/check-reader.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: orrery-reader
+          path: reader-dist/*.tgz
+          if-no-files-found: error
+
   required:
     name: Required checks
     if: always()
-    needs: [quality, tests, artifacts, collector]
+    needs: [quality, tests, artifacts, collector, reader]
     runs-on: ubuntu-latest
     steps:
       - name: Require all validation jobs to succeed
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
-        run: test "$RESULTS" = "success success success success"
+        run: test "$RESULTS" = "success success success success success"

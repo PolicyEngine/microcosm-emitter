@@ -20,7 +20,9 @@ def main():
         run("uv", "venv", "--python", sys.executable, str(workspace / "venv"))
         base = list((ROOT / "dist").glob("microcosm_provider_client-*.whl"))
         telemetry = list((ROOT / "dist").glob("microcosm_provider_telemetry-*.whl"))
-        assert len(base) == len(telemetry) == 1, (
+        core = list((ROOT / "dist").glob("microcosm_provider_core-*.whl"))
+        orrery = list((ROOT / "dist").glob("microcosm_provider_orrery-*.whl"))
+        assert len(base) == len(telemetry) == len(core) == len(orrery) == 1, (
             "Expected exactly one release of each distribution"
         )
         run("uv", "pip", "install", "--python", str(interpreter), str(base[0]))
@@ -31,7 +33,16 @@ def main():
             "base",
             cwd=workspace,
         )
-        run("uv", "pip", "install", "--python", str(interpreter), str(telemetry[0]))
+        run(
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(interpreter),
+            str(core[0]),
+            str(telemetry[0]),
+            str(orrery[0]),
+        )
         environment = {
             key: value
             for key, value in os.environ.items()
@@ -51,6 +62,14 @@ def main():
             "-I",
             str(ROOT / "tools/installed-smoke.py"),
             "telemetry",
+            cwd=workspace,
+            env=environment,
+        )
+        run(
+            str(interpreter),
+            "-I",
+            str(ROOT / "tools/installed-smoke.py"),
+            "combined",
             cwd=workspace,
             env=environment,
         )

@@ -1,5 +1,7 @@
 """Bounded, private Unix-socket transport without domain-specific behavior."""
 
+from __future__ import annotations
+
 import json
 import socket
 from pathlib import Path
@@ -46,6 +48,10 @@ class SocketClient:
     def ping(self) -> None:
         self._request({"action": "ping"})
 
+    def for_module(self, name: str) -> ModuleClient:
+        """Route messages without giving a component ownership of host shutdown."""
+        return ModuleClient(self, name)
+
     def send(self, message: JsonObject) -> None:
         if self.closed:
             raise LocalServiceError("client is closed")
@@ -58,3 +64,20 @@ class SocketClient:
             self._request({"action": "close"})
         finally:
             self.closed = True
+
+
+class ModuleClient:
+    """One selected module's transport; the enclosing ServiceHandle owns shutdown."""
+
+    def __init__(self, client: SocketClient, name: str):
+        self.client, self.name = client, name
+
+    def send(self, message: JsonObject) -> None:
+        if self.client.closed:
+            raise LocalServiceError("client is closed")
+        self.client._request(
+            {"action": "message", "module": self.name, "message": message}
+        )
+
+    def close(self) -> None:
+        """A domain component cannot close the shared host."""

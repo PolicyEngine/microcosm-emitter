@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from sqlalchemy import (
+    Float,
     ForeignKeyConstraint,
     Index,
     Integer,
@@ -15,7 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
-from microcosm_provider_telemetry.service.constants import (
+from microcosm_provider_core.constants import (
     UPLOAD_STATE_PENDING,
 )
 
@@ -128,3 +129,17 @@ class TelemetryEventRecord(SpoolModel):
     )
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
     run: Mapped[TelemetryRunRecord] = relationship(back_populates="events")
+
+
+class GraphPublicationJob(SpoolModel):
+    """Durable artifact delivery, independent of event retention and run IDs."""
+
+    __tablename__ = "graph_publication_jobs"
+    publication_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    inventory: Mapped[dict[str, Any]] = mapped_column(JsonObjectText, nullable=False)
+    directory: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False)
+    next_attempt_at: Mapped[float] = mapped_column(Float, nullable=False)
+    lease_until: Mapped[float] = mapped_column(Float, nullable=False)
+    receipt: Mapped[dict[str, Any]] = mapped_column(JsonObjectText, nullable=False)

@@ -1,5 +1,6 @@
 """Refuse tags that do not describe both distribution versions."""
 
+import json
 import sys
 import tomllib
 from pathlib import Path
@@ -12,10 +13,12 @@ def validate(tag: str) -> None:
         tomllib.loads(path.read_text())["project"]
         for path in sorted((ROOT / "packages").glob("*/pyproject.toml"))
     ]
-    assert len(projects) == 2
+    assert len(projects) == 4
     assert all(tag == f"v{project['version']}" for project in projects), (
         "Release tag must match both distributions"
     )
+    reader = json.loads((ROOT / "typescript/orrery/package.json").read_text())
+    assert tag == f"v{reader['version']}", "Release tag must match the reader package"
     telemetry = next(
         project
         for project in projects

@@ -4,6 +4,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 
 from alembic import command
+from microcosm_provider_core.constants import (
+    PRODUCTION_COLLECTOR_URL,
+)
+from microcosm_provider_core.database import (
+    create_spool_engine,
+)
+from microcosm_provider_core.migrations import (
+    alembic_config,
+    current_database_revision,
+    migration_head_revision,
+)
+from microcosm_provider_core.models import (
+    serialized_json_length,
+)
 from microcosm_provider_telemetry.client import (
     TelemetryRun,
 )
@@ -19,20 +33,6 @@ from microcosm_provider_telemetry.service import collector as collector_module
 from microcosm_provider_telemetry.service import resources as resources_module
 from microcosm_provider_telemetry.service import spool as spool_module
 from microcosm_provider_telemetry.service.collector import CollectorDelivery
-from microcosm_provider_telemetry.service.constants import (
-    PRODUCTION_COLLECTOR_URL,
-)
-from microcosm_provider_telemetry.service.database import (
-    create_spool_engine,
-)
-from microcosm_provider_telemetry.service.migrations import (
-    alembic_config,
-    current_database_revision,
-    migration_head_revision,
-)
-from microcosm_provider_telemetry.service.models import (
-    serialized_json_length,
-)
 from microcosm_provider_telemetry.service.spool import EventSpool
 
 

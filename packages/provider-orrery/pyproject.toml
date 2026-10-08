@@ -1,0 +1,28 @@
+[project]
+name = "microcosm-provider-orrery"
+version = "0.1.0"
+description = "Durable immutable Orrery graph publication without telemetry registration"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+dependencies = ["microcosm-provider-client==0.1.0", "microcosm-provider-core==0.1.0", "httpx>=0.27,<1"]
+
+[project.urls]
+Source = "https://github.com/PolicyEngine/microcosm-local-provider"
+
+[project.scripts]
+microcosm-provider-publish-graph = "microcosm_provider_orrery.cli:main"
+
+[project.entry-points."microcosm.provider.modules"]
+orrery = "microcosm_provider_orrery.service:create_module"
+
+[tool.uv.sources]
+microcosm-provider-client = { workspace = true }
+microcosm-provider-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/microcosm_provider_orrery"]

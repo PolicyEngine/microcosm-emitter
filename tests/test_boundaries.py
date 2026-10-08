@@ -19,6 +19,8 @@ def imports(path):
 def test_generic_runtime_has_no_domain_or_database_imports():
     forbidden = (
         "microcosm_provider_telemetry",
+        "microcosm_provider_core",
+        "microcosm_provider_orrery",
         "microcosm",
         "sqlalchemy",
         "alembic",
@@ -61,13 +63,14 @@ sys.addaudithook(audit)
 import microcosm_provider_client
 import microcosm_provider_telemetry
 import microcosm_provider_telemetry.client
+import microcosm_provider_orrery.client
 assert not any(name in sys.modules for name in ("sqlalchemy", "alembic", "huggingface_hub"))
 """
     subprocess.run([sys.executable, "-c", script], check=True)
 
 
 def test_database_code_has_no_raw_sql_or_manual_schema_creation():
-    for path in (ROOT / "packages/provider-telemetry/src").rglob("*.py"):
+    for path in (ROOT / "packages").glob("*/src/**/*.py"):
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):

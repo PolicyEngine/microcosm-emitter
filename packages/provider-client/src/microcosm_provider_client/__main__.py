@@ -13,9 +13,11 @@ from microcosm_provider_client.runtime import ServiceRuntime
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--module", required=True)
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--module")
+    selection.add_argument("--modules-json")
     parser.add_argument("--socket", type=Path, required=True)
-    parser.add_argument("--config-json", required=True)
+    parser.add_argument("--config-json", default="{}")
     parser.add_argument("--parent-pid", type=int, required=True)
     parser.add_argument("--parent-created-at", type=float, required=True)
     args = parser.parse_args()
@@ -24,8 +26,20 @@ def main() -> int:
         if not isinstance(configuration, dict):
             raise ValueError("configuration must be an object")
         parent = ParentProcess(args.parent_pid, args.parent_created_at)
-        module = load_module(args.module, configuration, ModuleContext(args.parent_pid))
-        ServiceRuntime(args.socket, module, is_parent_alive=parent.alive).run()
+        configurations = (
+            json.loads(args.modules_json)
+            if args.modules_json
+            else {args.module: configuration}
+        )
+        if not isinstance(configurations, dict) or not configurations:
+            raise ValueError("modules must be a non-empty object")
+        context = ModuleContext(args.parent_pid)
+        modules = {}
+        for name, settings in configurations.items():
+            if not isinstance(name, str) or not isinstance(settings, dict):
+                raise ValueError("invalid module configuration")
+            modules[name] = load_module(name, settings, context)
+        ServiceRuntime(args.socket, modules=modules, is_parent_alive=parent.alive).run()
         return 0
     except Exception as error:
         # Never include configuration or module exception payloads in stderr.
