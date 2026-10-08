@@ -52,6 +52,30 @@ def audit(event, args):
 sys.addaudithook(audit)
 import policyengine_local_service
 import policyengine_telemetry
+import policyengine_telemetry.client
 assert not any(name in sys.modules for name in ("sqlalchemy", "alembic", "huggingface_hub"))
 """
     subprocess.run([sys.executable, "-c", script], check=True)
+
+
+def test_database_code_has_no_raw_sql_or_manual_schema_creation():
+    for path in (ROOT / "packages/telemetry/src").rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                name = (
+                    node.func.attr
+                    if isinstance(node.func, ast.Attribute)
+                    else getattr(node.func, "id", "")
+                )
+                assert name not in {
+                    "create_all",
+                    "exec_driver_sql",
+                    "executescript",
+                    "text",
+                }, path
+            if isinstance(node, ast.Import):
+                assert not any(
+                    alias.name in {"sqlite3", "psycopg", "psycopg2"}
+                    for alias in node.names
+                ), path

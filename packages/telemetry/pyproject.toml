@@ -15,6 +15,9 @@ dependencies = [
 [project.urls]
 Source = "https://github.com/PolicyEngine/local-services"
 
+[project.entry-points."policyengine.local_service.modules"]
+telemetry = "policyengine_telemetry.service:create_module"
+
 [tool.uv.sources]
 policyengine-local-service = { workspace = true }
 
@@ -24,4 +27,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/policyengine_telemetry"]
-
