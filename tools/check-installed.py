@@ -18,20 +18,14 @@ def main():
         workspace = Path(directory)
         interpreter = workspace / "venv/bin/python"
         run("uv", "venv", "--python", sys.executable, str(workspace / "venv"))
-        base = list((ROOT / "dist").glob("microcosm_provider_client-*.whl"))
-        telemetry = list((ROOT / "dist").glob("microcosm_provider_telemetry-*.whl"))
-        assert len(base) == len(telemetry) == 1, (
-            "Expected exactly one release of each distribution"
+        wheels = list((ROOT / "dist").glob("*.whl"))
+        sources = list((ROOT / "dist").glob("*.tar.gz"))
+        assert len(wheels) == len(sources) == 1, (
+            "Expected exactly one emitter wheel and source archive"
         )
-        run("uv", "pip", "install", "--python", str(interpreter), str(base[0]))
-        run(
-            str(interpreter),
-            "-I",
-            str(ROOT / "tools/installed-smoke.py"),
-            "base",
-            cwd=workspace,
-        )
-        run("uv", "pip", "install", "--python", str(interpreter), str(telemetry[0]))
+        assert wheels[0].name.startswith("microcosm_emitter-")
+        assert sources[0].name.startswith("microcosm_emitter-")
+        run("uv", "pip", "install", "--python", str(interpreter), str(wheels[0]))
         environment = {
             key: value
             for key, value in os.environ.items()
@@ -50,7 +44,6 @@ def main():
             str(interpreter),
             "-I",
             str(ROOT / "tools/installed-smoke.py"),
-            "telemetry",
             cwd=workspace,
             env=environment,
         )

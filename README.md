@@ -1,9 +1,12 @@
-# Microcosm local provider
+# Microcosm emitter
 
-Two Python distributions separate the local process host from telemetry behavior:
+`microcosm-emitter` is one Python distribution containing the process host and a required telemetry library:
 
-- `microcosm-provider-client` owns subprocess startup, a private Unix socket, explicit module loading, parent-process monitoring, and shutdown. It has no telemetry, database, or authentication dependencies.
-- `microcosm-provider-telemetry` provides a thin build adapter and the telemetry service module. The service module owns stage tracking, event construction, credential redaction, resource sampling, SQLAlchemy ORM persistence, Alembic migrations, authentication, and collector delivery.
+- `microcosm_emitter.host` owns subprocess startup, a private Unix socket, explicit module loading, parent-process monitoring, and shutdown. Its code does not import telemetry, database, authentication, or Microcosm modules.
+- `microcosm_emitter.telemetry.client` is the thin build adapter. It starts the local telemetry emitter service and sends build requests, without importing the service implementation, database, or authentication libraries.
+- `microcosm_emitter.telemetry.service` interprets those requests in the separate process. It owns stage tracking, event construction, credential redaction, resource sampling, SQLAlchemy ORM persistence, Alembic migrations, authentication, and collector delivery.
+
+Installing `microcosm-emitter` always installs the telemetry library and all its dependencies. Telemetry is not a standalone distribution or an optional extra. The package keeps import boundaries between the host, adapter, and service implementation; they do not need separate installation or publication.
 
 The build process imports only the adapter, not the service implementation. It supplies run metadata, its existing queue path, and build identity. The adapter starts a separate local telemetry emitter service process automatically and sends requests over a private Unix socket. The adapter does not track stages, construct events, or redact telemetry. Imports alone create no processes, sockets, files, or network requests.
 
@@ -22,18 +25,18 @@ The queue retains the current Microcosm Alembic revision, producer sequences, ev
 Use Python 3.13 or 3.14 on Linux or macOS.
 
 ```bash
-uv sync --all-packages --locked
+uv sync --locked
 bash tools/check-quality.sh
 uv run --no-sync pytest -m 'not collector'
 bash tools/check-artifacts.sh
 ```
 
-Tests isolate ambient credentials and use synthetic identities. The artifact check builds source archives and wheels, installs the runtime by itself, then installs telemetry and exercises the real service process and migrations.
+Tests isolate ambient credentials and use synthetic identities. The artifact check builds one source archive and wheel, installs that wheel into a clean environment away from the source checkout, verifies that the host does not import telemetry or its dependencies, and exercises the real telemetry service process and packaged migrations.
 
-The collector compatibility job tests installed wheels against a pinned dashboard collector and disposable PostgreSQL. It covers the HTTP exchange, event ingestion, dashboard run documents, rejected identities, and duplicate delivery after a lost acknowledgement. Local execution requires that pinned collector checkout and a loopback test database; `tools/check-collector.sh` verifies these inputs. Never point this test at a deployed database.
+The collector compatibility job tests the installed wheel against a pinned dashboard collector and disposable PostgreSQL. It covers the HTTP exchange, event ingestion, dashboard run documents, rejected identities, and duplicate delivery after a lost acknowledgement. Local execution requires that pinned collector checkout and a loopback test database; `tools/check-collector.sh` verifies these inputs. Never point this test at a deployed database.
 
 ## Publication
 
-Both distributions use the same release version. A published GitHub release triggers version and main-branch ancestry checks, all CI checks, and artifact verification. Only then can the protected `pypi` environment approve publishing the exact tested artifacts. The publish job uses PyPI Trusted Publishing; no long-lived publishing token is supplied through CI.
+The project publishes only `microcosm-emitter`. A published GitHub release triggers version and main-branch ancestry checks, all CI checks, and artifact verification. Only then can the protected `pypi` environment approve publishing the exact tested wheel and source archive. The publish job uses PyPI Trusted Publishing; no long-lived publishing token is supplied through CI.
 
-First publication requires two PyPI pending trusted publishers, one for each distribution, attached to this project's `publish.yml` workflow and `pypi` environment. That external setup must be verified before releasing. No release is created or merged automatically by this project.
+First publication requires one PyPI pending trusted publisher for `microcosm-emitter`, attached to this project's `publish.yml` workflow and `pypi` environment. That external setup must be verified before releasing. No release is created or merged automatically by this project.

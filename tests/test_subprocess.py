@@ -7,8 +7,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import psutil
 import pytest
-from microcosm_provider_telemetry.client import LocalTelemetryEmitter, TelemetryRun
-from microcosm_provider_telemetry.service.spool import EventSpool
+
+from microcosm_emitter.telemetry.client import LocalTelemetryEmitter, TelemetryRun
+from microcosm_emitter.telemetry.service.spool import EventSpool
 
 
 @pytest.fixture

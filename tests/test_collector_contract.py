@@ -7,11 +7,12 @@ import time
 import uuid
 
 import pytest
-from microcosm_provider_telemetry.client import LocalTelemetryEmitter, TelemetryRun
-from microcosm_provider_telemetry.service import collector as delivery_module
-from microcosm_provider_telemetry.service.collector import CollectorDelivery
-from microcosm_provider_telemetry.service.spool import EventSpool
 from sqlalchemy.engine import make_url
+
+from microcosm_emitter.telemetry.client import LocalTelemetryEmitter, TelemetryRun
+from microcosm_emitter.telemetry.service import collector as delivery_module
+from microcosm_emitter.telemetry.service.collector import CollectorDelivery
+from microcosm_emitter.telemetry.service.spool import EventSpool
 
 pytestmark = pytest.mark.collector
 

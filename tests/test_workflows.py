@@ -59,8 +59,17 @@ def test_all_required_checks_include_real_collector_and_matrix():
     assert jobs["collector"]["env"]["TEST_DATABASE_URL"].endswith("/telemetry_test")
 
 
-def test_release_tag_matches_both_package_versions():
+def test_release_tag_matches_emitter_version():
     validate = runpy.run_path(str(ROOT / "tools/check-release.py"))["validate"]
     validate("v0.1.0")
     with pytest.raises(AssertionError, match="Release tag"):
         validate("v9.9.9")
+
+
+def test_build_verifies_one_distribution_without_a_workspace():
+    script = (ROOT / "tools/check-artifacts.sh").read_text()
+    assert script.count("uv build ") == 1
+    assert "--package" not in script
+    assert "--clear" in script
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        assert "--all-packages" not in path.read_text()

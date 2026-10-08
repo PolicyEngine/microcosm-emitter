@@ -5,12 +5,13 @@ import json
 import shutil
 from pathlib import Path
 
-from microcosm_provider_telemetry.service import spool as spool_module
-from microcosm_provider_telemetry.service.database import create_spool_engine
-from microcosm_provider_telemetry.service.models import TelemetryEventRecord
-from microcosm_provider_telemetry.service.spool import EventSpool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from microcosm_emitter.telemetry.service import spool as spool_module
+from microcosm_emitter.telemetry.service.database import create_spool_engine
+from microcosm_emitter.telemetry.service.models import TelemetryEventRecord
+from microcosm_emitter.telemetry.service.spool import EventSpool
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -15,7 +15,7 @@ def isolate_credentials_and_network(tmp_path, monkeypatch):
     from huggingface_hub import constants
 
     monkeypatch.setattr(constants, "HF_TOKEN_PATH", str(hf_home / "token"))
-    from microcosm_provider_telemetry.service import collector
+    from microcosm_emitter.telemetry.service import collector
 
     real_post = collector._http_post
 

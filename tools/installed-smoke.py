@@ -1,4 +1,4 @@
-"""Runs in an isolated interpreter containing only the installed distributions."""
+"""Verify the single installed distribution away from the source checkout."""
 
 import sys
 from importlib.metadata import distribution
@@ -6,24 +6,21 @@ from importlib.util import find_spec
 from pathlib import Path
 
 
-def base_smoke():
-    from microcosm_provider_client.client import SocketClient
-    from microcosm_provider_client.launcher import start_service
+def host_smoke():
+    from microcosm_emitter.host.client import SocketClient
+    from microcosm_emitter.host.launcher import start_service
 
     assert SocketClient and start_service
-    for name in (
-        "sqlalchemy",
-        "alembic",
-        "huggingface_hub",
-        "microcosm_provider_telemetry",
-        "microcosm",
-    ):
-        assert find_spec(name) is None, name
-    assert distribution("microcosm-provider-client").version
+    assert find_spec("microcosm") is None
+    assert distribution("microcosm-emitter").version
+    for name in ("sqlalchemy", "alembic", "huggingface_hub"):
+        assert find_spec(name) is not None, name
+        assert name not in sys.modules, name
+    assert "microcosm_emitter.telemetry" not in sys.modules
 
 
 def telemetry_smoke():
-    from microcosm_provider_telemetry.client import LocalTelemetryEmitter, TelemetryRun
+    from microcosm_emitter.telemetry.client import LocalTelemetryEmitter, TelemetryRun
 
     assert "sqlalchemy" not in sys.modules
     assert "huggingface_hub" not in sys.modules
@@ -31,7 +28,12 @@ def telemetry_smoke():
     run = TelemetryRun("wheel-test", "UK", "installed")
     path = Path.cwd() / "spool" / "events.sqlite3"
     emitter = LocalTelemetryEmitter.start(
-        run=run, spool_path=path, development_collector_url="http://127.0.0.1:1"
+        run=run,
+        spool_path=path,
+        development_collector_url="http://127.0.0.1:1",
+        # A clean wheel install must compile dependency bytecode on first use.
+        # Test packaging independently of the production startup-time limit.
+        startup_timeout_seconds=10,
     )
     assert emitter.available
     try:
@@ -40,10 +42,10 @@ def telemetry_smoke():
         assert emitter._handle.process.wait(timeout=10) == 0
     finally:
         emitter.close()
-    from microcosm_provider_telemetry.service.migrations import (
+    from microcosm_emitter.telemetry.service.migrations import (
         current_database_revision,
     )
-    from microcosm_provider_telemetry.service.spool import EventSpool
+    from microcosm_emitter.telemetry.service.spool import EventSpool
 
     assert current_database_revision(path) == "20261007_01"
     spool = EventSpool(path)
@@ -57,4 +59,5 @@ def telemetry_smoke():
 
 
 if __name__ == "__main__":
-    {"base": base_smoke, "telemetry": telemetry_smoke}[sys.argv[1]]()
+    host_smoke()
+    telemetry_smoke()

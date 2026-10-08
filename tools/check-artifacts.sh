@@ -3,9 +3,8 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
-# uv builds each wheel from its sdist, checking that source archives are complete.
-# Clear once before either package writes artifacts to the shared directory.
-uv build --package microcosm-provider-client --out-dir dist --clear
-uv build --package microcosm-provider-telemetry --out-dir dist
+# Build the wheel from its source archive to check that both libraries and
+# Alembic migrations are included. Remove artifacts from earlier builds first.
+uv build --out-dir dist --clear
 uv run --no-sync twine check --strict dist/*
 uv run --no-sync python tools/check-installed.py

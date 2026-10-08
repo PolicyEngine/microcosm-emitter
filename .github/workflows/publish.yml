@@ -1,4 +1,4 @@
-name: Publish distributions
+name: Publish emitter
 
 on:
   release:
