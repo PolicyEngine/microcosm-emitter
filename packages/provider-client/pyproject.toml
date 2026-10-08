@@ -1,0 +1,18 @@
+[project]
+name = "microcosm-provider-client"
+version = "0.1.0"
+description = "Private per-process local services with explicit module selection"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+dependencies = ["psutil>=6,<8"]
+
+[project.urls]
+Source = "https://github.com/PolicyEngine/microcosm-local-provider"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/microcosm_provider_client"]

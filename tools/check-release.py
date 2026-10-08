@@ -17,10 +17,12 @@ def validate(tag: str) -> None:
         "Release tag must match both distributions"
     )
     telemetry = next(
-        project for project in projects if project["name"] == "policyengine-telemetry"
+        project
+        for project in projects
+        if project["name"] == "microcosm-provider-telemetry"
     )
     assert (
-        f"policyengine-local-service=={telemetry['version']}"
+        f"microcosm-provider-client=={telemetry['version']}"
         in telemetry["dependencies"]
     )
 

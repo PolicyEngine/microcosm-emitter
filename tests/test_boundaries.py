@@ -18,20 +18,24 @@ def imports(path):
 
 def test_generic_runtime_has_no_domain_or_database_imports():
     forbidden = (
-        "policyengine_telemetry",
+        "microcosm_provider_telemetry",
         "microcosm",
         "sqlalchemy",
         "alembic",
         "huggingface_hub",
     )
-    for path in (ROOT / "packages/local-service/src").rglob("*.py"):
-        assert not any(name.startswith(forbidden) for name in imports(path)), path
+    for path in (ROOT / "packages/provider-client/src").rglob("*.py"):
+        assert not any(
+            name == prefix or name.startswith(prefix + ".")
+            for name in imports(path)
+            for prefix in forbidden
+        ), path
 
 
 def test_client_has_no_service_or_database_imports():
-    root = ROOT / "packages/telemetry/src/policyengine_telemetry"
+    root = ROOT / "packages/provider-telemetry/src/microcosm_provider_telemetry"
     forbidden = (
-        "policyengine_telemetry.service",
+        "microcosm_provider_telemetry.service",
         "sqlalchemy",
         "alembic",
         "huggingface_hub",
@@ -39,7 +43,11 @@ def test_client_has_no_service_or_database_imports():
     )
     for path in root.rglob("*.py"):
         if "service" not in path.relative_to(root).parts:
-            assert not any(name.startswith(forbidden) for name in imports(path)), path
+            assert not any(
+                name == prefix or name.startswith(prefix + ".")
+                for name in imports(path)
+                for prefix in forbidden
+            ), path
 
 
 def test_public_imports_have_no_runtime_side_effects():
@@ -50,16 +58,16 @@ def audit(event, args):
     if event in {"socket.connect", "socket.bind", "subprocess.Popen", "os.mkdir"}:
         raise AssertionError(event)
 sys.addaudithook(audit)
-import policyengine_local_service
-import policyengine_telemetry
-import policyengine_telemetry.client
+import microcosm_provider_client
+import microcosm_provider_telemetry
+import microcosm_provider_telemetry.client
 assert not any(name in sys.modules for name in ("sqlalchemy", "alembic", "huggingface_hub"))
 """
     subprocess.run([sys.executable, "-c", script], check=True)
 
 
 def test_database_code_has_no_raw_sql_or_manual_schema_creation():
-    for path in (ROOT / "packages/telemetry/src").rglob("*.py"):
+    for path in (ROOT / "packages/provider-telemetry/src").rglob("*.py"):
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):

@@ -1,9 +1,9 @@
-# PolicyEngine local services
+# Microcosm local provider
 
 Two Python distributions separate the local process host from telemetry behavior:
 
-- `policyengine-local-service` owns subprocess startup, a private Unix socket, explicit module loading, parent-process monitoring, and shutdown. It has no telemetry, database, or authentication dependencies.
-- `policyengine-telemetry` provides the build-facing client and a separate service module. The service module owns resource sampling, SQLAlchemy ORM persistence, Alembic migrations, authentication, and collector delivery.
+- `microcosm-provider-client` owns subprocess startup, a private Unix socket, explicit module loading, parent-process monitoring, and shutdown. It has no telemetry, database, or authentication dependencies.
+- `microcosm-provider-telemetry` provides the build-facing client and a separate service module. The service module owns resource sampling, SQLAlchemy ORM persistence, Alembic migrations, authentication, and collector delivery.
 
 The build process imports the client, not the service implementation. It supplies run metadata, its existing queue path, and build identity. Each build starts one local telemetry emitter service automatically. Imports alone create no processes, sockets, files, or network requests.
 

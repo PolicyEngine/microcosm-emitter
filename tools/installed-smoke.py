@@ -7,23 +7,23 @@ from pathlib import Path
 
 
 def base_smoke():
-    from policyengine_local_service.client import SocketClient
-    from policyengine_local_service.launcher import start_service
+    from microcosm_provider_client.client import SocketClient
+    from microcosm_provider_client.launcher import start_service
 
     assert SocketClient and start_service
     for name in (
         "sqlalchemy",
         "alembic",
         "huggingface_hub",
-        "policyengine_telemetry",
+        "microcosm_provider_telemetry",
         "microcosm",
     ):
         assert find_spec(name) is None, name
-    assert distribution("policyengine-local-service").version
+    assert distribution("microcosm-provider-client").version
 
 
 def telemetry_smoke():
-    from policyengine_telemetry.client import LocalTelemetryEmitter, TelemetryRun
+    from microcosm_provider_telemetry.client import LocalTelemetryEmitter, TelemetryRun
 
     assert "sqlalchemy" not in sys.modules
     assert "huggingface_hub" not in sys.modules
@@ -40,8 +40,10 @@ def telemetry_smoke():
         assert emitter._handle.process.wait(timeout=10) == 0
     finally:
         emitter.close()
-    from policyengine_telemetry.service.migrations import current_database_revision
-    from policyengine_telemetry.service.spool import EventSpool
+    from microcosm_provider_telemetry.service.migrations import (
+        current_database_revision,
+    )
+    from microcosm_provider_telemetry.service.spool import EventSpool
 
     assert current_database_revision(path) == "20261007_01"
     spool = EventSpool(path)

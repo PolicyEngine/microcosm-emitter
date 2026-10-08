@@ -18,8 +18,8 @@ def main():
         workspace = Path(directory)
         interpreter = workspace / "venv/bin/python"
         run("uv", "venv", "--python", sys.executable, str(workspace / "venv"))
-        base = list((ROOT / "dist").glob("policyengine_local_service-*.whl"))
-        telemetry = list((ROOT / "dist").glob("policyengine_telemetry-*.whl"))
+        base = list((ROOT / "dist").glob("microcosm_provider_client-*.whl"))
+        telemetry = list((ROOT / "dist").glob("microcosm_provider_telemetry-*.whl"))
         assert len(base) == len(telemetry) == 1, (
             "Expected exactly one release of each distribution"
         )

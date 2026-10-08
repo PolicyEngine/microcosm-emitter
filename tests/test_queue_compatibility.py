@@ -5,10 +5,10 @@ import json
 import shutil
 from pathlib import Path
 
-from policyengine_telemetry.service import spool as spool_module
-from policyengine_telemetry.service.database import create_spool_engine
-from policyengine_telemetry.service.models import TelemetryEventRecord
-from policyengine_telemetry.service.spool import EventSpool
+from microcosm_provider_telemetry.service import spool as spool_module
+from microcosm_provider_telemetry.service.database import create_spool_engine
+from microcosm_provider_telemetry.service.models import TelemetryEventRecord
+from microcosm_provider_telemetry.service.spool import EventSpool
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 

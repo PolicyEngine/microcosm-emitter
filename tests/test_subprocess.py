@@ -6,8 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
-from policyengine_telemetry.client import LocalTelemetryEmitter, TelemetryRun
-from policyengine_telemetry.service.spool import EventSpool
+from microcosm_provider_telemetry.client import LocalTelemetryEmitter, TelemetryRun
+from microcosm_provider_telemetry.service.spool import EventSpool
 
 
 @pytest.fixture
