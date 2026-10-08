@@ -84,3 +84,26 @@ def test_parent_identity_rejects_reused_pid_zombie_or_exit(
 def test_absent_module_fails_cleanly_in_real_child():
     with pytest.raises(LocalServiceError, match="exited"):
         launcher.start_service("not-installed", {})
+
+
+def test_oversized_configuration_starts_no_process(monkeypatch):
+    launch = Mock()
+    monkeypatch.setattr(launcher.subprocess, "Popen", launch)
+    with pytest.raises(LocalServiceError, match="too large"):
+        launcher.start_service("missing", {"data": "x" * launcher.MAX_MESSAGE_BYTES})
+    launch.assert_not_called()
+
+
+def test_configuration_transfer_timeout_reaps_child(tmp_path, monkeypatch):
+    directory = tmp_path / "runtime"
+    directory.mkdir()
+    process = Mock()
+    process.poll.return_value = None
+    monkeypatch.setattr(launcher.tempfile, "mkdtemp", lambda **kwargs: str(directory))
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda *args, **kwargs: process)
+    # The synthetic child never reads stdin, so bounded startup must time out.
+    with pytest.raises(LocalServiceError, match="TimeoutError"):
+        launcher.start_service("missing", {"data": "x" * 900_000}, startup_timeout=0.01)
+    process.terminate.assert_called_once()
+    process.wait.assert_called_once()
+    assert not directory.exists()

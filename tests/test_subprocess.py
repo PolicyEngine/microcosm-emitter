@@ -5,6 +5,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import psutil
 import pytest
 from microcosm_provider_telemetry.client import LocalTelemetryEmitter, TelemetryRun
 from microcosm_provider_telemetry.service.spool import EventSpool
@@ -57,12 +58,15 @@ def test_real_service_delivers_without_microcosm(tmp_path, monkeypatch, collecto
         run=TelemetryRun("subprocess", "UK", "test"),
         spool_path=tmp_path / "events.sqlite3",
         development_collector_url=address,
-        identity={"test": True},
+        identity={"test": True, "HF_TOKEN": "hf_identity_private"},
     )
     assert emitter.available
     try:
+        arguments = psutil.Process(emitter._handle.process.pid).cmdline()
+        assert "hf_identity_private" not in " ".join(arguments)
+        assert "--config-json" not in arguments
         emitter.transition_stage("compile")
-        emitter.progress("compile", done=2, total=3)
+        emitter.progress("compile", done=2, total=3, HF_TOKEN="hf_progress_private")
         emitter.complete()
         assert emitter._handle.process.wait(timeout=10) == 0
     finally:
@@ -74,7 +78,13 @@ def test_real_service_delivers_without_microcosm(tmp_path, monkeypatch, collecto
         if path.endswith("/events")
         for event in payload["events"]
     ]
-    assert events[0]["details"]["identity"] == {"test": True}
+    assert events[0]["details"]["identity"] == {"test": True, "HF_TOKEN": "[redacted]"}
+    assert "hf_progress_private" not in json.dumps(events)
+    assert [
+        (event["stage_id"], event["status"])
+        for event in events
+        if event["event_type"] == "stage"
+    ] == [("compile", "started"), ("compile", "completed")]
     assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
     assert events[-1]["status"] == "completed"
     assert events[-1]["resources"]["rss_bytes"] > 0

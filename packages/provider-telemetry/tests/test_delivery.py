@@ -10,11 +10,6 @@ from microcosm_provider_telemetry.client import (
 from microcosm_provider_telemetry.protocol import (
     MAX_TELEMETRY_DETAILS_BYTES,
 )
-from microcosm_provider_telemetry.sanitization import (
-    sanitize_details,
-    sanitize_json,
-    sanitize_text,
-)
 from microcosm_provider_telemetry.service import collector as collector_module
 from microcosm_provider_telemetry.service import resources as resources_module
 from microcosm_provider_telemetry.service import spool as spool_module
@@ -32,6 +27,11 @@ from microcosm_provider_telemetry.service.migrations import (
 )
 from microcosm_provider_telemetry.service.models import (
     serialized_json_length,
+)
+from microcosm_provider_telemetry.service.sanitization import (
+    sanitize_details,
+    sanitize_json,
+    sanitize_text,
 )
 from microcosm_provider_telemetry.service.spool import EventSpool
 

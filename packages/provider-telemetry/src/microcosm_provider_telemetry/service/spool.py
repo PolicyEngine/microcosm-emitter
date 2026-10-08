@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -100,45 +100,61 @@ class EventSpool:
         *,
         resources: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Append an event and assign its stable producer sequence."""
+        """Append one event using the same transaction path as lifecycle requests."""
+        return self.append_many(registration, [event], resources=resources)[0]
+
+    def append_many(
+        self,
+        registration: Mapping[str, Any],
+        events: Sequence[Mapping[str, Any]],
+        *,
+        resources: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Commit all events from one request and their sequences atomically."""
 
         run_id = str(registration["run_id"])
         producer_id = str(registration["producer_id"])
+        payloads = []
         with self._lock, self._session_factory.begin() as session:
             run = session.get(TelemetryRunRecord, (run_id, producer_id))
             if run is None:
                 raise KeyError(run_id)
-            sequence = run.next_sequence
-            event_id = uuid.uuid4().hex
-            payload = {
-                "schema_version": TELEMETRY_SCHEMA_VERSION,
-                "event_id": event_id,
-                "run_id": run_id,
-                "producer_id": producer_id,
-                "sequence": sequence,
-                "timestamp": event.get("timestamp") or utc_now(),
-                "event_type": event["event_type"],
-                "stage_id": event.get("stage_id"),
-                "status": event["status"],
-                "message": event.get("message"),
-                "details": event.get("details") or {},
-                "resources": resources,
-            }
-            session.add(
-                TelemetryEventRecord(
-                    event_id=event_id,
-                    run_id=run_id,
-                    producer_id=producer_id,
-                    sequence=sequence,
-                    payload=payload,
-                    created_at=utc_now(),
+            for event in events:
+                sequence = run.next_sequence
+                event_id = uuid.uuid4().hex
+                payload = {
+                    "schema_version": TELEMETRY_SCHEMA_VERSION,
+                    "event_id": event_id,
+                    "run_id": run_id,
+                    "producer_id": producer_id,
+                    "sequence": sequence,
+                    "timestamp": event.get("timestamp") or utc_now(),
+                    "event_type": event["event_type"],
+                    "stage_id": event.get("stage_id"),
+                    "status": event["status"],
+                    "message": event.get("message"),
+                    "details": event.get("details") or {},
+                    "resources": resources,
+                }
+                session.add(
+                    TelemetryEventRecord(
+                        event_id=event_id,
+                        run_id=run_id,
+                        producer_id=producer_id,
+                        sequence=sequence,
+                        payload=payload,
+                        created_at=utc_now(),
+                    )
                 )
-            )
-            run.next_sequence = sequence + 1
-            run.updated_at = utc_now()
+                run.next_sequence = sequence + 1
+                run.updated_at = utc_now()
+                payloads.append(payload)
+        return payloads
+
+    def prune_if_due(self) -> None:
+        """Run periodic maintenance outside the request acknowledgement path."""
         if time.monotonic() - self._last_prune_at >= PRUNE_INTERVAL_SECONDS:
             self.prune()
-        return payload
 
     def pending_runs(self) -> list[dict[str, Any]]:
         """Return registrations that have events eligible for delivery."""

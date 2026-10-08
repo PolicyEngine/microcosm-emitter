@@ -2,6 +2,7 @@
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,7 @@ import psutil
 from microcosm_provider_client.client import SocketClient
 from microcosm_provider_client.constants import (
     DRAIN_SECONDS,
+    MAX_MESSAGE_BYTES,
     MODULE_HOST,
     PROCESS_EXIT_TIMEOUT,
     RUNTIME_PREFIX,
@@ -55,33 +57,40 @@ def start_service(
     directory = None
     process = None
     try:
+        payload = json.dumps(configuration, allow_nan=False).encode()
+        if len(payload) > MAX_MESSAGE_BYTES:
+            raise LocalServiceError("Service configuration is too large.")
+        deadline = time.monotonic() + startup_timeout
         # Short paths are necessary for macOS's Unix-socket path limit.
         directory = Path(tempfile.mkdtemp(prefix=RUNTIME_PREFIX, dir="/tmp"))
         directory.chmod(0o700)
         path = directory / SOCKET_FILENAME
         parent = psutil.Process(os.getpid())
-        process = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                MODULE_HOST,
-                "--module",
-                module,
-                "--socket",
-                str(path),
-                "--config-json",
-                json.dumps(configuration, allow_nan=False),
-                "--parent-pid",
-                str(parent.pid),
-                "--parent-created-at",
-                str(parent.create_time()),
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            start_new_session=True,
-        )
+        reader, writer = socket.socketpair()
+        with reader, writer:
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    MODULE_HOST,
+                    "--module",
+                    module,
+                    "--socket",
+                    str(path),
+                    "--parent-pid",
+                    str(parent.pid),
+                    "--parent-created-at",
+                    str(parent.create_time()),
+                ],
+                stdin=reader,
+                stdout=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            # Startup metadata must not appear in process-list arguments.
+            writer.settimeout(max(0.001, deadline - time.monotonic()))
+            writer.sendall(payload)
+            writer.shutdown(socket.SHUT_WR)
         client = SocketClient(path)
-        deadline = time.monotonic() + startup_timeout
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise LocalServiceError("Service exited before readiness.")

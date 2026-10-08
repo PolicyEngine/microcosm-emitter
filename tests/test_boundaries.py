@@ -61,7 +61,12 @@ sys.addaudithook(audit)
 import microcosm_provider_client
 import microcosm_provider_telemetry
 import microcosm_provider_telemetry.client
-assert not any(name in sys.modules for name in ("sqlalchemy", "alembic", "huggingface_hub"))
+assert not any(name in sys.modules for name in (
+    "sqlalchemy", "alembic", "huggingface_hub",
+    "microcosm_provider_telemetry.service",
+    "microcosm_provider_telemetry.service.lifecycle",
+    "microcosm_provider_telemetry.service.sanitization",
+))
 """
     subprocess.run([sys.executable, "-c", script], check=True)
 

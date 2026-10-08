@@ -1,4 +1,4 @@
-"""Size bounds and credential redaction for telemetry payloads."""
+"""Service-side size bounds and credential redaction before persistence."""
 
 from __future__ import annotations
 

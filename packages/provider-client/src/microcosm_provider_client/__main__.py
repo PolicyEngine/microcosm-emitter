@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+from microcosm_provider_client.constants import MAX_MESSAGE_BYTES
 from microcosm_provider_client.contracts import ModuleContext
 from microcosm_provider_client.loading import load_module
 from microcosm_provider_client.process import ParentProcess
@@ -15,12 +16,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--module", required=True)
     parser.add_argument("--socket", type=Path, required=True)
-    parser.add_argument("--config-json", required=True)
     parser.add_argument("--parent-pid", type=int, required=True)
     parser.add_argument("--parent-created-at", type=float, required=True)
     args = parser.parse_args()
     try:
-        configuration = json.loads(args.config_json)
+        payload = sys.stdin.buffer.read(MAX_MESSAGE_BYTES + 1)
+        if len(payload) > MAX_MESSAGE_BYTES:
+            raise ValueError("configuration is too large")
+        configuration = json.loads(payload)
         if not isinstance(configuration, dict):
             raise ValueError("configuration must be an object")
         parent = ParentProcess(args.parent_pid, args.parent_created_at)

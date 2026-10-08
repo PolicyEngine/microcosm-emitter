@@ -3,13 +3,15 @@
 Two Python distributions separate the local process host from telemetry behavior:
 
 - `microcosm-provider-client` owns subprocess startup, a private Unix socket, explicit module loading, parent-process monitoring, and shutdown. It has no telemetry, database, or authentication dependencies.
-- `microcosm-provider-telemetry` provides the build-facing client and a separate service module. The service module owns resource sampling, SQLAlchemy ORM persistence, Alembic migrations, authentication, and collector delivery.
+- `microcosm-provider-telemetry` provides a thin build adapter and the telemetry service module. The service module owns stage tracking, event construction, credential redaction, resource sampling, SQLAlchemy ORM persistence, Alembic migrations, authentication, and collector delivery.
 
-The build process imports the client, not the service implementation. It supplies run metadata, its existing queue path, and build identity. Each build starts one local telemetry emitter service automatically. Imports alone create no processes, sockets, files, or network requests.
+The build process imports only the adapter, not the service implementation. It supplies run metadata, its existing queue path, and build identity. The adapter starts a separate local telemetry emitter service process automatically and sends requests over a private Unix socket. The adapter does not track stages, construct events, or redact telemetry. Imports alone create no processes, sockets, files, or network requests.
 
 ## Delivery and persistence
 
-The service commits each event before acknowledging its local socket message. The client bounds socket calls and reports telemetry failures without failing the build. Network requests run on the service worker, outside the message-handling lock.
+The service interprets requests such as a stage change or build failure, timestamps and redacts the resulting events, and saves them before acknowledging the socket request. A stage change can complete one stage and start another; both events commit in one SQLAlchemy ORM transaction, and the service changes its stage state only after that transaction succeeds. Periodic retention maintenance runs outside this acknowledgement path.
+
+The adapter bounds socket calls and reports telemetry failures without failing the build. It converts Python arguments into JSON but does not process their telemetry meaning. Network requests run on the service worker, outside the message-handling lock.
 
 The service uses the existing Hugging Face credential from the environment or local login cache. The collector validates PolicyEngine membership before issuing a short-lived write credential. Missing or rejected credentials permanently mark that producer's events as local-only. Transient collector failures retain events for retry. The production destination belongs to the package; development overrides accept loopback addresses only.
 
