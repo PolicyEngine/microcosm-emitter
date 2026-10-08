@@ -199,7 +199,7 @@ class GraphPublicationQueue:
             )
             if id_ is None:
                 return None
-            result = session.execute(
+            claimed_id = session.scalar(
                 update(GraphPublicationJob)
                 .where(
                     GraphPublicationJob.publication_id == id_,
@@ -207,10 +207,14 @@ class GraphPublicationQueue:
                     GraphPublicationJob.lease_until <= now,
                 )
                 .values(lease_until=now + lease_seconds)
+                .returning(GraphPublicationJob.publication_id)
             )
-            if not result.rowcount:
+            if claimed_id is None:
                 return None
             job = session.get(GraphPublicationJob, id_)
+            assert job is not None, (
+                "A claimed publication must exist in its transaction."
+            )
             return ClaimedGraphPublication(
                 publication_id=id_,
                 directory=Path(job.directory),
