@@ -14,7 +14,7 @@ def test_single_distribution_with_required_telemetry_dependencies():
     project = config["project"]
     assert project["name"] == EXPECTED_NAME
     assert project["urls"]["Source"] == (
-        "https://github.com/PolicyEngine/microcosm-local-provider"
+        "https://github.com/PolicyEngine/microcosm-emitter"
     )
     assert not list((ROOT / "packages").glob("*/pyproject.toml"))
     assert "workspace" not in config.get("tool", {}).get("uv", {})
@@ -30,6 +30,9 @@ def test_single_distribution_with_required_telemetry_dependencies():
 def test_installed_distribution_includes_host_telemetry_and_migrations():
     emitter = distribution(EXPECTED_NAME)
     assert emitter.version == "0.1.0"
+    assert emitter.metadata.get_all("Project-URL") == [
+        "Source, https://github.com/PolicyEngine/microcosm-emitter"
+    ]
     requirements = emitter.requires
     assert all("extra ==" not in requirement for requirement in requirements)
     assert not any("microcosm-provider" in requirement for requirement in requirements)

@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://github.com/PolicyEngine/microcosm-local-provider"
+Source = "https://github.com/PolicyEngine/microcosm-emitter"
 
 [project.entry-points."microcosm.emitter.modules"]
 telemetry = "microcosm_emitter.telemetry.service:create_module"

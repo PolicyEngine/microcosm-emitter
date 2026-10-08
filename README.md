@@ -39,4 +39,4 @@ The collector compatibility job tests the installed wheel against a pinned dashb
 
 The project publishes only `microcosm-emitter`. A published GitHub release triggers version and main-branch ancestry checks, all CI checks, and artifact verification. Only then can the protected `pypi` environment approve publishing the exact tested wheel and source archive. The publish job uses PyPI Trusted Publishing; no long-lived publishing token is supplied through CI.
 
-First publication requires one PyPI pending trusted publisher for `microcosm-emitter`, attached to this project's `publish.yml` workflow and `pypi` environment. That external setup must be verified before releasing. No release is created or merged automatically by this project.
+First publication requires one PyPI pending trusted publisher for `microcosm-emitter`, attached to GitHub owner `PolicyEngine`, project `microcosm-emitter`, workflow `publish.yml`, and environment `pypi`. That external setup must be verified before releasing. No release is created or merged automatically by this project.

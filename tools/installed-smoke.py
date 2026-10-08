@@ -12,7 +12,11 @@ def host_smoke():
 
     assert SocketClient and start_service
     assert find_spec("microcosm") is None
-    assert distribution("microcosm-emitter").version
+    emitter = distribution("microcosm-emitter")
+    assert emitter.version
+    assert emitter.metadata.get_all("Project-URL") == [
+        "Source, https://github.com/PolicyEngine/microcosm-emitter"
+    ]
     for name in ("sqlalchemy", "alembic", "huggingface_hub"):
         assert find_spec(name) is not None, name
         assert name not in sys.modules, name
