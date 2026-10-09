@@ -1,0 +1,7 @@
+{
+  "source": "PolicyEngine/microcosm",
+  "commit": "72a969d48fec505ccf649a782516ab7d3d49a789",
+  "schema_revision": "20261007_01",
+  "sha256": "e564232c82be152c83ac8f1a0fc234e54f15e6c567dfab2a24a731956cef6e1d",
+  "description": "Synthetic events created by #1099 EventSpool, not copied from a user's database. One producer has an acknowledged first event; the other is permanently local-only."
+}

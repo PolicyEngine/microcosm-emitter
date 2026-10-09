@@ -1,0 +1,46 @@
+[project]
+name = "microcosm-emitter"
+version = "0.1.0"
+description = "Local emitter process host with required build telemetry support"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+dependencies = [
+    "alembic>=1.13.3,<2",
+    "sqlalchemy>=2,<3",
+    "huggingface-hub>=0.20,<2",
+    "psutil>=6,<8",
+]
+
+[project.urls]
+Source = "https://github.com/PolicyEngine/microcosm-emitter"
+
+[project.entry-points."microcosm.emitter.modules"]
+telemetry = "microcosm_emitter.telemetry.service:create_module"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/microcosm_emitter"]
+
+[dependency-groups]
+dev = ["pytest>=8,<9", "ruff>=0.11,<1", "build>=1,<2", "twine>=7,<8", "pyyaml>=6,<7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --import-mode=importlib"
+markers = ["collector: requires the pinned collector and disposable PostgreSQL"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B"]
+ignore = ["E501"]
+
+[tool.towncrier]
+directory = "changelog.d"
+filename = "CHANGELOG.md"
