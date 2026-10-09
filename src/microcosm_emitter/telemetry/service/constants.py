@@ -55,9 +55,9 @@ DATABASE_TIMEOUT_SECONDS: Final = 5
 PRUNE_INTERVAL_SECONDS: Final = 60.0
 
 #: Lease files live in ``<spool>.leases/``, one per producer, named by the
-#: SHA-256 of ``run_id NUL producer_id``. Microcosm's own telemetry service uses
-#: the same layout, so services from both packages sharing one spool recognise
-#: each other's leases.
+#: SHA-256 of ``run_id NUL producer_id``. Microcosm's telemetry service uses the
+#: same layout from PolicyEngine/microcosm#1177 on, so services from both
+#: packages sharing one spool recognise each other's leases.
 LEASE_DIRECTORY_SUFFIX: Final = ".leases"
 LEASE_FILE_SUFFIX: Final = ".lock"
 LEASE_RETRY_SECONDS: Final = 0.01

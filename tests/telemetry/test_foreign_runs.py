@@ -579,9 +579,10 @@ def test_a_run_without_a_lease_is_adopted_only_once_idle(host):
 
 
 def test_the_lease_files_match_microcosms(tmp_path):
-    """Microcosm's own telemetry service shares this spool and keeps the same
-    lease files: ``<spool>.leases/<sha256(run_id NUL producer_id)>.lock``. Any
-    change here makes the two packages' services blind to each other's runs."""
+    """Microcosm's telemetry service shares this spool and, from
+    PolicyEngine/microcosm#1177 on, keeps the same lease files:
+    ``<spool>.leases/<sha256(run_id NUL producer_id)>.lock``. Any change here
+    makes the two packages' services blind to each other's runs."""
 
     leases = ProducerLeases.beside(tmp_path / "events.sqlite3")
 

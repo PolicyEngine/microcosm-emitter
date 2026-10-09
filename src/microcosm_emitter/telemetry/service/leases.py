@@ -15,7 +15,8 @@ spool, outside the database, so no spool migration is needed and checkouts that
 predate leases can still share the spool.
 
 Microcosm's telemetry service keeps the same lease files (directory, file name
-and lock type), so services from either package recognise each other's leases.
+and lock type) from PolicyEngine/microcosm#1177 on, so services from either
+package recognise each other's leases.
 """
 
 from __future__ import annotations
