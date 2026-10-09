@@ -79,7 +79,9 @@ def test_production_collector_cannot_be_replaced_by_environment(
         "https://untrusted.example",
     )
 
-    delivery = CollectorDelivery(EventSpool(tmp_path / "events.sqlite3"))
+    delivery = CollectorDelivery(
+        EventSpool(tmp_path / "events.sqlite3"), _registration()
+    )
 
     assert delivery.collector_url == PRODUCTION_COLLECTOR_URL
 
@@ -230,6 +232,7 @@ def test_collector_delivery_exchanges_hf_token_then_flushes(
 
     delivery = CollectorDelivery(
         spool,
+        registration,
         development_collector_url="http://127.0.0.1:8080",
     )
     assert delivery.flush_once()
@@ -260,6 +263,7 @@ def test_non_org_credential_keeps_event_local(tmp_path, monkeypatch, capsys) -> 
     monkeypatch.setattr(collector_module, "_http_post", reject)
     delivery = CollectorDelivery(
         spool,
+        registration,
         development_collector_url="http://127.0.0.1:8080",
     )
 
@@ -285,7 +289,7 @@ def test_identity_provider_outage_keeps_events_eligible_for_retry(
         lambda *args, **kwargs: (503, {"detail": "temporarily unavailable"}),
     )
 
-    assert not CollectorDelivery(spool).flush_once()
+    assert not CollectorDelivery(spool, registration).flush_once()
     assert spool.pending_runs() == [registration]
 
 
@@ -306,7 +310,7 @@ def test_missing_credential_never_contacts_collector_and_stays_local_only(
         ),
     )
 
-    delivery = CollectorDelivery(spool)
+    delivery = CollectorDelivery(spool, registration)
     assert not delivery.flush_once()
     assert spool.pending_runs() == []
 

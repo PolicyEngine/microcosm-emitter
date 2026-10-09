@@ -54,6 +54,21 @@ MAX_RETRY_SECONDS: Final = 60.0
 DATABASE_TIMEOUT_SECONDS: Final = 5
 PRUNE_INTERVAL_SECONDS: Final = 60.0
 
+#: Lease files live in ``<spool>.leases/``, one per producer, named by the
+#: SHA-256 of ``run_id NUL producer_id``. Microcosm's own telemetry service uses
+#: the same layout, so services from both packages sharing one spool recognise
+#: each other's leases.
+LEASE_DIRECTORY_SUFFIX: Final = ".leases"
+LEASE_FILE_SUFFIX: Final = ".lock"
+LEASE_RETRY_SECONDS: Final = 0.01
+MAX_LEASE_OPEN_ATTEMPTS: Final = 8
+OWN_LEASE_TIMEOUT_SECONDS: Final = 1.0
+LEASE_SWEEP_INTERVAL_SECONDS: Final = 600.0
+#: A run with no lease file (its producer predates leases, or its free lease was
+#: swept) counts as orphaned once it has gone this long without an update. A
+#: live service appends a heartbeat every ``DEFAULT_HEARTBEAT_SECONDS``.
+ORPHAN_IDLE_SECONDS: Final = 900.0
+
 DEFAULT_HEARTBEAT_SECONDS: Final = 60.0
 DEFAULT_DRAIN_SECONDS: Final = 15.0
 MINIMUM_HEARTBEAT_SECONDS: Final = 1.0

@@ -47,8 +47,11 @@ class TelemetryModule:
         self.sampler = ProcessTreeSampler(self.context.parent_pid)
         self.spool = EventSpool(self.configuration["spool_path"])
         try:
+            # The delivery takes this producer's lease, which must happen
+            # before the run has any event and before the service is ready.
             self.delivery = CollectorDelivery(
                 self.spool,
+                self.registration,
                 development_collector_url=self.configuration.get(
                     "development_collector_url"
                 ),
@@ -60,7 +63,14 @@ class TelemetryModule:
                 resources=self.sampler.sample(),
             )
         except Exception:
-            self.spool.close()
+            try:
+                # A service that failed to start delivers nothing; releasing
+                # its lease leaves anything its run holds to other services.
+                if self.delivery is not None:
+                    self.delivery.close()
+                    self.delivery = None
+            finally:
+                self.spool.close()
             raise
 
     def handle_message(self, message: JsonObject) -> None:
@@ -102,7 +112,14 @@ class TelemetryModule:
     def close(self, deadline: float) -> None:
         try:
             if self.delivery is not None:
-                while time.monotonic() < deadline and self.spool.has_deliverable():
+                # Only this build's run holds the service up: other builds'
+                # runs are their own services' to deliver, or are adopted
+                # while this one runs.
+                run_id = str(self.registration["run_id"])
+                producer_id = str(self.registration["producer_id"])
+                while time.monotonic() < deadline and self.spool.run_has_deliverable(
+                    run_id, producer_id
+                ):
                     if not self.delivery.flush_once():
                         time.sleep(
                             min(
@@ -110,5 +127,9 @@ class TelemetryModule:
                             )
                         )
         finally:
-            if self.spool is not None:
-                self.spool.close()
+            try:
+                if self.delivery is not None:
+                    self.delivery.close()
+            finally:
+                if self.spool is not None:
+                    self.spool.close()

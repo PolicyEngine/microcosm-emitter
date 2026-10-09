@@ -198,6 +198,39 @@ class EventSpool:
         with self._lock, self._session_factory() as session:
             return session.scalar(statement) is not None
 
+    def run_has_deliverable(self, run_id: str, producer_id: str) -> bool:
+        """Return whether one producer still has events eligible for delivery."""
+
+        statement = (
+            select(TelemetryEventRecord.event_id)
+            .join(TelemetryEventRecord.run)
+            .where(
+                TelemetryRunRecord.run_id == run_id,
+                TelemetryRunRecord.producer_id == producer_id,
+                TelemetryRunRecord.upload_state == UPLOAD_STATE_PENDING,
+            )
+            .limit(1)
+        )
+        with self._lock, self._session_factory() as session:
+            return session.scalar(statement) is not None
+
+    def last_updated(self, run_id: str, producer_id: str) -> datetime | None:
+        """Return when one producer's run last changed, or ``None`` if unknown."""
+
+        statement = select(TelemetryRunRecord.updated_at).where(
+            TelemetryRunRecord.run_id == run_id,
+            TelemetryRunRecord.producer_id == producer_id,
+        )
+        with self._lock, self._session_factory() as session:
+            updated_at = session.scalar(statement)
+        if updated_at is None:
+            return None
+        try:
+            parsed = datetime.fromisoformat(updated_at)
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
     def batch(
         self,
         run_id: str,
