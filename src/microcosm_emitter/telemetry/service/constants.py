@@ -25,6 +25,7 @@ LOCAL_ONLY_MISSING_CREDENTIAL: Final = "missing_huggingface_credential"
 LOCAL_ONLY_REJECTED_CREDENTIAL: Final = "huggingface_credential_rejected"
 LOCAL_ONLY_REJECTED_REGISTRATION: Final = "run_registration_rejected"
 LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION: Final = "collector_authorization_rejected"
+LOCAL_ONLY_REJECTED_EVENTS: Final = "collector_rejected_events"
 LOCAL_ONLY_PRE_ELIGIBILITY: Final = "created_before_upload_eligibility"
 
 NO_CREDENTIAL_MESSAGE: Final = (
@@ -35,6 +36,11 @@ REJECTED_CREDENTIAL_MESSAGE: Final = (
     "Microcosm telemetry is local-only for this run: the ambient Hugging Face "
     "credential was not accepted as a PolicyEngine organization member. The "
     "dataset build will continue."
+)
+REJECTED_EVENTS_MESSAGE: Final = (
+    "Microcosm telemetry is local-only for this run: the collector rejected its "
+    "events (HTTP {status}), so they will not be retried. The dataset build will "
+    "continue."
 )
 OWN_LEASE_UNAVAILABLE_MESSAGE: Final = (
     "Microcosm telemetry is off for this run: its service could not take the "
