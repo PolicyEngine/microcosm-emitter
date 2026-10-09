@@ -39,6 +39,10 @@ GRAPH_PUBLICATION_ACTION = "graph_publication"
 GRAPH_PUBLICATION_WAIT_SECONDS = 30.0
 GRAPH_PUBLICATION_LEASE_SECONDS = 300.0
 GRAPH_PUBLICATION_STATUS_FILENAME = "publication.status.json"
+GRAPH_WORKER_ERROR_MESSAGE = (
+    "Microcosm graph publication hit a local queue error; pending jobs remain "
+    "queued for a later attempt."
+)
 DEFAULT_GRAPH_PUBLICATION_ORIGIN = "https://microcosm-runs.vercel.app"
 GRAPH_PUBLICATION_ROLES = {
     "graph": r"graph\.orrery\.json",
@@ -118,6 +122,16 @@ def publication_inventory(
     return {"version": 1, "publication_id": id_, "files": files}
 
 
+def _write_status(directory: Path, receipt: PublicationReceipt) -> None:
+    path = directory / GRAPH_PUBLICATION_STATUS_FILENAME
+    temporary = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(receipt, sort_keys=True) + "\n")
+        temporary.replace(path)
+    except OSError:
+        temporary.unlink(missing_ok=True)
+
+
 class GraphPublicationQueue:
     """SQLite job records with leases; retained until publication or operator action."""
 
@@ -195,7 +209,11 @@ class GraphPublicationQueue:
                     GraphPublicationJob.status == "pending",
                     GraphPublicationJob.next_attempt_at <= now,
                     GraphPublicationJob.lease_until <= now,
-                ).limit(1)
+                )
+                # Earliest-due first, so a job that keeps failing cannot
+                # repeatedly displace other pending publications.
+                .order_by(GraphPublicationJob.next_attempt_at)
+                .limit(1)
             )
             if id_ is None:
                 return None
@@ -258,10 +276,10 @@ class GraphPublicationQueue:
             if job is None:
                 return
             job.next_attempt_at = time.time() + min(300, 2 ** min(job.attempts, 8))
-            job.receipt = {
+            receipt: PublicationReceipt = {
                 "version": 1,
                 "publication_id": id_,
-                "status": job.status,
+                "status": "published" if url else "pending",
                 "error_code": error_code,
                 "url": url,
                 "attempts": job.attempts,
@@ -269,11 +287,12 @@ class GraphPublicationQueue:
                     cast(PublicationInventory, job.inventory)
                 ),
             }
-            # This is a separate latest-result file, not the build/HF receipt.
-            path = Path(job.directory) / GRAPH_PUBLICATION_STATUS_FILENAME
-            temporary = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
-            temporary.write_text(json.dumps(job.receipt, sort_keys=True) + "\n")
-            temporary.replace(path)
+            job.receipt = dict(receipt)
+            directory = Path(job.directory)
+        # The queue row is authoritative. This separate latest-result file (not
+        # the build/HF receipt) is a convenience copy, written only after the
+        # commit: a deleted preserved directory must not roll back the result.
+        _write_status(directory, receipt)
 
     def retry(self, id_: str | None = None) -> None:
         """Make preserved pending jobs eligible again, including missing credentials."""
@@ -330,6 +349,13 @@ class GraphPublicationDelivery:
         )
         error = "publication_unavailable"
         lease = job.lease_until
+        if not directory.is_dir():
+            # Retained until an operator restores the files to this directory;
+            # the retry backoff lets other pending jobs proceed meanwhile.
+            self.queue.finish(
+                id_, error_code="preserved_files_missing", expected_lease=lease
+            )
+            return False
         try:
             status, token = self.credential()
             if token is None:
