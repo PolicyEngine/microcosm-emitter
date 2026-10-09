@@ -1,5 +1,6 @@
 """Interpret build requests without mutating state until their events commit."""
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import Any
@@ -23,6 +24,7 @@ from microcosm_emitter.telemetry.protocol import (
     STATUS_FAILED,
     STATUS_PROGRESS,
     STATUS_STARTED,
+    TELEMETRY_IDENTIFIER_PATTERN,
 )
 from microcosm_emitter.telemetry.requests import (
     COMMAND_CALIBRATION_PROGRESS,
@@ -76,7 +78,7 @@ def started_event(identity: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def heartbeat_event(state: LifecycleState) -> dict[str, Any]:
-    """Apply the same service-side validation and redaction to periodic events."""
+    """Validate the stage identity without rewriting periodic events."""
     return _event(EVENT_TYPE_HEARTBEAT, STATUS_PROGRESS, state.last_stage)
 
 
@@ -93,9 +95,19 @@ def _optional_text(value: Any) -> str | None:
 
 
 def _stage_id(request: Mapping[str, Any]) -> str:
-    value = request.get("stage_id")
-    if not isinstance(value, str) or not value:
+    value = _optional_stage_id(request.get("stage_id"))
+    if value is None:
         raise ValueError("stage_id must be a nonempty string")
+    return value
+
+
+def _optional_stage_id(value: Any) -> str | None:
+    """Preserve stage identities and reject values the collector cannot accept."""
+    if value is not None and (
+        not isinstance(value, str)
+        or re.fullmatch(TELEMETRY_IDENTIFIER_PATTERN, value) is None
+    ):
+        raise ValueError("stage_id must match the collector identifier contract")
     return value
 
 
@@ -110,11 +122,11 @@ def _event(
         raise ValueError("unsupported telemetry event type")
     if not isinstance(status, str) or status not in _STATUSES:
         raise ValueError("unsupported telemetry status")
-    stage_id, message = _optional_text(stage_id), _optional_text(message)
+    stage_id, message = _optional_stage_id(stage_id), _optional_text(message)
     return {
         "timestamp": utc_now(),
         "event_type": event_type,
-        "stage_id": sanitize_text(stage_id) if stage_id else None,
+        "stage_id": stage_id,
         "status": status,
         "message": sanitize_text(message, limit=MAX_TELEMETRY_MESSAGE_CHARS)
         if message

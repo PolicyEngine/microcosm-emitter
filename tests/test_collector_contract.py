@@ -94,6 +94,8 @@ def test_service_events_materialize_as_dashboard_documents(
     )
     assert emitter.available
     try:
+        emitter.transition_stage("hf_download")
+        emitter.progress("hf_download", done=1, total=1, unit="files")
         emitter.transition_stage("compile_targets")
         emitter.progress("compile_targets", done=2, total=4, unit="batches")
         emitter.transition_calibration_progress(
@@ -107,6 +109,15 @@ def test_service_events_materialize_as_dashboard_documents(
     assert response.status_code == 200, response.text
     document = response.json()
     assert document["progress"]["status"] == "completed"
+    download_events = [
+        event for event in document["events"] if event["stage_id"] == "hf_download"
+    ]
+    assert [(event["event_type"], event["status"]) for event in download_events] == [
+        ("stage", "started"),
+        ("stage", "progress"),
+        ("stage", "completed"),
+    ]
+    assert download_events[1]["details"] == {"done": 1, "total": 1, "unit": "files"}
     assert any(event["event_type"] == "calibration" for event in document["events"])
     assert document["events"][-1]["resources"]["rss_bytes"] > 0
     assert len({event["event_id"] for event in document["events"]}) == len(

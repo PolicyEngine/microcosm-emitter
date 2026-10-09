@@ -234,11 +234,54 @@ def test_explicit_progress_keeps_stage_active_until_completion(module):
     ]
 
 
-def test_heartbeat_redacts_stage_identifiers(module):
-    module.handle_message({"command": "stage", "stage_id": "hf_private_stage"})
+@pytest.mark.parametrize(
+    "stage_id",
+    [
+        "hf_download",
+        "hf_private_stage",
+        "secret:compile",
+        "Compile.targets-1",
+        "x" * 192,
+    ],
+)
+def test_valid_stage_identifiers_are_preserved_in_events_and_heartbeats(
+    module, stage_id
+):
+    module.handle_message(
+        {
+            "command": "transition_stage",
+            "stage_id": stage_id,
+            "message": "Bearer hf_private_credentials",
+            "details": {"HF_TOKEN": "hf_detail_credentials"},
+        }
+    )
+    module.handle_message(
+        {"command": "progress", "stage_id": stage_id, "done": 1, "total": 2}
+    )
+    module.handle_message(
+        {
+            "command": "emit",
+            "event_type": "stage",
+            "status": "progress",
+            "stage_id": stage_id,
+        }
+    )
     module.tick(time.monotonic() + 120)
-    assert events(module)[-1]["stage_id"] == "[redacted]"
-    assert "hf_private_stage" not in json.dumps(events(module))
+    module.handle_message({"command": "complete"})
+
+    recorded = events(module)
+    assert [(event["event_type"], event["stage_id"]) for event in recorded[1:-1]] == [
+        ("stage", stage_id),
+        ("progress", stage_id),
+        ("stage", stage_id),
+        ("heartbeat", stage_id),
+        ("stage", stage_id),
+    ]
+    assert recorded[1]["message"] == "[redacted]"
+    assert recorded[1]["details"]["HF_TOKEN"] == "[redacted]"
+    assert "hf_private_credentials" not in json.dumps(recorded)
+    assert "hf_detail_credentials" not in json.dumps(recorded)
+    assert recorded[-1]["status"] == "completed"
 
 
 @pytest.mark.parametrize(
@@ -257,3 +300,33 @@ def test_invalid_request_never_enters_queue(module, message):
     with pytest.raises((ValueError, TypeError)):
         module.handle_message(message)
     assert events(module) == before
+
+
+@pytest.mark.parametrize(
+    "stage_id",
+    ["", "compile targets", "compile\n", "_compile", "compile/targets", "x" * 193],
+)
+@pytest.mark.parametrize("command", ["stage", "transition_stage", "progress", "emit"])
+def test_invalid_stage_identifier_preserves_queue_and_lifecycle(
+    module, stage_id, command
+):
+    module.handle_message({"command": "transition_stage", "stage_id": "load"})
+    before = events(module)
+    state = module.lifecycle
+    request = {
+        "command": command,
+        "event_type": "stage",
+        "status": "started",
+        "stage_id": stage_id,
+        "done": 1,
+        "total": 2,
+    }
+
+    with pytest.raises(ValueError, match="stage_id"):
+        module.handle_message(request)
+
+    assert events(module) == before
+    assert module.lifecycle == state
+    module.handle_message({"command": "complete"})
+    assert [event["sequence"] for event in events(module)] == [1, 2, 3, 4]
+    assert events(module)[-1]["status"] == "completed"

@@ -11,6 +11,7 @@ type TelemetryEventType = Literal[
 type TelemetryStatus = Literal["started", "progress", "completed", "failed"]
 
 TELEMETRY_SCHEMA_VERSION: Final = 1
+TELEMETRY_IDENTIFIER_PATTERN: Final = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$"
 
 EVENT_TYPE_RUN: Final = "run"
 EVENT_TYPE_STAGE: Final = "stage"
