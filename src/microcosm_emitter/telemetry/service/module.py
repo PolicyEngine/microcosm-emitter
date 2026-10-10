@@ -1,6 +1,7 @@
 """Telemetry lifecycle and delivery, independent of the local socket host."""
 
 import math
+import sys
 import threading
 import time
 
@@ -13,7 +14,9 @@ from microcosm_emitter.telemetry.service.constants import (
     DRAIN_RETRY_SECONDS,
     FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT,
     MINIMUM_HEARTBEAT_SECONDS,
+    OWN_LEASE_UNAVAILABLE_MESSAGE,
 )
+from microcosm_emitter.telemetry.service.leases import OwnLeaseUnavailableError
 from microcosm_emitter.telemetry.service.lifecycle import (
     LifecycleState,
     heartbeat_event,
@@ -49,13 +52,19 @@ class TelemetryModule:
         try:
             # The delivery takes this producer's lease, which must happen
             # before the run has any event and before the service is ready.
-            self.delivery = CollectorDelivery(
-                self.spool,
-                self.registration,
-                development_collector_url=self.configuration.get(
-                    "development_collector_url"
-                ),
-            )
+            # Without the lease the service does not start, and the build goes
+            # on without it.
+            try:
+                self.delivery = CollectorDelivery(
+                    self.spool,
+                    self.registration,
+                    development_collector_url=self.configuration.get(
+                        "development_collector_url"
+                    ),
+                )
+            except OwnLeaseUnavailableError:
+                print(OWN_LEASE_UNAVAILABLE_MESSAGE, file=sys.stderr, flush=True)
+                raise
             self.spool.register(self.registration)
             self.spool.append(
                 self.registration,

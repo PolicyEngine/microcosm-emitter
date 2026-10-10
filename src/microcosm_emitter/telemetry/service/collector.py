@@ -46,7 +46,11 @@ from microcosm_emitter.telemetry.service.constants import (
     TOKEN_EXCHANGE_PATH,
     TOKEN_REFRESH_MARGIN_SECONDS,
 )
-from microcosm_emitter.telemetry.service.leases import ProducerLeases
+from microcosm_emitter.telemetry.service.leases import (
+    OwnLeaseUnavailableError,
+    ProducerLease,
+    ProducerLeases,
+)
 from microcosm_emitter.telemetry.service.spool import EventSpool
 
 
@@ -130,11 +134,10 @@ def _huggingface_token() -> str | None:
     )
 
 
-def _registration_key(registration: Mapping[str, Any]) -> str:
-    return f"{registration['run_id']}:{registration['producer_id']}"
-
-
 def _run(registration: Mapping[str, Any]) -> tuple[str, str]:
+    """Identify a producer's run. Ids may contain any separator, so the pair
+    itself is the key: joined into one string, two runs could share it."""
+
     return str(registration["run_id"]), str(registration["producer_id"])
 
 
@@ -177,14 +180,11 @@ class CollectorDelivery:
         )
         # Taken before the service is ready, so before its run has any event:
         # no other service can find the run pending without a live lease.
-        self._own_lease = self._leases.hold(
-            *self._own_run,
-            timeout_seconds=OWN_LEASE_TIMEOUT_SECONDS,
-        )
+        self._own_lease = self._hold_own_lease()
         self._session_token: tuple[str, float] | None = None
-        self._registered: set[str] = set()
+        self._registered: set[tuple[str, str]] = set()
         self._warned_no_token = False
-        self._warned_denied: set[str] = set()
+        self._warned_denied: set[tuple[str, str]] = set()
         self._next_attempt_at = 0.0
         self._retry_seconds = INITIAL_RETRY_SECONDS
         self._next_lease_sweep_at = 0.0
@@ -194,7 +194,26 @@ class CollectorDelivery:
         self._rejected_credentials: set[str] = set()
         # Other producers' runs this credential cannot deliver, by the
         # credential that was refused; tried again once the credential changes.
-        self._passed_over: dict[str, str | None] = {}
+        self._passed_over: dict[tuple[str, str], str | None] = {}
+
+    def _hold_own_lease(self) -> ProducerLease | None:
+        """Take this service's lease, or refuse to deliver without it.
+
+        Other services read a lease file nobody holds as an exited producer's,
+        and a failed attempt can leave one behind. A service that served
+        without its lease could so have its live run adopted, and registered
+        under another login. Only where there are no advisory locks at all does
+        a service run without one; other services then judge its run by recent
+        activity.
+        """
+
+        lease = self._leases.hold(
+            *self._own_run,
+            timeout_seconds=OWN_LEASE_TIMEOUT_SECONDS,
+        )
+        if lease is None and self._leases.supported:
+            raise OwnLeaseUnavailableError(self._leases.path(*self._own_run))
+        return lease
 
     def close(self) -> None:
         """Release this service's lease; its run, if still pending, is adoptable."""
@@ -209,11 +228,11 @@ class CollectorDelivery:
             return False
         made_progress = False
         pending = self.spool.pending_runs()
-        pending_keys = {_registration_key(registration) for registration in pending}
+        pending_runs = {_run(registration) for registration in pending}
         self._passed_over = {
-            key: credential
-            for key, credential in self._passed_over.items()
-            if key in pending_keys
+            run: credential
+            for run, credential in self._passed_over.items()
+            if run in pending_runs
         }
         if self._passed_over:
             self._note_current_credential()
@@ -249,8 +268,7 @@ class CollectorDelivery:
         run = _run(registration)
         if run == self._own_run:
             return contextlib.nullcontext()
-        key = _registration_key(registration)
-        if key in self._passed_over and self._passed_over[key] == self._credential:
+        if run in self._passed_over and self._passed_over[run] == self._credential:
             return None
         if not self._leases.supported:
             return contextlib.nullcontext() if self._idle(run) else None
@@ -307,15 +325,14 @@ class CollectorDelivery:
     def _deliver(self, registration: Mapping[str, Any]) -> bool:
         """Send one batch of a run's events; return whether any was delivered."""
 
-        run_id = str(registration["run_id"])
-        registration_key = _registration_key(registration)
+        run_id, producer_id = _run(registration)
         token = self._collector_token(registration)
         if token is None:
             return False
-        if registration_key not in self._registered:
+        if (run_id, producer_id) not in self._registered:
             if not self._register(registration, token):
                 return False
-        events = self.spool.batch(run_id, str(registration["producer_id"]))
+        events = self.spool.batch(run_id, producer_id)
         if not events:
             return False
         try:
@@ -401,7 +418,6 @@ class CollectorDelivery:
         return None
 
     def _register(self, registration: Mapping[str, Any], token: str) -> bool:
-        registration_key = _registration_key(registration)
         try:
             status, _ = _http_post(
                 self.collector_url + RUN_REGISTRATION_PATH,
@@ -412,7 +428,7 @@ class CollectorDelivery:
             self._defer_retry()
             return False
         if status == HTTPStatus.CREATED:
-            self._registered.add(registration_key)
+            self._registered.add(_run(registration))
             self._retry_seconds = INITIAL_RETRY_SECONDS
             return True
         if status == HTTPStatus.UNAUTHORIZED:
@@ -452,25 +468,24 @@ class CollectorDelivery:
         and is not offered again with this credential.
         """
 
-        run_id, producer_id = _run(registration)
-        registration_key = _registration_key(registration)
-        own = (run_id, producer_id) == self._own_run
+        run = _run(registration)
+        own = run == self._own_run
         if caller_dependent and not own:
             if reason != LOCAL_ONLY_MISSING_CREDENTIAL:
-                self._passed_over[registration_key] = self._credential
+                self._passed_over[run] = self._credential
             return
-        self.spool.make_local_only(run_id, producer_id, reason)
+        self.spool.make_local_only(*run, reason)
         # The warning says "this run": another build's run is not this build's
         # to report, and its reason is kept in the spool.
         if own and reason != LOCAL_ONLY_MISSING_CREDENTIAL:
-            self._warn_denied(registration_key)
+            self._warn_denied(run)
 
     def _defer_retry(self) -> None:
         self._next_attempt_at = time.monotonic() + self._retry_seconds
         self._retry_seconds = min(MAX_RETRY_SECONDS, self._retry_seconds * 2)
 
-    def _warn_denied(self, registration_key: str) -> None:
-        if registration_key in self._warned_denied:
+    def _warn_denied(self, run: tuple[str, str]) -> None:
+        if run in self._warned_denied:
             return
         print(REJECTED_CREDENTIAL_MESSAGE, file=sys.stderr, flush=True)
-        self._warned_denied.add(registration_key)
+        self._warned_denied.add(run)

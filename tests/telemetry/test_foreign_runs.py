@@ -35,6 +35,7 @@ that no service's credential decides it.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import signal
@@ -73,11 +74,15 @@ from microcosm_emitter.telemetry.service.constants import (
     LOCAL_ONLY_REJECTED_REGISTRATION,
     MAX_RETRY_SECONDS,
     ORPHAN_IDLE_SECONDS,
+    OWN_LEASE_UNAVAILABLE_MESSAGE,
     RUN_REGISTRATION_PATH,
     TOKEN_EXCHANGE_PATH,
 )
 from microcosm_emitter.telemetry.service.database import create_spool_engine
-from microcosm_emitter.telemetry.service.leases import ProducerLeases
+from microcosm_emitter.telemetry.service.leases import (
+    OwnLeaseUnavailableError,
+    ProducerLeases,
+)
 from microcosm_emitter.telemetry.service.models import (
     TelemetryEventRecord,
     TelemetryRunRecord,
@@ -242,9 +247,16 @@ class Host:
         self.clock = 0.0
         self._engine = None
 
-    def start(self, credential: str | None, run_id: str | None = None) -> Producer:
+    def start(
+        self,
+        credential: str | None,
+        run_id: str | None = None,
+        producer_id: str | None = None,
+    ) -> Producer:
         index = len(self.producers)
-        registration = _registration(run_id or f"run-{index}", f"producer-{index}")
+        registration = _registration(
+            run_id or f"run-{index}", producer_id or f"producer-{index}"
+        )
         spool = EventSpool(self.spool_path)
         # As in TelemetryModule.initialize: the lease is taken before
         # registration.
@@ -515,7 +527,7 @@ def test_an_orphan_whose_events_another_user_may_not_send_is_passed_over(host):
     # Bob's service has the run's registration cached, as it would if its
     # login changed from Alice's to Bob's after registering the run, so it goes
     # straight to the events and is refused there.
-    build_b.delivery._registered.add(f"{build_a.run[0]}:{build_a.run[1]}")
+    build_b.delivery._registered.add(build_a.run)
 
     for _ in range(3):
         host.flush(build_b)
@@ -591,6 +603,137 @@ def test_a_passed_over_orphan_waits_out_the_session_of_the_login_that_was_refuse
     assert host.collector.asked(build_b.run, "register", build_a.run) == [403, 201]
     assert host.collector.accepted[build_a.run] == set(build_a.appended)
     _assert_own_credential_only(host)
+
+
+def test_a_refusal_for_one_run_does_not_pass_over_a_run_with_similar_ids(host):
+    """Run and producer ids may contain colons, so two runs can share the text
+    ``run_id:producer_id``. Bob was refused Alice's ``a:b``/``c`` and must
+    still be offered his own ``a``/``b:c``."""
+
+    build_a = host.start(MEMBER + "alice", run_id="a:b", producer_id="c")
+    host.emit(build_a)
+    host.flush(build_a)
+    host.emit(build_a)
+    host.kill(build_a)
+    build_b = host.start(MEMBER + "bob", run_id="a", producer_id="b:c")
+    host.emit(build_b)
+    host.flush(build_b)
+    host.emit(build_b)
+    host.kill(build_b)
+    adopter = host.start(MEMBER + "bob")
+
+    for _ in range(2):
+        host.flush(adopter)
+
+    assert host.collector.asked(adopter.run, "register", build_a.run) == [403]
+    assert host.collector.accepted[build_b.run] == set(build_b.appended)
+    assert host.queued(build_b.run) == 0
+    assert host.queued(build_a.run) == 1
+    _assert_own_credential_only(host)
+
+
+def test_registering_one_run_does_not_count_for_a_run_with_similar_ids(host):
+    """Both orphans are Alice's and neither was registered. The adopter must
+    register each: the second is not registered just because the first's ids
+    join to the same text."""
+
+    orphans = [
+        host.start(MEMBER + "alice", run_id="a:b", producer_id="c"),
+        host.start(MEMBER + "alice", run_id="a", producer_id="b:c"),
+    ]
+    for orphan in orphans:
+        host.emit(orphan)
+        host.kill(orphan)
+    adopter = host.start(MEMBER + "alice")
+
+    for _ in range(2):
+        host.flush(adopter)
+
+    for orphan in orphans:
+        assert host.collector.asked(adopter.run, "register", orphan.run) == [201]
+        assert host.collector.accepted[orphan.run] == set(orphan.appended)
+        assert host.states()[orphan.run] == ("pending", None)
+    _assert_own_credential_only(host)
+
+
+def _refuse_locks(patch, refusals: int | None) -> list[int]:
+    """Make the next ``refusals`` lock attempts fail (all of them, if ``None``)
+    as a system that has run out of locks would."""
+
+    real = leases_module.fcntl
+    attempts: list[int] = []
+
+    def flock(descriptor: int, operation: int) -> None:
+        attempts.append(descriptor)
+        if refusals is None or len(attempts) <= refusals:
+            raise OSError(errno.ENOLCK, "No locks available")
+        real.flock(descriptor, operation)
+
+    patch.setattr(
+        leases_module,
+        "fcntl",
+        SimpleNamespace(flock=flock, LOCK_EX=real.LOCK_EX, LOCK_NB=real.LOCK_NB),
+    )
+    return attempts
+
+
+def test_a_lock_refused_once_at_startup_does_not_expose_the_run(host, monkeypatch):
+    """The system refused build A's lock once. Before, A then ran without its
+    lease, and the attempt had left a lease file nobody held: build B took
+    that for an orphan's and registered A's live run under its own login."""
+
+    with monkeypatch.context() as patch:
+        attempts = _refuse_locks(patch, 1)
+        build_a = host.start(MEMBER + "alice")
+    build_b = host.start(MEMBER + "bob")
+    host.emit(build_a)
+    host.emit(build_b)
+
+    for _ in range(2):
+        host.flush(build_b)
+
+    assert all(about != build_a.run for _, _, about, _ in host.collector.requests)
+    host.flush(build_a)
+    assert host.collector.accepted[build_a.run] == set(build_a.appended)
+    assert host.states()[build_a.run] == ("pending", None)
+    _assert_own_credential_only(host)
+    # A took its lease on the attempt after the refusal.
+    assert len(attempts) == 2
+
+
+def test_an_own_lease_waits_out_refused_locks_until_its_deadline(tmp_path, monkeypatch):
+    leases = ProducerLeases(tmp_path / "leases")
+    now = [0.0]
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    def hold():
+        return leases.hold(
+            "run-a",
+            "producer-a",
+            timeout_seconds=1,
+            clock=lambda: now[0],
+            sleep=sleep,
+        )
+
+    with monkeypatch.context() as patch:
+        attempts = _refuse_locks(patch, 3)
+        lease = hold()
+        assert lease is not None
+        assert len(attempts) == 4
+        lease.release()
+
+    with monkeypatch.context() as patch:
+        attempts = _refuse_locks(patch, None)
+        assert hold() is None
+        # It kept asking until the deadline rather than giving up at once.
+        assert len(attempts) > 50
+
+    # The refused attempts left nothing locked.
+    lease = leases.try_acquire("run-a", "producer-a", create=False)
+    assert lease is not None
+    lease.release()
 
 
 def test_an_orphan_the_collector_refuses_goes_local_only_without_a_warning_here(
@@ -711,6 +854,91 @@ def test_the_module_holds_its_lease_from_initialization_until_close(tmp_path):
     lease = leases.try_acquire(*run, create=False)
     assert lease is not None
     lease.release()
+
+
+def _spool_runs(spool_path: Path) -> dict[Run, int]:
+    """Each run in the spool, with its number of queued events."""
+
+    engine = create_spool_engine(spool_path)
+    try:
+        with Session(engine) as session:
+            return {
+                (run.run_id, run.producer_id): len(run.events)
+                for run in session.scalars(select(TelemetryRunRecord))
+            }
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("obstacle", ["locks_refused", "lease_held"])
+def test_a_module_that_cannot_take_its_lease_does_not_start(
+    tmp_path, monkeypatch, capsys, obstacle
+):
+    """A lease file nobody holds reads as an exited producer's, and a failed
+    attempt can leave one. So a service that cannot take its lease serves
+    nothing: its run never has an event another service could adopt."""
+
+    spool_path = tmp_path / "events.sqlite3"
+    run = ("run-own", "producer-run-own")
+    monkeypatch.setattr(collector_module, "OWN_LEASE_TIMEOUT_SECONDS", 0.05)
+    module = _module(spool_path, "run-own")
+    with monkeypatch.context() as patch:
+        if obstacle == "locks_refused":
+            _refuse_locks(patch, None)
+            holder = None
+        else:
+            # An adopter is still delivering an earlier run with these ids.
+            holder = ProducerLeases.beside(spool_path).try_acquire(*run, create=True)
+            assert holder is not None
+        with pytest.raises(OwnLeaseUnavailableError):
+            module.initialize()
+        module.close(time.monotonic())
+    assert module.delivery is None
+    assert capsys.readouterr().err.strip() == OWN_LEASE_UNAVAILABLE_MESSAGE
+    assert run not in _spool_runs(spool_path)
+    if holder is not None:
+        holder.release()
+
+    # With the obstacle gone, the same service starts.
+    module = _module(spool_path, "run-own")
+    module.initialize()
+    module.close(time.monotonic())
+    assert _spool_runs(spool_path)[run] == 1
+    assert capsys.readouterr().err == ""
+
+
+def test_a_real_service_whose_lease_is_held_does_not_start(tmp_path, capfd):
+    """End to end: the build goes on without telemetry, says why, and its run
+    gets no event; once the lease is free the same run starts."""
+
+    spool_path = tmp_path / "events.sqlite3"
+    run = TelemetryRun("run-held", "US", "test-pipeline", producer_id="producer-held")
+    holder = ProducerLeases.beside(spool_path).try_acquire(
+        run.run_id, run.producer_id, create=True
+    )
+    assert holder is not None
+    common = {
+        "spool_path": spool_path,
+        "development_collector_url": DEVELOPMENT_COLLECTOR,
+        "heartbeat_seconds": 60,
+        "startup_timeout_seconds": 60,
+    }
+    try:
+        blocked = LocalTelemetryEmitter.start(run=run, **common)
+        assert not blocked.available
+        assert OWN_LEASE_UNAVAILABLE_MESSAGE in capfd.readouterr().err
+        assert (run.run_id, run.producer_id) not in _spool_runs(spool_path)
+    finally:
+        holder.release()
+
+    started = LocalTelemetryEmitter.start(run=run, **common)
+    try:
+        assert started.available
+        started.complete()
+        started._handle.process.wait(timeout=60)
+    finally:
+        started.close()
+    assert _spool_runs(spool_path)[(run.run_id, run.producer_id)] >= 1
 
 
 def test_a_module_that_fails_to_start_releases_its_lease(tmp_path, monkeypatch):

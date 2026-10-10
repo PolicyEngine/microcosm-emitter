@@ -40,6 +40,10 @@ from microcosm_emitter.telemetry.service.constants import (
 )
 
 
+class OwnLeaseUnavailableError(RuntimeError):
+    """A service could not take its own producer's lease."""
+
+
 class ProducerLease:
     """An exclusive lock on one producer's lease file, held until released."""
 
@@ -139,20 +143,25 @@ class ProducerLeases:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> ProducerLease | None:
-        """Take this service's own lease, waiting out brief holders.
+        """Take this service's own lease, waiting out brief holders and errors.
 
         Only a sweeper or an adopter holds another producer's lease, and only
-        for a moment, so a short wait suffices. Returns ``None`` if the lease is
-        still taken at the deadline or cannot be taken at all; the service then
-        runs without one, and other services judge its run by recent activity.
+        for a moment, and a lock the system refuses once may be granted on the
+        next attempt, so a short wait suffices. Returns ``None`` if the lease is
+        still not held at the deadline, or on a platform without advisory
+        locks. A failed attempt can leave a lease file nobody holds, which
+        reads as an exited producer's, so the caller must not serve its run
+        without the lease.
         """
 
+        if fcntl is None:
+            return None
         deadline = clock() + timeout_seconds
         while True:
             try:
                 lease = self.try_acquire(run_id, producer_id, create=True)
             except OSError:
-                return None
+                lease = None
             if lease is not None or clock() >= deadline:
                 return lease
             sleep(LEASE_RETRY_SECONDS)

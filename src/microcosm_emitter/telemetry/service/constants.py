@@ -36,6 +36,11 @@ REJECTED_CREDENTIAL_MESSAGE: Final = (
     "credential was not accepted as a PolicyEngine organization member. The "
     "dataset build will continue."
 )
+OWN_LEASE_UNAVAILABLE_MESSAGE: Final = (
+    "Microcosm telemetry is off for this run: its service could not take the "
+    "lock that marks the run as live, and without it another build's service "
+    "could upload the run under its own login. The dataset build will continue."
+)
 COLLECTOR_URL_HTTPS_ERROR: Final = "collector URL must be an HTTPS origin"
 COLLECTOR_URL_ORIGIN_ERROR: Final = (
     "collector URL must be an origin without credentials or path data"
