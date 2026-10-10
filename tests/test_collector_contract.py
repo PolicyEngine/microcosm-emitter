@@ -307,10 +307,24 @@ def test_a_run_the_collector_does_not_have_is_registered_again_and_delivered(
     spool = EventSpool(path)
     spool.register(registration)
     event = spool.append(registration, {"event_type": "run", "status": "started"})
-    sent = _recording_post(monkeypatch)
+    real_post = delivery_module._http_post
+    sent: list[tuple[str, int]] = []
+
+    def first_registration_is_lost(url, payload, *args, **kwargs):
+        where = urlsplit(url).path
+        if where == RUN_REGISTRATION_PATH and not any(
+            sent_path == RUN_REGISTRATION_PATH for sent_path, _ in sent
+        ):
+            # Answered as registered, but the collector never keeps it: as
+            # one that lost the run afterwards, its database restored, say.
+            sent.append((where, 201))
+            return 201, {"registered": True}
+        response = real_post(url, payload, *args, **kwargs)
+        sent.append((where, response[0]))
+        return response
+
+    monkeypatch.setattr(delivery_module, "_http_post", first_registration_is_lost)
     delivery = CollectorDelivery(spool, registration, development_collector_url=address)
-    # As if the collector no longer had a run this service registered.
-    delivery._registered.add(delivery_module._registration_key(registration))
     try:
         assert not delivery.flush_once()
         assert delivery.flush_once()
@@ -318,11 +332,13 @@ def test_a_run_the_collector_does_not_have_is_registered_again_and_delivered(
     finally:
         delivery.close()
         spool.close()
-    assert [(where, code) for where, _, code in sent] == [
+    events_path = f"/v1/runs/{run.run_id}/events"
+    assert sent == [
         (TOKEN_EXCHANGE_PATH, 200),
-        (f"/v1/runs/{run.run_id}/events", 404),
         (RUN_REGISTRATION_PATH, 201),
-        (f"/v1/runs/{run.run_id}/events", 202),
+        (events_path, 404),
+        (RUN_REGISTRATION_PATH, 201),
+        (events_path, 202),
     ]
     assert _local_only_reason(path, run) is None
     assert capsys.readouterr().err == ""
