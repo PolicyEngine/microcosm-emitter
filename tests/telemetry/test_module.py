@@ -27,6 +27,7 @@ def module(tmp_path):
         ModuleContext(os.getpid()),
     )
     module.initialize()
+    module.delivery.close()
     module.delivery = Mock()
     yield module
     module.close(time.monotonic())

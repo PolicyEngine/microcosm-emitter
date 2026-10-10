@@ -26,7 +26,14 @@ build-backend = "hatchling.build"
 packages = ["src/microcosm_emitter"]
 
 [dependency-groups]
-dev = ["pytest>=8,<9", "ruff>=0.11,<1", "build>=1,<2", "twine>=7,<8", "pyyaml>=6,<7"]
+dev = [
+    "pytest>=8,<9",
+    "ruff>=0.11,<1",
+    "build>=1,<2",
+    "twine>=7,<8",
+    "pyyaml>=6,<7",
+    "hypothesis>=6,<7",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

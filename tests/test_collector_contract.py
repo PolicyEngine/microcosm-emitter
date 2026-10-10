@@ -173,17 +173,24 @@ def test_lost_ack_retries_same_event_after_restart_without_duplicates(
         return response
 
     monkeypatch.setattr(delivery_module, "_http_post", lose_ack)
-    assert not CollectorDelivery(spool, development_collector_url=address).flush_once()
+    first = CollectorDelivery(
+        spool, run.as_registration(), development_collector_url=address
+    )
+    assert not first.flush_once()
     assert spool.has_pending()
+    # The service exits, releasing its lease, and a new one starts.
+    first.close()
     spool.close()
     monkeypatch.setattr(delivery_module, "_http_post", real_post)
     reopened = EventSpool(path)
+    restarted = CollectorDelivery(
+        reopened, run.as_registration(), development_collector_url=address
+    )
     try:
-        assert CollectorDelivery(
-            reopened, development_collector_url=address
-        ).flush_once()
+        assert restarted.flush_once()
         assert not reopened.has_pending()
     finally:
+        restarted.close()
         reopened.close()
     response = reader.get(f"/v1/runs/{run.run_id}")
     assert response.status_code == 200

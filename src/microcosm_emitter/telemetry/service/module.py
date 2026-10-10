@@ -1,6 +1,7 @@
 """Telemetry lifecycle and delivery, independent of the local socket host."""
 
 import math
+import sys
 import threading
 import time
 
@@ -13,7 +14,9 @@ from microcosm_emitter.telemetry.service.constants import (
     DRAIN_RETRY_SECONDS,
     FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT,
     MINIMUM_HEARTBEAT_SECONDS,
+    OWN_LEASE_UNAVAILABLE_MESSAGE,
 )
+from microcosm_emitter.telemetry.service.leases import OwnLeaseUnavailableError
 from microcosm_emitter.telemetry.service.lifecycle import (
     LifecycleState,
     heartbeat_event,
@@ -47,12 +50,21 @@ class TelemetryModule:
         self.sampler = ProcessTreeSampler(self.context.parent_pid)
         self.spool = EventSpool(self.configuration["spool_path"])
         try:
-            self.delivery = CollectorDelivery(
-                self.spool,
-                development_collector_url=self.configuration.get(
-                    "development_collector_url"
-                ),
-            )
+            # The delivery takes this producer's lease, which must happen
+            # before the run has any event and before the service is ready.
+            # Without the lease the service does not start, and the build goes
+            # on without it.
+            try:
+                self.delivery = CollectorDelivery(
+                    self.spool,
+                    self.registration,
+                    development_collector_url=self.configuration.get(
+                        "development_collector_url"
+                    ),
+                )
+            except OwnLeaseUnavailableError:
+                print(OWN_LEASE_UNAVAILABLE_MESSAGE, file=sys.stderr, flush=True)
+                raise
             self.spool.register(self.registration)
             self.spool.append(
                 self.registration,
@@ -60,7 +72,14 @@ class TelemetryModule:
                 resources=self.sampler.sample(),
             )
         except Exception:
-            self.spool.close()
+            try:
+                # A service that failed to start delivers nothing; releasing
+                # its lease leaves anything its run holds to other services.
+                if self.delivery is not None:
+                    self.delivery.close()
+                    self.delivery = None
+            finally:
+                self.spool.close()
             raise
 
     def handle_message(self, message: JsonObject) -> None:
@@ -102,7 +121,14 @@ class TelemetryModule:
     def close(self, deadline: float) -> None:
         try:
             if self.delivery is not None:
-                while time.monotonic() < deadline and self.spool.has_deliverable():
+                # Only this build's run holds the service up: other builds'
+                # runs are their own services' to deliver, or are adopted
+                # while this one runs.
+                run_id = str(self.registration["run_id"])
+                producer_id = str(self.registration["producer_id"])
+                while time.monotonic() < deadline and self.spool.run_has_deliverable(
+                    run_id, producer_id
+                ):
                     if not self.delivery.flush_once():
                         time.sleep(
                             min(
@@ -110,5 +136,9 @@ class TelemetryModule:
                             )
                         )
         finally:
-            if self.spool is not None:
-                self.spool.close()
+            try:
+                if self.delivery is not None:
+                    self.delivery.close()
+            finally:
+                if self.spool is not None:
+                    self.spool.close()

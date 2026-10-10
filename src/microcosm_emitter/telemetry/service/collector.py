@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import json
 import os
 import sys
@@ -9,6 +11,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from typing import Any
 from urllib.parse import urlsplit
@@ -24,6 +27,7 @@ from microcosm_emitter.telemetry.service.constants import (
     HTTP_TIMEOUT_SECONDS,
     HTTP_USER_AGENT,
     INITIAL_RETRY_SECONDS,
+    LEASE_SWEEP_INTERVAL_SECONDS,
     LOCAL_ONLY_MISSING_CREDENTIAL,
     LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
     LOCAL_ONLY_REJECTED_CREDENTIAL,
@@ -33,12 +37,19 @@ from microcosm_emitter.telemetry.service.constants import (
     MAX_RETRY_SECONDS,
     MINIMUM_TOKEN_LIFETIME_SECONDS,
     NO_CREDENTIAL_MESSAGE,
+    ORPHAN_IDLE_SECONDS,
+    OWN_LEASE_TIMEOUT_SECONDS,
     PRODUCTION_COLLECTOR_URL,
     REJECTED_CREDENTIAL_MESSAGE,
     RUN_EVENTS_PATH_TEMPLATE,
     RUN_REGISTRATION_PATH,
     TOKEN_EXCHANGE_PATH,
     TOKEN_REFRESH_MARGIN_SECONDS,
+)
+from microcosm_emitter.telemetry.service.leases import (
+    OwnLeaseUnavailableError,
+    ProducerLease,
+    ProducerLeases,
 )
 from microcosm_emitter.telemetry.service.spool import EventSpool
 
@@ -123,18 +134,39 @@ def _huggingface_token() -> str | None:
     )
 
 
-def _registration_key(registration: Mapping[str, Any]) -> str:
-    return f"{registration['run_id']}:{registration['producer_id']}"
+def _run(registration: Mapping[str, Any]) -> tuple[str, str]:
+    """Identify a producer's run. Ids may contain any separator, so the pair
+    itself is the key: joined into one string, two runs could share it."""
+
+    return str(registration["run_id"]), str(registration["producer_id"])
+
+
+def _credential_fingerprint(hf_token: str) -> str:
+    """Identify a credential in memory without keeping the token itself."""
+
+    return hashlib.sha256(hf_token.encode()).hexdigest()
 
 
 class CollectorDelivery:
-    """Authenticate queued runs and deliver idempotent event batches."""
+    """Authenticate queued runs and deliver idempotent event batches.
+
+    A service delivers its own producer's run. The spool is shared by every
+    build on the host, so it also holds other producers' runs; the service
+    adopts one only once that producer's service has gone (see ``leases``), one
+    adopter at a time. The collector gives a run to the Hugging Face user who
+    registers it first, and this service's credential is not the other run's,
+    so an answer about the credential (none, rejected, or not the run's owner)
+    makes only the service's own run local-only. Another producer's run goes
+    local-only only for an answer that does not depend on who asks.
+    """
 
     def __init__(
         self,
         spool: EventSpool,
+        registration: Mapping[str, Any],
         *,
         development_collector_url: str | None = None,
+        leases: ProducerLeases | None = None,
     ) -> None:
         self.collector_url = (
             _development_collector_url(development_collector_url)
@@ -142,12 +174,52 @@ class CollectorDelivery:
             else _collector_origin(PRODUCTION_COLLECTOR_URL)
         )
         self.spool = spool
+        self._own_run = _run(registration)
+        self._leases = (
+            leases if leases is not None else ProducerLeases.beside(spool.path)
+        )
+        # Taken before the service is ready, so before its run has any event:
+        # no other service can find the run pending without a live lease.
+        self._own_lease = self._hold_own_lease()
         self._session_token: tuple[str, float] | None = None
-        self._registered: set[str] = set()
+        self._registered: set[tuple[str, str]] = set()
         self._warned_no_token = False
-        self._warned_denied: set[str] = set()
+        self._warned_denied: set[tuple[str, str]] = set()
         self._next_attempt_at = 0.0
         self._retry_seconds = INITIAL_RETRY_SECONDS
+        self._next_lease_sweep_at = 0.0
+        # Fingerprints of the credential last read and of those the collector
+        # refused; the token itself is never kept.
+        self._credential: str | None = None
+        self._rejected_credentials: set[str] = set()
+        # Other producers' runs this credential cannot deliver, by the
+        # credential that was refused; tried again once the credential changes.
+        self._passed_over: dict[tuple[str, str], str | None] = {}
+
+    def _hold_own_lease(self) -> ProducerLease | None:
+        """Take this service's lease, or refuse to deliver without it.
+
+        Other services read a lease file nobody holds as an exited producer's,
+        and a failed attempt can leave one behind. A service that served
+        without its lease could so have its live run adopted, and registered
+        under another login. Only where there are no advisory locks at all does
+        a service run without one; other services then judge its run by recent
+        activity.
+        """
+
+        lease = self._leases.hold(
+            *self._own_run,
+            timeout_seconds=OWN_LEASE_TIMEOUT_SECONDS,
+        )
+        if lease is None and self._leases.supported:
+            raise OwnLeaseUnavailableError(self._leases.path(*self._own_run))
+        return lease
+
+    def close(self) -> None:
+        """Release this service's lease; its run, if still pending, is adoptable."""
+
+        if self._own_lease is not None:
+            self._own_lease.release()
 
     def flush_once(self) -> bool:
         """Attempt one delivery pass without waiting for retry deadlines."""
@@ -155,54 +227,167 @@ class CollectorDelivery:
         if time.monotonic() < self._next_attempt_at:
             return False
         made_progress = False
-        for registration in self.spool.pending_runs():
-            run_id = str(registration["run_id"])
-            registration_key = _registration_key(registration)
-            token = self._collector_token(registration)
-            if token is None:
+        pending = self.spool.pending_runs()
+        pending_runs = {_run(registration) for registration in pending}
+        self._passed_over = {
+            run: credential
+            for run, credential in self._passed_over.items()
+            if run in pending_runs
+        }
+        if self._passed_over:
+            self._note_current_credential()
+        self._sweep_leases_if_due(pending)
+        for registration in pending:
+            claim = self._claim(registration)
+            if claim is None:
                 continue
-            if registration_key not in self._registered:
-                if not self._register(registration, token):
+            with claim:
+                # The list was read before this pass's requests, which can
+                # take seconds. Meanwhile a run's own service may have made it
+                # local-only and exited, freeing its lease. Only now, holding
+                # the run, is its state settled.
+                if not self.spool.run_has_deliverable(*_run(registration)):
                     continue
-            events = self.spool.batch(run_id, str(registration["producer_id"]))
-            if not events:
-                continue
-            try:
-                status, _ = _http_post(
-                    self.collector_url + RUN_EVENTS_PATH_TEMPLATE.format(run_id=run_id),
-                    {"events": events},
-                    token,
-                )
-            except (OSError, TimeoutError):
-                self._defer_retry()
-                continue
-            if status == HTTPStatus.ACCEPTED:
-                self.spool.acknowledge([event["event_id"] for event in events])
-                made_progress = True
-                self._retry_seconds = INITIAL_RETRY_SECONDS
-            elif status == HTTPStatus.UNAUTHORIZED:
-                self._session_token = None
-            elif status == HTTPStatus.FORBIDDEN:
-                self._make_local_only(
-                    registration,
-                    LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
-                )
-            else:
-                self._defer_retry()
+                if self._deliver(registration):
+                    made_progress = True
         return made_progress
 
-    def _collector_token(self, registration: Mapping[str, Any]) -> str | None:
+    def _claim(
+        self,
+        registration: Mapping[str, Any],
+    ) -> contextlib.AbstractContextManager[object] | None:
+        """Return a hold on a run this service may deliver now, else ``None``.
+
+        The own run is always deliverable. Another producer's run is
+        deliverable only while this service holds that producer's lease, which
+        it can take only once the producing service has gone. A run with no
+        lease file (an older checkout's, or one whose free lease was swept)
+        is first left alone until it has been idle for ``ORPHAN_IDLE_SECONDS``.
+        """
+
+        run = _run(registration)
+        if run == self._own_run:
+            return contextlib.nullcontext()
+        if run in self._passed_over and self._passed_over[run] == self._credential:
+            return None
+        if not self._leases.supported:
+            return contextlib.nullcontext() if self._idle(run) else None
+        try:
+            try:
+                return self._leases.try_acquire(*run, create=False)
+            except FileNotFoundError:
+                if not self._idle(run):
+                    return None
+                return self._leases.try_acquire(*run, create=True)
+        except OSError:
+            # A lease that cannot be tested may be live: leave the run be.
+            return None
+
+    def _note_current_credential(self) -> None:
+        """Record the credential this pass's requests would be sent under.
+
+        A run passed over with one credential is offered again once the login
+        changes. Delivering a run is what reads the login, and a passed-over run
+        is not delivered, so with nothing else pending the change would go
+        unseen. A session the collector issued stays in use until it expires,
+        as for the own run, so only then does a new login count.
+        """
+
+        if self._cached_session_token() is not None:
+            return
+        hf_token = _huggingface_token()
+        self._credential = _credential_fingerprint(hf_token) if hf_token else None
+
+    def _cached_session_token(self) -> str | None:
         if (
             self._session_token is not None
             and self._session_token[1] > time.monotonic() + TOKEN_REFRESH_MARGIN_SECONDS
         ):
             return self._session_token[0]
+        return None
+
+    def _idle(self, run: tuple[str, str]) -> bool:
+        updated_at = self.spool.last_updated(*run)
+        if updated_at is None:
+            return False
+        return datetime.now(UTC) - updated_at >= timedelta(seconds=ORPHAN_IDLE_SECONDS)
+
+    def _sweep_leases_if_due(self, pending: list[dict[str, Any]]) -> None:
+        now = time.monotonic()
+        if now < self._next_lease_sweep_at:
+            return
+        self._next_lease_sweep_at = now + LEASE_SWEEP_INTERVAL_SECONDS
+        keep = {_run(registration) for registration in pending}
+        keep.add(self._own_run)
+        with contextlib.suppress(OSError):
+            self._leases.sweep(keep)
+
+    def _deliver(self, registration: Mapping[str, Any]) -> bool:
+        """Send one batch of a run's events; return whether any was delivered."""
+
+        run_id, producer_id = _run(registration)
+        token = self._collector_token(registration)
+        if token is None:
+            return False
+        if (run_id, producer_id) not in self._registered:
+            if not self._register(registration, token):
+                return False
+        events = self.spool.batch(run_id, producer_id)
+        if not events:
+            return False
+        try:
+            status, _ = _http_post(
+                self.collector_url + RUN_EVENTS_PATH_TEMPLATE.format(run_id=run_id),
+                {"events": events},
+                token,
+            )
+        except (OSError, TimeoutError):
+            self._defer_retry()
+            return False
+        if status == HTTPStatus.ACCEPTED:
+            self.spool.acknowledge([event["event_id"] for event in events])
+            self._retry_seconds = INITIAL_RETRY_SECONDS
+            return True
+        if status == HTTPStatus.UNAUTHORIZED:
+            self._session_token = None
+        elif status == HTTPStatus.FORBIDDEN:
+            # The collector refuses the caller here (another Hugging Face user
+            # owns the run, say), so the answer depends on whose credential asked.
+            self._make_local_only(
+                registration,
+                LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
+                caller_dependent=True,
+            )
+        else:
+            self._defer_retry()
+        return False
+
+    def _collector_token(self, registration: Mapping[str, Any]) -> str | None:
+        session_token = self._cached_session_token()
+        if session_token is not None:
+            return session_token
         hf_token = _huggingface_token()
         if not hf_token:
-            if not self._warned_no_token:
+            self._credential = None
+            if _run(registration) == self._own_run and not self._warned_no_token:
                 print(NO_CREDENTIAL_MESSAGE, file=sys.stderr, flush=True)
                 self._warned_no_token = True
-            self._make_local_only(registration, LOCAL_ONLY_MISSING_CREDENTIAL)
+            self._make_local_only(
+                registration,
+                LOCAL_ONLY_MISSING_CREDENTIAL,
+                caller_dependent=True,
+            )
+            return None
+        credential = _credential_fingerprint(hf_token)
+        self._credential = credential
+        if credential in self._rejected_credentials:
+            # The collector has already refused this credential; asking again
+            # would get the same answer.
+            self._make_local_only(
+                registration,
+                LOCAL_ONLY_REJECTED_CREDENTIAL,
+                caller_dependent=True,
+            )
             return None
         try:
             status, response = _http_post(
@@ -222,13 +407,17 @@ class CollectorDelivery:
             self._session_token = (token, time.monotonic() + expires_in)
             return token
         if status in {HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN}:
-            self._make_local_only(registration, LOCAL_ONLY_REJECTED_CREDENTIAL)
+            self._rejected_credentials.add(credential)
+            self._make_local_only(
+                registration,
+                LOCAL_ONLY_REJECTED_CREDENTIAL,
+                caller_dependent=True,
+            )
         else:
             self._defer_retry()
         return None
 
     def _register(self, registration: Mapping[str, Any], token: str) -> bool:
-        registration_key = _registration_key(registration)
         try:
             status, _ = _http_post(
                 self.collector_url + RUN_REGISTRATION_PATH,
@@ -239,13 +428,26 @@ class CollectorDelivery:
             self._defer_retry()
             return False
         if status == HTTPStatus.CREATED:
-            self._registered.add(registration_key)
+            self._registered.add(_run(registration))
             self._retry_seconds = INITIAL_RETRY_SECONDS
             return True
         if status == HTTPStatus.UNAUTHORIZED:
             self._session_token = None
-        elif status in {HTTPStatus.FORBIDDEN, HTTPStatus.CONFLICT}:
-            self._make_local_only(registration, LOCAL_ONLY_REJECTED_REGISTRATION)
+        elif status == HTTPStatus.FORBIDDEN:
+            # Another Hugging Face user registered the run first.
+            self._make_local_only(
+                registration,
+                LOCAL_ONLY_REJECTED_REGISTRATION,
+                caller_dependent=True,
+            )
+        elif status == HTTPStatus.CONFLICT:
+            # A conflict reaches only the run's owner, so it is about the
+            # registration itself.
+            self._make_local_only(
+                registration,
+                LOCAL_ONLY_REJECTED_REGISTRATION,
+                caller_dependent=False,
+            )
         else:
             self._defer_retry()
         return False
@@ -254,20 +456,36 @@ class CollectorDelivery:
         self,
         registration: Mapping[str, Any],
         reason: str,
+        *,
+        caller_dependent: bool,
     ) -> None:
-        run_id = str(registration["run_id"])
-        producer_id = str(registration["producer_id"])
-        registration_key = _registration_key(registration)
-        self.spool.make_local_only(run_id, producer_id, reason)
-        if reason != LOCAL_ONLY_MISSING_CREDENTIAL:
-            self._warn_denied(registration_key)
+        """Stop uploading a run, unless the reason is only this service's.
+
+        ``caller_dependent`` marks an outcome that turns on this service's own
+        credential: none, refused, or not the run's owner. That decides the
+        service's own run, whose credential it is. Another producer's run stays
+        pending for a service whose credential the collector accepts for it,
+        and is not offered again with this credential.
+        """
+
+        run = _run(registration)
+        own = run == self._own_run
+        if caller_dependent and not own:
+            if reason != LOCAL_ONLY_MISSING_CREDENTIAL:
+                self._passed_over[run] = self._credential
+            return
+        self.spool.make_local_only(*run, reason)
+        # The warning says "this run": another build's run is not this build's
+        # to report, and its reason is kept in the spool.
+        if own and reason != LOCAL_ONLY_MISSING_CREDENTIAL:
+            self._warn_denied(run)
 
     def _defer_retry(self) -> None:
         self._next_attempt_at = time.monotonic() + self._retry_seconds
         self._retry_seconds = min(MAX_RETRY_SECONDS, self._retry_seconds * 2)
 
-    def _warn_denied(self, registration_key: str) -> None:
-        if registration_key in self._warned_denied:
+    def _warn_denied(self, run: tuple[str, str]) -> None:
+        if run in self._warned_denied:
             return
         print(REJECTED_CREDENTIAL_MESSAGE, file=sys.stderr, flush=True)
-        self._warned_denied.add(registration_key)
+        self._warned_denied.add(run)
