@@ -2,9 +2,11 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 import pytest
 from alembic import command
+from sqlalchemy.orm import Session
 
 from microcosm_emitter.telemetry.client import (
     TelemetryRun,
@@ -17,7 +19,13 @@ from microcosm_emitter.telemetry.service import resources as resources_module
 from microcosm_emitter.telemetry.service import spool as spool_module
 from microcosm_emitter.telemetry.service.collector import CollectorDelivery
 from microcosm_emitter.telemetry.service.constants import (
+    LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
+    LOCAL_ONLY_REJECTED_EVENTS,
+    LOCAL_ONLY_REJECTED_REGISTRATION,
+    MAX_RETRY_SECONDS,
     PRODUCTION_COLLECTOR_URL,
+    RUN_REGISTRATION_PATH,
+    TOKEN_EXCHANGE_PATH,
 )
 from microcosm_emitter.telemetry.service.database import (
     create_spool_engine,
@@ -28,6 +36,7 @@ from microcosm_emitter.telemetry.service.migrations import (
     migration_head_revision,
 )
 from microcosm_emitter.telemetry.service.models import (
+    TelemetryRunRecord,
     serialized_json_length,
 )
 from microcosm_emitter.telemetry.service.sanitization import (
@@ -61,6 +70,19 @@ def make_delivery():
     yield make
     for delivery in deliveries:
         delivery.close()
+
+
+def _local_only_reason(spool_path, registration) -> str | None:
+    engine = create_spool_engine(spool_path)
+    try:
+        with Session(engine) as session:
+            run = session.get(
+                TelemetryRunRecord,
+                (registration["run_id"], registration["producer_id"]),
+            )
+            return run.local_only_reason
+    finally:
+        engine.dispose()
 
 
 def _event(stage_id: str = "compile_targets") -> dict[str, object]:
@@ -289,6 +311,270 @@ def test_non_org_credential_keeps_event_local(
     assert spool.pending_runs() == []
     assert requests == [{}]
     assert capsys.readouterr().err.count("local-only for this run") == 1
+
+
+@pytest.mark.parametrize(
+    ("status", "retried"),
+    [
+        (422, False),
+        (404, False),
+        (413, False),
+        (400, False),
+        (429, True),
+        (408, True),
+        (503, True),
+    ],
+)
+def test_a_settled_collector_rejection_goes_local_only_instead_of_retrying(
+    tmp_path, monkeypatch, capsys, make_delivery, status, retried
+) -> None:
+    """A 4xx the collector will repeat (an event shape it does not accept, say)
+    must not wedge the queue: the run goes local-only with a reason and one
+    warning. A timeout, a rate limit or a server error still retries."""
+    spool_path = tmp_path / "events.sqlite3"
+    spool = EventSpool(spool_path)
+    registration = _registration()
+    spool.register(registration)
+    spool.append(registration, _event())
+    monkeypatch.setattr(collector_module, "_huggingface_token", lambda: "hf-member")
+    paths: list[str] = []
+    clock = [0.0]
+    monkeypatch.setattr(
+        collector_module, "time", SimpleNamespace(monotonic=lambda: clock[0])
+    )
+
+    def fake_post(url, payload, token, *, timeout=5.0):
+        paths.append(urlsplit(url).path)
+        if url.endswith(TOKEN_EXCHANGE_PATH):
+            return 200, {"access_token": "collector-token", "expires_in": 3600}
+        if url.endswith(RUN_REGISTRATION_PATH):
+            return 201, {"registered": True}
+        return status, {"detail": "rejected"}
+
+    monkeypatch.setattr(collector_module, "_http_post", fake_post)
+    delivery = make_delivery(
+        spool, registration, development_collector_url="http://127.0.0.1:8080"
+    )
+    events_path = "/v1/runs/run-a/events"
+    assert not delivery.flush_once()
+    assert spool.has_pending()
+    assert paths.count(events_path) == 1
+    if retried:
+        assert spool.pending_runs() == [registration]
+        assert _local_only_reason(spool_path, registration) is None
+        assert "local-only" not in capsys.readouterr().err
+        # Once the retry delay has passed, the same batch is offered again.
+        clock[0] += MAX_RETRY_SECONDS + 1
+        assert not delivery.flush_once()
+        assert paths.count(events_path) == 2
+        assert spool.pending_runs() == [registration]
+        return
+    assert spool.pending_runs() == []
+    assert _local_only_reason(spool_path, registration) == LOCAL_ONLY_REJECTED_EVENTS
+    clock[0] += MAX_RETRY_SECONDS + 1
+    assert not delivery.flush_once()
+    assert paths.count(events_path) == 1
+    err = capsys.readouterr().err
+    assert err.count("local-only for this run") == 1
+    assert f"HTTP {status}" in err
+
+
+@pytest.mark.parametrize(
+    ("status", "retried"),
+    [
+        (409, False),
+        (422, False),
+        (404, False),
+        (413, False),
+        (400, False),
+        (429, True),
+        (408, True),
+        (503, True),
+    ],
+)
+def test_a_settled_registration_rejection_goes_local_only_instead_of_retrying(
+    tmp_path, monkeypatch, capsys, make_delivery, status, retried
+) -> None:
+    """The same rule covers a run's registration: a settled 4xx makes the run
+    local-only before any of its events are sent; a timeout, a rate limit or a
+    server error is retried."""
+    spool_path = tmp_path / "events.sqlite3"
+    spool = EventSpool(spool_path)
+    registration = _registration()
+    spool.register(registration)
+    spool.append(registration, _event())
+    monkeypatch.setattr(collector_module, "_huggingface_token", lambda: "hf-member")
+    paths: list[str] = []
+    clock = [0.0]
+    monkeypatch.setattr(
+        collector_module, "time", SimpleNamespace(monotonic=lambda: clock[0])
+    )
+
+    def fake_post(url, payload, token, *, timeout=5.0):
+        paths.append(urlsplit(url).path)
+        if url.endswith(TOKEN_EXCHANGE_PATH):
+            return 200, {"access_token": "collector-token", "expires_in": 3600}
+        if url.endswith(RUN_REGISTRATION_PATH):
+            return status, {"detail": "rejected"}
+        raise AssertionError("events sent for a run that was not registered")
+
+    monkeypatch.setattr(collector_module, "_http_post", fake_post)
+    delivery = make_delivery(
+        spool, registration, development_collector_url="http://127.0.0.1:8080"
+    )
+    assert not delivery.flush_once()
+    assert paths.count(RUN_REGISTRATION_PATH) == 1
+    clock[0] += MAX_RETRY_SECONDS + 1
+    assert not delivery.flush_once()
+    assert spool.has_pending()
+    if retried:
+        assert paths.count(RUN_REGISTRATION_PATH) == 2
+        assert spool.pending_runs() == [registration]
+        assert _local_only_reason(spool_path, registration) is None
+        assert "local-only" not in capsys.readouterr().err
+        return
+    assert paths.count(RUN_REGISTRATION_PATH) == 1
+    assert spool.pending_runs() == []
+    assert (
+        _local_only_reason(spool_path, registration) == LOCAL_ONLY_REJECTED_REGISTRATION
+    )
+    assert capsys.readouterr().err.count("local-only for this run") == 1
+
+
+def test_only_a_settled_client_error_is_permanent() -> None:
+    """Over every status: permanent exactly for a 4xx other than a timeout and
+    a rate limit. 401 and 403 count here too; the delivery answers them first."""
+    for status in range(100, 600):
+        expected = status // 100 == 4 and status not in (408, 429)
+        assert collector_module._permanent_client_error(status) is expected, status
+
+
+@pytest.mark.parametrize("refused", ["registration", "events"])
+def test_every_client_error_has_one_outcome(
+    tmp_path, monkeypatch, capsys, refused
+) -> None:
+    """Every 4xx, on either request. 401 is about the collector token, which is
+    exchanged again; 403 is about the login; 408 and 429 wait and retry; any
+    other is the collector's settled answer about the run."""
+    spool_path = tmp_path / "events.sqlite3"
+    spool = EventSpool(spool_path)
+    monkeypatch.setattr(collector_module, "_huggingface_token", lambda: "hf-member")
+    clock = [0.0]
+    monkeypatch.setattr(
+        collector_module, "time", SimpleNamespace(monotonic=lambda: clock[0])
+    )
+    settled_reason = (
+        LOCAL_ONLY_REJECTED_REGISTRATION
+        if refused == "registration"
+        else LOCAL_ONLY_REJECTED_EVENTS
+    )
+    login_reason = (
+        LOCAL_ONLY_REJECTED_REGISTRATION
+        if refused == "registration"
+        else LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION
+    )
+    for status in range(400, 500):
+        registration = _registration(f"run-{status}")
+        spool.register(registration)
+        queued = spool.append(registration, _event())
+        refused_path = (
+            RUN_REGISTRATION_PATH
+            if refused == "registration"
+            else f"/v1/runs/run-{status}/events"
+        )
+        sent: list[str] = []
+
+        def fake_post(url, payload, token, *, timeout=5.0, status=status, sent=sent):
+            path = urlsplit(url).path
+            sent.append(path)
+            if path == TOKEN_EXCHANGE_PATH:
+                return 200, {"access_token": "collector-token", "expires_in": 3600}
+            if path == RUN_REGISTRATION_PATH and refused == "events":
+                return 201, {"registered": True}
+            return status, {"detail": "refused"}
+
+        monkeypatch.setattr(collector_module, "_http_post", fake_post)
+        delivery = CollectorDelivery(
+            spool, registration, development_collector_url="http://127.0.0.1:8080"
+        )
+        try:
+            assert not delivery.flush_once(), status
+            assert sent.count(refused_path) == 1, status
+            # A second pass with no time passed: only a retry delay or a
+            # local-only run keeps it from asking again.
+            first = len(sent)
+            assert not delivery.flush_once(), status
+            again = sent[first:]
+            reason = _local_only_reason(spool_path, registration)
+            warnings = capsys.readouterr().err
+            if status == 401:
+                assert again[0] == TOKEN_EXCHANGE_PATH, status
+                assert reason is None, status
+                assert warnings == "", status
+                continue
+            assert again == [], (status, again)
+            if status in (408, 429):
+                assert reason is None, status
+                assert warnings == "", status
+                clock[0] += MAX_RETRY_SECONDS + 1
+                assert not delivery.flush_once(), status
+                assert sent[first:] == [refused_path], status
+                continue
+            assert reason == (login_reason if status == 403 else settled_reason), status
+            assert warnings.count("local-only for this run") == 1, status
+            if refused == "events" and status != 403:
+                assert f"HTTP {status}" in warnings, status
+            # Nothing is sent again, however long the service waits.
+            clock[0] += MAX_RETRY_SECONDS + 1
+            assert not delivery.flush_once(), status
+            assert sent[first:] == [], status
+        finally:
+            delivery.close()
+            # Leave nothing pending for the next status's service to adopt.
+            spool.acknowledge([queued["event_id"]])
+
+
+@pytest.mark.parametrize("refused", [RUN_REGISTRATION_PATH, "/v1/runs/run-a/events"])
+def test_an_expired_collector_token_is_exchanged_again_not_made_local_only(
+    tmp_path, monkeypatch, capsys, make_delivery, refused
+) -> None:
+    """A 401 is a 4xx too, but it is about the short-lived collector token,
+    which a new exchange replaces."""
+    spool_path = tmp_path / "events.sqlite3"
+    spool = EventSpool(spool_path)
+    registration = _registration()
+    spool.register(registration)
+    spool.append(registration, _event())
+    monkeypatch.setattr(collector_module, "_huggingface_token", lambda: "hf-member")
+    requests: list[tuple[str, str]] = []
+
+    def fake_post(url, payload, token, *, timeout=5.0):
+        path = urlsplit(url).path
+        requests.append((path, token))
+        if path == TOKEN_EXCHANGE_PATH:
+            exchanges = sum(1 for sent, _ in requests if sent == TOKEN_EXCHANGE_PATH)
+            return 200, {"access_token": f"collector-{exchanges}", "expires_in": 3600}
+        if path == refused and token == "collector-1":
+            return 401, {"detail": "Collector credential is invalid."}
+        if path == RUN_REGISTRATION_PATH:
+            return 201, {"registered": True}
+        return 202, {"accepted": 1, "duplicates": 0}
+
+    monkeypatch.setattr(collector_module, "_http_post", fake_post)
+    delivery = make_delivery(
+        spool, registration, development_collector_url="http://127.0.0.1:8080"
+    )
+
+    assert not delivery.flush_once()
+    assert delivery.flush_once()
+
+    assert [token for path, token in requests if path == refused] == [
+        "collector-1",
+        "collector-2",
+    ]
+    assert not spool.has_pending()
+    assert _local_only_reason(spool_path, registration) is None
+    assert "local-only" not in capsys.readouterr().err
 
 
 def test_identity_provider_outage_keeps_events_eligible_for_retry(

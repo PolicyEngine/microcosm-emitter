@@ -5,13 +5,18 @@ import socket
 import threading
 import time
 import uuid
+from urllib.parse import urlsplit
 
 import pytest
 from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session
 
 from microcosm_emitter.telemetry.client import LocalTelemetryEmitter, TelemetryRun
 from microcosm_emitter.telemetry.service import collector as delivery_module
 from microcosm_emitter.telemetry.service.collector import CollectorDelivery
+from microcosm_emitter.telemetry.service.constants import LOCAL_ONLY_REJECTED_EVENTS
+from microcosm_emitter.telemetry.service.database import create_spool_engine
+from microcosm_emitter.telemetry.service.models import TelemetryRunRecord
 from microcosm_emitter.telemetry.service.spool import EventSpool
 
 pytestmark = pytest.mark.collector
@@ -197,3 +202,62 @@ def test_lost_ack_retries_same_event_after_restart_without_duplicates(
     assert [entry["event_id"] for entry in response.json()["events"]] == [
         event["event_id"]
     ]
+
+
+@pytest.mark.parametrize(
+    ("refusal", "status"),
+    [("event_outside_schema", 422), ("run_not_registered", 404)],
+)
+def test_a_settled_refusal_makes_the_run_local_only_instead_of_retrying(
+    tmp_path, monkeypatch, capsys, live_collector, refusal, status
+):
+    """The collector's own answers to a batch it will never accept: 422 for an
+    event outside its schema, 404 for a run it does not know."""
+    address, reader = live_collector
+    monkeypatch.setenv("HF_TOKEN", "hf_test_member")
+    run = TelemetryRun(uuid.uuid4().hex, "UK", "contract")
+    registration = run.as_registration()
+    path = tmp_path / "events.sqlite3"
+    spool = EventSpool(path)
+    spool.register(registration)
+    event_type = "not_a_collector_event_type" if status == 422 else "run"
+    spool.append(registration, {"event_type": event_type, "status": "started"})
+    real_post = delivery_module._http_post
+    answers: list[tuple[str, int]] = []
+
+    def recording_post(url, *args, **kwargs):
+        response = real_post(url, *args, **kwargs)
+        answers.append((urlsplit(url).path, response[0]))
+        return response
+
+    monkeypatch.setattr(delivery_module, "_http_post", recording_post)
+    delivery = CollectorDelivery(spool, registration, development_collector_url=address)
+    if refusal == "run_not_registered":
+        # As if the collector no longer had a run this service registered.
+        delivery._registered.add((run.run_id, run.producer_id))
+    events_path = f"/v1/runs/{run.run_id}/events"
+    try:
+        assert not delivery.flush_once()
+        assert not delivery.flush_once()
+        assert [code for sent, code in answers if sent == events_path] == [status]
+        assert spool.has_pending() and not spool.has_deliverable()
+    finally:
+        delivery.close()
+        spool.close()
+    engine = create_spool_engine(path)
+    try:
+        with Session(engine) as session:
+            stored = session.get(TelemetryRunRecord, (run.run_id, run.producer_id))
+            assert stored.local_only_reason == LOCAL_ONLY_REJECTED_EVENTS
+    finally:
+        engine.dispose()
+    warnings = capsys.readouterr().err
+    assert warnings.count("local-only for this run") == 1
+    assert f"HTTP {status}" in warnings
+    # The collector kept none of the refused batch.
+    document = reader.get(f"/v1/runs/{run.run_id}")
+    if refusal == "run_not_registered":
+        assert document.status_code == 404
+    else:
+        assert document.status_code == 200, document.text
+        assert document.json()["events"] == []
