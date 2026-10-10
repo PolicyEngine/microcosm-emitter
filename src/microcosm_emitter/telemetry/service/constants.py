@@ -17,6 +17,9 @@ RUN_REGISTRATION_PATH: Final = "/v1/runs"
 RUN_EVENTS_PATH_TEMPLATE: Final = "/v1/runs/{run_id}/events"
 HTTP_USER_AGENT: Final = "microcosm-telemetry-emitter/1"
 MAX_HTTP_RESPONSE_BYTES: Final = 1_048_576
+#: The collector answers a request body over 1 MiB with 413, whatever is in
+#: it, so a batch of events is cut to fit before it is sent.
+MAX_EVENTS_REQUEST_BYTES: Final = 1_048_576
 HTTP_TIMEOUT_SECONDS: Final = 5.0
 
 UPLOAD_STATE_PENDING: Final = "pending"
@@ -41,6 +44,16 @@ REJECTED_EVENTS_MESSAGE: Final = (
     "Microcosm telemetry is local-only for this run: the collector rejected its "
     "events (HTTP {status}), so they will not be retried. The dataset build will "
     "continue."
+)
+REJECTED_REGISTRATION_MESSAGE: Final = (
+    "Microcosm telemetry is local-only for this run: the collector rejected its "
+    "registration (HTTP {status}), so it will not be retried. The dataset build "
+    "will continue."
+)
+REJECTED_RUN_USER_MESSAGE: Final = (
+    "Microcosm telemetry is local-only for this run: the collector refused the "
+    "ambient Hugging Face user for it (HTTP {status}). A run belongs to the user "
+    "who registered it first. The dataset build will continue."
 )
 OWN_LEASE_UNAVAILABLE_MESSAGE: Final = (
     "Microcosm telemetry is off for this run: its service could not take the "

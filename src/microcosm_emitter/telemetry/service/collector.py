@@ -34,6 +34,7 @@ from microcosm_emitter.telemetry.service.constants import (
     LOCAL_ONLY_REJECTED_EVENTS,
     LOCAL_ONLY_REJECTED_REGISTRATION,
     LOOPBACK_HOSTS,
+    MAX_EVENTS_REQUEST_BYTES,
     MAX_HTTP_RESPONSE_BYTES,
     MAX_RETRY_SECONDS,
     MINIMUM_TOKEN_LIFETIME_SECONDS,
@@ -43,6 +44,8 @@ from microcosm_emitter.telemetry.service.constants import (
     PRODUCTION_COLLECTOR_URL,
     REJECTED_CREDENTIAL_MESSAGE,
     REJECTED_EVENTS_MESSAGE,
+    REJECTED_REGISTRATION_MESSAGE,
+    REJECTED_RUN_USER_MESSAGE,
     RUN_EVENTS_PATH_TEMPLATE,
     RUN_REGISTRATION_PATH,
     TOKEN_EXCHANGE_PATH,
@@ -97,6 +100,33 @@ def _decode_response(body: bytes) -> dict[str, Any]:
     return response if isinstance(response, dict) else {}
 
 
+def _request_body(payload: Mapping[str, Any]) -> bytes:
+    """Serialize a request body: the bytes that are sent and that are measured."""
+
+    return json.dumps(payload, separators=(",", ":")).encode()
+
+
+#: An events request holding no events: what every batch is wrapped in.
+_EVENTS_ENVELOPE_BYTES = len(_request_body({"events": []}))
+
+
+def _events_fitting_request(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return the longest run of leading events whose request body fits.
+
+    The collector refuses a larger body whole, which would settle the run as
+    rejected. The first event is always kept: a request is never empty, and an
+    event too large to send alone is the collector's to refuse.
+    """
+
+    size = _EVENTS_ENVELOPE_BYTES
+    for index, event in enumerate(events):
+        # After the first, each event also costs the comma before it.
+        size += len(_request_body(event)) + (1 if index else 0)
+        if index and size > MAX_EVENTS_REQUEST_BYTES:
+            return events[:index]
+    return events
+
+
 def _http_post(
     url: str,
     payload: Mapping[str, Any],
@@ -106,7 +136,7 @@ def _http_post(
 ) -> tuple[int, dict[str, Any]]:
     request = urllib.request.Request(
         url,
-        data=json.dumps(payload, separators=(",", ":")).encode(),
+        data=_request_body(payload),
         headers={
             "Authorization": f"Bearer {bearer_token}",
             "Content-Type": "application/json",
@@ -197,6 +227,9 @@ class CollectorDelivery:
         self._own_lease = self._hold_own_lease()
         self._session_token: tuple[str, float] | None = None
         self._registered: set[tuple[str, str]] = set()
+        # Runs being registered again because the collector answered that it
+        # does not have them; an acknowledged batch clears the run.
+        self._registering_again: set[tuple[str, str]] = set()
         self._warned_no_token = False
         self._warned_denied: set[tuple[str, str]] = set()
         self._next_attempt_at = 0.0
@@ -346,7 +379,7 @@ class CollectorDelivery:
         if (run_id, producer_id) not in self._registered:
             if not self._register(registration, token):
                 return False
-        events = self.spool.batch(run_id, producer_id)
+        events = _events_fitting_request(self.spool.batch(run_id, producer_id))
         if not events:
             return False
         try:
@@ -361,6 +394,7 @@ class CollectorDelivery:
         if status == HTTPStatus.ACCEPTED:
             self.spool.acknowledge([event["event_id"] for event in events])
             self._retry_seconds = INITIAL_RETRY_SECONDS
+            self._registering_again.discard(_run(registration))
             return True
         if status == HTTPStatus.UNAUTHORIZED:
             self._session_token = None
@@ -371,7 +405,19 @@ class CollectorDelivery:
                 registration,
                 LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
                 caller_dependent=True,
+                message=REJECTED_RUN_USER_MESSAGE.format(status=int(status)),
             )
+        elif (
+            status == HTTPStatus.NOT_FOUND
+            and _run(registration) not in self._registering_again
+        ):
+            # The collector no longer has a run it registered for this service
+            # (its database was restored, say). Registering is repeatable for
+            # the run's owner, so the next pass registers the run and sends the
+            # batch again. Not finding the run once more, with no batch
+            # acknowledged in between, is its settled answer.
+            self._registered.discard(_run(registration))
+            self._registering_again.add(_run(registration))
         elif _permanent_client_error(status):
             self._make_local_only(
                 registration,
@@ -397,6 +443,8 @@ class CollectorDelivery:
                 registration,
                 LOCAL_ONLY_MISSING_CREDENTIAL,
                 caller_dependent=True,
+                # Said once for the service above, not per run.
+                message=None,
             )
             return None
         credential = _credential_fingerprint(hf_token)
@@ -408,6 +456,7 @@ class CollectorDelivery:
                 registration,
                 LOCAL_ONLY_REJECTED_CREDENTIAL,
                 caller_dependent=True,
+                message=REJECTED_CREDENTIAL_MESSAGE,
             )
             return None
         try:
@@ -433,6 +482,7 @@ class CollectorDelivery:
                 registration,
                 LOCAL_ONLY_REJECTED_CREDENTIAL,
                 caller_dependent=True,
+                message=REJECTED_CREDENTIAL_MESSAGE,
             )
         else:
             self._defer_retry()
@@ -460,6 +510,7 @@ class CollectorDelivery:
                 registration,
                 LOCAL_ONLY_REJECTED_REGISTRATION,
                 caller_dependent=True,
+                message=REJECTED_RUN_USER_MESSAGE.format(status=int(status)),
             )
         elif status == HTTPStatus.CONFLICT or _permanent_client_error(status):
             # A conflict reaches only the run's owner, so it is about the
@@ -468,6 +519,7 @@ class CollectorDelivery:
                 registration,
                 LOCAL_ONLY_REJECTED_REGISTRATION,
                 caller_dependent=False,
+                message=REJECTED_REGISTRATION_MESSAGE.format(status=int(status)),
             )
         else:
             self._defer_retry()
@@ -479,7 +531,7 @@ class CollectorDelivery:
         reason: str,
         *,
         caller_dependent: bool,
-        message: str = REJECTED_CREDENTIAL_MESSAGE,
+        message: str | None,
     ) -> None:
         """Stop uploading a run, unless the reason is only this service's.
 
@@ -488,6 +540,10 @@ class CollectorDelivery:
         service's own run, whose credential it is. Another producer's run stays
         pending for a service whose credential the collector accepts for it,
         and is not offered again with this credential.
+
+        ``message`` is the warning for the service's own run, and has no
+        default: each answer says what the collector refused. ``None`` prints
+        nothing.
         """
 
         run = _run(registration)
@@ -499,7 +555,7 @@ class CollectorDelivery:
         self.spool.make_local_only(*run, reason)
         # The warnings say "this run": another build's run is not this build's
         # to report, and its reason is kept in the spool.
-        if own and reason != LOCAL_ONLY_MISSING_CREDENTIAL:
+        if own and message is not None:
             self._warn_denied(run, message)
 
     def _defer_retry(self) -> None:
