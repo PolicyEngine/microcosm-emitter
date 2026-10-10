@@ -3,6 +3,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 
+import pytest
 from alembic import command
 
 from microcosm_emitter.telemetry.client import (
@@ -47,6 +48,21 @@ def _registration(run_id: str = "run-a") -> dict[str, object]:
     ).as_registration()
 
 
+@pytest.fixture
+def make_delivery():
+    """Build deliveries whose leases are released when the test ends."""
+
+    deliveries: list[CollectorDelivery] = []
+
+    def make(*args, **kwargs) -> CollectorDelivery:
+        deliveries.append(CollectorDelivery(*args, **kwargs))
+        return deliveries[-1]
+
+    yield make
+    for delivery in deliveries:
+        delivery.close()
+
+
 def _event(stage_id: str = "compile_targets") -> dict[str, object]:
     return {
         "timestamp": "2026-10-02T10:00:00+00:00",
@@ -72,16 +88,14 @@ def test_development_collector_must_be_on_loopback() -> None:
 
 
 def test_production_collector_cannot_be_replaced_by_environment(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, make_delivery
 ) -> None:
     monkeypatch.setenv(
         "MICROCOSM_TELEMETRY_COLLECTOR_URL",
         "https://untrusted.example",
     )
 
-    delivery = CollectorDelivery(
-        EventSpool(tmp_path / "events.sqlite3"), _registration()
-    )
+    delivery = make_delivery(EventSpool(tmp_path / "events.sqlite3"), _registration())
 
     assert delivery.collector_url == PRODUCTION_COLLECTOR_URL
 
@@ -210,7 +224,7 @@ def test_event_spool_prunes_oldest_events_to_size_limit(
 
 
 def test_collector_delivery_exchanges_hf_token_then_flushes(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, make_delivery
 ) -> None:
     spool = EventSpool(tmp_path / "events.sqlite3")
     registration = _registration()
@@ -230,7 +244,7 @@ def test_collector_delivery_exchanges_hf_token_then_flushes(
 
     monkeypatch.setattr(collector_module, "_http_post", fake_post)
 
-    delivery = CollectorDelivery(
+    delivery = make_delivery(
         spool,
         registration,
         development_collector_url="http://127.0.0.1:8080",
@@ -248,7 +262,9 @@ def test_collector_delivery_exchanges_hf_token_then_flushes(
     assert not spool.has_pending()
 
 
-def test_non_org_credential_keeps_event_local(tmp_path, monkeypatch, capsys) -> None:
+def test_non_org_credential_keeps_event_local(
+    tmp_path, monkeypatch, capsys, make_delivery
+) -> None:
     spool = EventSpool(tmp_path / "events.sqlite3")
     registration = _registration()
     spool.register(registration)
@@ -261,7 +277,7 @@ def test_non_org_credential_keeps_event_local(tmp_path, monkeypatch, capsys) -> 
         return 403, {"detail": "not a member"}
 
     monkeypatch.setattr(collector_module, "_http_post", reject)
-    delivery = CollectorDelivery(
+    delivery = make_delivery(
         spool,
         registration,
         development_collector_url="http://127.0.0.1:8080",
@@ -276,7 +292,7 @@ def test_non_org_credential_keeps_event_local(tmp_path, monkeypatch, capsys) -> 
 
 
 def test_identity_provider_outage_keeps_events_eligible_for_retry(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, make_delivery
 ) -> None:
     spool = EventSpool(tmp_path / "events.sqlite3")
     registration = _registration()
@@ -289,12 +305,12 @@ def test_identity_provider_outage_keeps_events_eligible_for_retry(
         lambda *args, **kwargs: (503, {"detail": "temporarily unavailable"}),
     )
 
-    assert not CollectorDelivery(spool, registration).flush_once()
+    assert not make_delivery(spool, registration).flush_once()
     assert spool.pending_runs() == [registration]
 
 
 def test_missing_credential_never_contacts_collector_and_stays_local_only(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, make_delivery
 ) -> None:
     spool_path = tmp_path / "events.sqlite3"
     spool = EventSpool(spool_path)
@@ -310,7 +326,7 @@ def test_missing_credential_never_contacts_collector_and_stays_local_only(
         ),
     )
 
-    delivery = CollectorDelivery(spool, registration)
+    delivery = make_delivery(spool, registration)
     assert not delivery.flush_once()
     assert spool.pending_runs() == []
 

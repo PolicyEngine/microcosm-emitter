@@ -215,6 +215,8 @@ class CollectorDelivery:
             for key, credential in self._passed_over.items()
             if key in pending_keys
         }
+        if self._passed_over:
+            self._note_current_credential()
         self._sweep_leases_if_due(pending)
         for registration in pending:
             claim = self._claim(registration)
@@ -262,6 +264,29 @@ class CollectorDelivery:
         except OSError:
             # A lease that cannot be tested may be live: leave the run be.
             return None
+
+    def _note_current_credential(self) -> None:
+        """Record the credential this pass's requests would be sent under.
+
+        A run passed over with one credential is offered again once the login
+        changes. Delivering a run is what reads the login, and a passed-over run
+        is not delivered, so with nothing else pending the change would go
+        unseen. A session the collector issued stays in use until it expires,
+        as for the own run, so only then does a new login count.
+        """
+
+        if self._cached_session_token() is not None:
+            return
+        hf_token = _huggingface_token()
+        self._credential = _credential_fingerprint(hf_token) if hf_token else None
+
+    def _cached_session_token(self) -> str | None:
+        if (
+            self._session_token is not None
+            and self._session_token[1] > time.monotonic() + TOKEN_REFRESH_MARGIN_SECONDS
+        ):
+            return self._session_token[0]
+        return None
 
     def _idle(self, run: tuple[str, str]) -> bool:
         updated_at = self.spool.last_updated(*run)
@@ -321,11 +346,9 @@ class CollectorDelivery:
         return False
 
     def _collector_token(self, registration: Mapping[str, Any]) -> str | None:
-        if (
-            self._session_token is not None
-            and self._session_token[1] > time.monotonic() + TOKEN_REFRESH_MARGIN_SECONDS
-        ):
-            return self._session_token[0]
+        session_token = self._cached_session_token()
+        if session_token is not None:
+            return session_token
         hf_token = _huggingface_token()
         if not hf_token:
             self._credential = None

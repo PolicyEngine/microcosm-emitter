@@ -18,13 +18,15 @@ another's collector request is in flight):
   run goes local-only only after a collector answer about the run itself.
 - While a producer's service is alive, no other service sends any request for
   that producer's run.
-- A run goes local-only only right after a collector answer (or, for a missing
-  credential, the absence of one) that justifies it, and a refused credential
-  is exchanged once.
+- A run goes local-only only when the deciding service's latest collector
+  answer is the refusal that justifies it. Two cases have no fresh answer: a
+  missing credential, and a credential the collector already refused to that
+  service, which is exchanged once and not again.
 - Local-only is final: no request about a run reaches the collector after it
   goes local-only, even from a service that listed the run before.
 - Once every service has gone, a run left pending is delivered in full by a
-  service whose credential owns it.
+  service whose credential owns it, including a service that was refused for
+  the run under an earlier login.
 
 This service retries a batch the collector refuses with 422 rather than making
 its run local-only, so such a run stays queued for retry; the tests check only
@@ -64,6 +66,7 @@ from microcosm_emitter.telemetry.service import collector as collector_module
 from microcosm_emitter.telemetry.service import leases as leases_module
 from microcosm_emitter.telemetry.service.collector import CollectorDelivery
 from microcosm_emitter.telemetry.service.constants import (
+    DEFAULT_TOKEN_LIFETIME_SECONDS,
     LOCAL_ONLY_MISSING_CREDENTIAL,
     LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
     LOCAL_ONLY_REJECTED_CREDENTIAL,
@@ -128,8 +131,10 @@ class FakeCollector:
         self.accepted: dict[Run, set[str]] = {}
         # (caller's run, kind, run asked about or None, status)
         self.requests: list[tuple[Run, str, Run | None, int]] = []
-        # (caller's run, Hugging Face token) for every refused exchange
+        # (caller's run, Hugging Face token) for every refused exchange, and
+        # where in ``requests`` the first refusal of each falls
         self.refused: list[tuple[Run, str]] = []
+        self.refused_at: dict[tuple[Run, str], int] = {}
         # Runs once, while the next request is in flight.
         self.during_next_request: Callable[[], None] | None = None
 
@@ -149,6 +154,7 @@ class FakeCollector:
         if path == TOKEN_EXCHANGE_PATH:
             if not token.startswith(MEMBER):
                 self.refused.append((caller, token))
+                self.refused_at.setdefault((caller, token), len(self.requests))
             if token.startswith(MEMBER):
                 user = token.removeprefix(MEMBER)
                 return self._answer(
@@ -186,6 +192,14 @@ class FakeCollector:
     def _answer(self, caller, kind, run, status, body):
         self.requests.append((caller, kind, run, status))
         return status, body
+
+    def latest(self, caller: Run, before: int) -> tuple[str, Run | None, int] | None:
+        """The caller's last request among the first ``before``: kind, run, status."""
+
+        for who, kind, about, status in reversed(self.requests[:before]):
+            if who == caller:
+                return kind, about, status
+        return None
 
     def asked(self, caller: Run, kind: str, run: Run | None = None) -> list[int]:
         return [
@@ -345,22 +359,30 @@ def _assert_own_credential_only(host: Host) -> None:
         # Local-only is final: nothing about the run reaches the collector after.
         later = host.collector.requests[at:]
         assert all(about != run for _, _, about, _ in later), (run, later)
+        # What this service last heard from the collector before deciding.
+        latest = host.collector.latest(caller, at)
         if caller != run:
             # Another producer's run: only the collector's answer about the
             # run itself, never one about this service's credential.
             assert reason == LOCAL_ONLY_REJECTED_REGISTRATION, (caller, run, reason)
             assert run[0] in conflicted
-            assert 409 in host.collector.asked(caller, "register", run)
+            assert latest == ("register", run, 409), (caller, run, latest)
             continue
         if reason == LOCAL_ONLY_MISSING_CREDENTIAL:
             assert credential is None
         elif reason == LOCAL_ONLY_REJECTED_CREDENTIAL:
-            assert set(host.collector.asked(caller, "exchange")) & {401, 403}
+            # The collector refused this very login to this service, just now
+            # or earlier: a refused login is not exchanged a second time.
+            first_refused = host.collector.refused_at.get((caller, credential), at)
+            assert first_refused < at, (caller, credential)
         elif reason == LOCAL_ONLY_REJECTED_REGISTRATION:
-            assert set(host.collector.asked(caller, "register", run)) & {403, 409}
+            assert latest in (("register", run, 403), ("register", run, 409)), (
+                run,
+                latest,
+            )
         else:
             assert reason == LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION, reason
-            assert 403 in host.collector.asked(caller, "events", run)
+            assert latest == ("events", run, 403), (run, latest)
     # A refused credential is exchanged once per service, not on every pass.
     refused = host.collector.refused
     assert len(set(refused)) == len(refused), refused
@@ -503,6 +525,70 @@ def test_an_orphan_whose_events_another_user_may_not_send_is_passed_over(host):
     assert host.queued(build_a.run) == 2
     rescuer = host.start(MEMBER + "alice")
     host.flush(rescuer)
+    assert host.collector.accepted[build_a.run] == set(build_a.appended)
+    _assert_own_credential_only(host)
+
+
+@pytest.mark.parametrize("refused", [OUTSIDER, EXPIRED])
+def test_a_passed_over_orphan_is_offered_again_once_the_login_changes(host, refused):
+    """Once a service's own run is local-only and every other pending run is
+    passed over, no delivery reads the login any more. The pass itself must
+    notice the new login, or the orphan waits for another service."""
+
+    build_a = host.start(MEMBER + "alice")
+    host.emit(build_a)
+    host.flush(build_a)
+    host.emit(build_a, 2)
+    host.kill(build_a)
+    build_b = host.start(refused)
+    host.emit(build_b)
+    for _ in range(2):
+        host.flush(build_b)
+    assert host.states()[build_b.run] == (
+        "local_only",
+        LOCAL_ONLY_REJECTED_CREDENTIAL,
+    )
+    assert host.queued(build_a.run) == 2
+
+    build_b.credential = MEMBER + "alice"
+    host.flush(build_b)
+
+    assert host.collector.accepted[build_a.run] == set(build_a.appended)
+    assert host.queued(build_a.run) == 0
+    # The refused login was exchanged once, and so was the new one.
+    assert host.collector.asked(build_b.run, "exchange") == [
+        403 if refused == OUTSIDER else 401,
+        200,
+    ]
+    _assert_own_credential_only(host)
+
+
+def test_a_passed_over_orphan_waits_out_the_session_of_the_login_that_was_refused(
+    host,
+):
+    """A session the collector issued stays in use until it expires, so a new
+    login takes effect then, as it does for the service's own run."""
+
+    build_a = host.start(MEMBER + "alice")
+    host.emit(build_a)
+    host.flush(build_a)
+    host.emit(build_a, 2)
+    host.kill(build_a)
+    build_b = host.start(MEMBER + "bob")
+    host.emit(build_b)
+    host.flush(build_b)
+    assert host.collector.asked(build_b.run, "register", build_a.run) == [403]
+
+    build_b.credential = MEMBER + "alice"
+    host.flush(build_b)
+    # Bob's session is still what this service sends, and it was refused.
+    assert host.collector.asked(build_b.run, "register", build_a.run) == [403]
+    assert host.queued(build_a.run) == 2
+
+    host.clock += DEFAULT_TOKEN_LIFETIME_SECONDS
+    host.flush(build_b)
+
+    assert host.collector.asked(build_b.run, "register", build_a.run) == [403, 201]
     assert host.collector.accepted[build_a.run] == set(build_a.appended)
     _assert_own_credential_only(host)
 
@@ -752,6 +838,24 @@ def test_a_lease_file_replaced_between_open_and_lock_is_not_trusted(
         leases.try_acquire("run-a", "producer-a", create=False)
 
 
+def test_a_lease_that_cannot_be_checked_is_not_left_locked(tmp_path, monkeypatch):
+    leases = ProducerLeases(tmp_path / "leases")
+    leases.try_acquire("run-a", "producer-a", create=True).release()
+
+    def unreadable(path, descriptor):
+        raise PermissionError("cannot stat the lease file")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(leases_module, "_names_open_file", unreadable)
+        with pytest.raises(PermissionError):
+            leases.try_acquire("run-a", "producer-a", create=False)
+
+    # The failed attempt closed its descriptor, so the lock went with it.
+    lease = leases.try_acquire("run-a", "producer-a", create=False)
+    assert lease is not None
+    lease.release()
+
+
 def test_a_killed_service_releases_its_lease(tmp_path):
     leases = ProducerLeases(tmp_path / "leases")
     holder = textwrap.dedent(
@@ -805,8 +909,9 @@ def test_two_real_services_on_one_spool_leave_each_others_runs_alone(
     tmp_path, monkeypatch
 ):
     """Build A has a credential, build B has none, and both services share one
-    spool. A's token exchange is held until B's worker has made two passes
-    over A's queued run; A's run must still arrive in full."""
+    spool. A's token exchange is held until B's worker has made a pass over
+    A's queued run, and for 1.5 s more (the worker passes every second); A's
+    run must still arrive in full."""
 
     release = threading.Event()
     received: dict[str, list[dict[str, Any]]] = {}
@@ -872,7 +977,7 @@ def test_two_real_services_on_one_spool_leave_each_others_runs_alone(
         build_a.stage("compile", message="Started.")
         build_b.stage("compile", message="Started.")
         # B's first delivery pass, which meets A's queued run too, makes B's own
-        # run local-only. Let B make another pass, then let A deliver.
+        # run local-only. Leave time for another pass, then let A deliver.
         deadline = time.monotonic() + 60
         while _run_states(spool_path).get("build-b") != LOCAL_ONLY_MISSING_CREDENTIAL:
             assert time.monotonic() < deadline, "build B's worker never ran"
@@ -960,6 +1065,8 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     operations=OPERATIONS,
     rejected=st.sets(st.integers(0, 7), max_size=2),
     conflicted=st.sets(st.integers(0, 7), max_size=2),
+    # The logins the two last services start under, before Alice's and Bob's.
+    rescue_logins=st.tuples(st.sampled_from(CREDENTIALS), st.sampled_from(CREDENTIALS)),
 )
 # Shrunk in Microcosm from a 1,500-example run against a delivery that trusted
 # its listed runs: B makes its own run local-only and exits while A's exchange
@@ -969,9 +1076,19 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     operations=[("interleave", 0, 1, True)],
     rejected=set(),
     conflicted=set(),
+    rescue_logins=(MEMBER + "alice", MEMBER + "bob"),
+)
+# From review: a service refused for every pending run, whose own run is not
+# pending either, never read its login again, so a new login went unseen.
+@example(
+    builds=[(MEMBER + "alice", 0), (MEMBER + "alice", 0)],
+    operations=[],
+    rejected=set(),
+    conflicted=set(),
+    rescue_logins=(OUTSIDER, EXPIRED),
 )
 def test_no_service_decides_another_producers_run_from_its_own_credential(
-    tmp_path_factory, builds, operations, rejected, conflicted
+    tmp_path_factory, builds, operations, rejected, conflicted, rescue_logins
 ):
     host = Host(
         tmp_path_factory.mktemp("foreign"),
@@ -1016,13 +1133,21 @@ def test_no_service_decides_another_producers_run_from_its_own_credential(
                 host.collector.during_next_request = None
             _assert_own_credential_only(host)
 
-        # Every service goes. A run still pending is an orphan, and a service
-        # whose login owns it delivers it in full.
+        # Every service goes. A run still pending is an orphan. Two more
+        # services start under any login and make a pass, which may refuse
+        # them. Then their logins become Alice's and Bob's and any session
+        # they held runs out: between them they deliver each orphan in full.
         for producer in host.producers:
             if producer.alive:
                 host.kill(producer)
-        rescuers = [host.start(MEMBER + user) for user in ("alice", "bob")]
         before = host.states()
+        rescuers = [host.start(login) for login in rescue_logins]
+        for rescuer in rescuers:
+            host.flush(rescuer)
+        _assert_own_credential_only(host)
+        for rescuer, user in zip(rescuers, ("alice", "bob"), strict=True):
+            rescuer.credential = MEMBER + user
+        host.clock += DEFAULT_TOKEN_LIFETIME_SECONDS
         for _ in range(3):
             for rescuer in rescuers:
                 host.flush(rescuer)

@@ -196,7 +196,13 @@ def _lock(path: Path, *, create: bool) -> ProducerLease | None:
         except BaseException:
             os.close(descriptor)
             raise
-        if _names_open_file(path, descriptor):
+        try:
+            current = _names_open_file(path, descriptor)
+        except BaseException:
+            # Never leave a lock held on a descriptor nobody will close.
+            os.close(descriptor)
+            raise
+        if current:
             return ProducerLease(path, descriptor)
         # Another process removed this file between our open and our lock.
         os.close(descriptor)
