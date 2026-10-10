@@ -8,7 +8,8 @@ exchange refuses a non-member with 403 and a bad token with 401; the first
 Hugging Face user to register a run owns it and anyone else gets 403; the
 owner registering it again with other metadata gets 409; a registration or a
 batch outside the collector's schema gets 422, whoever sends it; and an unknown
-run's events get 404.
+run's events get 404. The fake can also lose a run it registered, as a restored
+database would, and can be told never to find a run's events.
 
 Invariants (each checked below; the first four also after every step of a
 property test that runs services in any order and lets one run while
@@ -17,7 +18,8 @@ another's collector request is in flight):
 - No service makes another producer's run local-only because of its own
   credential (missing, refused, or not the run's owner). Another producer's
   run goes local-only only after a collector answer about the run itself: a
-  registration 409, or a registration or batch refused with 422.
+  registration 409, a registration or batch refused with 422, or a second 404
+  for its events with no batch acknowledged to that service since the first.
 - While a producer's service is alive, no other service sends any request for
   that producer's run.
 - A run goes local-only only when the deciding service's latest collector
@@ -29,7 +31,8 @@ another's collector request is in flight):
 - Once every service has gone, a run left pending is delivered in full by a
   service whose credential owns it, including a service that was refused for
   the run under an earlier login, unless the collector refuses the run itself
-  (409 or 422), which makes it local-only.
+  (409, 422, or never finding it), which makes it local-only. If the collector
+  lost the run, the first service to register it again owns it.
 """
 
 from __future__ import annotations
@@ -66,6 +69,7 @@ from microcosm_emitter.telemetry.service import collector as collector_module
 from microcosm_emitter.telemetry.service import leases as leases_module
 from microcosm_emitter.telemetry.service.collector import CollectorDelivery
 from microcosm_emitter.telemetry.service.constants import (
+    BATCH_SIZE,
     DEFAULT_TOKEN_LIFETIME_SECONDS,
     LOCAL_ONLY_MISSING_CREDENTIAL,
     LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
@@ -124,9 +128,12 @@ class FakeCollector:
         rejected_run_ids: set[str] | None = None,
         conflicted_run_ids: set[str] | None = None,
         malformed_run_ids: set[str] | None = None,
+        unfindable_run_ids: set[str] | None = None,
     ) -> None:
         # Runs whose batches are outside the collector's schema.
         self.rejected_run_ids = set(rejected_run_ids or ())
+        # Runs it registers and then never finds when their events arrive.
+        self.unfindable_run_ids = set(unfindable_run_ids or ())
         # Runs whose registration is outside it. The schema is checked before
         # the run's owner, so nobody comes to own such a run.
         self.malformed_run_ids = set(malformed_run_ids or ())
@@ -192,7 +199,7 @@ class FakeCollector:
         run_id = path.split("/")[3]
         events = payload["events"]
         run = (run_id, events[0]["producer_id"])
-        if run_id not in self.owners:
+        if run_id not in self.owners or run_id in self.unfindable_run_ids:
             return self._answer(caller, "events", run, 404, {})
         if self.owners[run_id] != user or run not in self.producers:
             return self._answer(caller, "events", run, 403, {})
@@ -204,6 +211,13 @@ class FakeCollector:
     def _answer(self, caller, kind, run, status, body):
         self.requests.append((caller, kind, run, status))
         return status, body
+
+    def forget(self, run_id: str) -> None:
+        """Lose a registered run. What was acknowledged stays on record here."""
+
+        self.owners.pop(run_id, None)
+        self.metadata.pop(run_id, None)
+        self.producers = {run for run in self.producers if run[0] != run_id}
 
     def latest(self, caller: Run, before: int) -> tuple[str, Run | None, int] | None:
         """The caller's last request among the first ``before``: kind, run, status."""
@@ -373,6 +387,23 @@ def host(tmp_path):
     host.close()
 
 
+def _assert_events_were_refused(host: Host, caller: Run, run: Run, at: int) -> None:
+    """The service's latest answer refused this run's events: with 422, or with
+    a second 404 and no batch of the run acknowledged to it since the first."""
+
+    latest = host.collector.latest(caller, at)
+    if latest == ("events", run, 422):
+        assert run[0] in host.collector.rejected_run_ids, (caller, run)
+        return
+    assert latest == ("events", run, 404), (caller, run, latest)
+    answers = [
+        status
+        for who, kind, about, status in host.collector.requests[:at]
+        if (who, kind, about) == (caller, "events", run)
+    ]
+    assert answers[-2:] == [404, 404], (caller, run, answers)
+
+
 def _assert_own_credential_only(host: Host) -> None:
     """The safety invariants, over everything recorded so far."""
 
@@ -388,8 +419,7 @@ def _assert_own_credential_only(host: Host) -> None:
             # Another producer's run: only the collector's answer about the
             # run itself, never one about this service's credential.
             if reason == LOCAL_ONLY_REJECTED_EVENTS:
-                assert run[0] in host.collector.rejected_run_ids, (caller, run)
-                assert latest == ("events", run, 422), (caller, run, latest)
+                _assert_events_were_refused(host, caller, run, at)
                 continue
             assert reason == LOCAL_ONLY_REJECTED_REGISTRATION, (caller, run, reason)
             if run[0] in host.collector.malformed_run_ids:
@@ -415,10 +445,7 @@ def _assert_own_credential_only(host: Host) -> None:
             assert latest == ("events", run, 403), (run, latest)
         else:
             assert reason == LOCAL_ONLY_REJECTED_EVENTS, reason
-            assert latest in (("events", run, 404), ("events", run, 422)), (
-                run,
-                latest,
-            )
+            _assert_events_were_refused(host, caller, run, at)
     # A refused credential is exchanged once per service, not on every pass.
     refused = host.collector.refused
     assert len(set(refused)) == len(refused), refused
@@ -764,6 +791,8 @@ def test_an_own_lease_waits_out_refused_locks_until_its_deadline(tmp_path, monke
 # run then keeps, and every status sent about it.
 RUN_REFUSALS = {
     "unacceptable_events": (LOCAL_ONLY_REJECTED_EVENTS, [201, 422]),
+    # Not found once, registered again, not found again.
+    "unfindable_run": (LOCAL_ONLY_REJECTED_EVENTS, [201, 404, 201, 404]),
     "unacceptable_registration": (LOCAL_ONLY_REJECTED_REGISTRATION, [422]),
     "registration_conflict": (LOCAL_ONLY_REJECTED_REGISTRATION, [409]),
 }
@@ -772,6 +801,8 @@ RUN_REFUSALS = {
 def _refuse_run(host: Host, run: Run, answer: str) -> None:
     if answer == "unacceptable_events":
         host.collector.rejected_run_ids.add(run[0])
+    elif answer == "unfindable_run":
+        host.collector.unfindable_run_ids.add(run[0])
     elif answer == "unacceptable_registration":
         host.collector.malformed_run_ids.add(run[0])
     else:
@@ -786,7 +817,8 @@ def test_an_orphan_the_collector_refuses_goes_local_only_without_a_warning_here(
 ):
     """A 409 reaches only the run's owner, and every owner would get it; a 422
     is about the registration or the batch, which is the same whoever sends
-    it."""
+    it; and a run the collector registers but does not then find is not found
+    by anyone."""
 
     reason, statuses = RUN_REFUSALS[answer]
     build_a = host.start(MEMBER + "alice")
@@ -800,7 +832,7 @@ def test_an_orphan_the_collector_refuses_goes_local_only_without_a_warning_here(
     host.flush(build_b)
 
     assert host.states()[build_a.run] == ("local_only", reason)
-    # One refusal settles it: the run is neither retried nor left queued for
+    # The refusal settles it: the run is neither retried nor left queued for
     # another service.
     assert [
         status
@@ -818,7 +850,8 @@ def test_an_orphan_the_collector_refuses_goes_local_only_without_a_warning_here(
 @pytest.mark.parametrize("answer", RUN_REFUSALS)
 def test_a_refused_orphan_does_not_hold_back_the_adopters_own_run(host, answer):
     """A settled refusal is not retried, so it sets no retry delay; a delay
-    would gate every run the service delivers, its own included."""
+    would gate every run the service delivers, its own included. Nor does the
+    404 that has a run registered again."""
 
     build_a = host.start(MEMBER + "alice")
     host.emit(build_a)
@@ -827,12 +860,71 @@ def test_a_refused_orphan_does_not_hold_back_the_adopters_own_run(host, answer):
     build_b = host.start(MEMBER + "alice")
     host.emit(build_b)
     host.flush(build_b)
+    settled_at_once = answer != "unfindable_run"
+    assert (host.states()[build_a.run][0] == "local_only") is settled_at_once
+
+    for _ in range(2):
+        host.emit(build_b)
+        host.flush(build_b, advance=False)
+        assert host.collector.accepted[build_b.run] == set(build_b.appended)
+
     assert host.states()[build_a.run][0] == "local_only"
+    _assert_own_credential_only(host)
 
+
+def test_an_adopted_orphan_the_collector_loses_is_registered_again(host, capsys):
+    """An adopter is answered as the run's own service would be: after a 404
+    it registers the orphan again and delivers the rest."""
+
+    build_a = host.start(MEMBER + "alice")
+    host.emit(build_a, BATCH_SIZE + 1)
+    host.kill(build_a)
+    build_b = host.start(MEMBER + "alice")
+
+    assert host.flush(build_b)
+    host.collector.forget(build_a.run[0])
+    assert not host.flush(build_b)
+    assert host.states()[build_a.run] == ("pending", None)
+    assert host.flush(build_b)
+
+    assert host.collector.asked(build_b.run, "register", build_a.run) == [201, 201]
+    assert host.collector.asked(build_b.run, "events", build_a.run) == [202, 404, 202]
+    assert host.collector.accepted[build_a.run] == set(build_a.appended)
+    assert host.queued(build_a.run) == 0
+    assert "local-only" not in capsys.readouterr().err
+    _assert_own_credential_only(host)
+
+
+def test_a_lost_run_another_user_registers_first_is_refused_its_first_owner(
+    host, capsys
+):
+    """The collector gives a run it does not have to whoever registers it. So
+    registering again can be refused, like any registration: only for this
+    login, and only this build's own run."""
+
+    build_a = host.start(MEMBER + "alice", run_id="shared")
+    host.emit(build_a)
+    host.flush(build_a)
+    host.emit(build_a)
+    host.collector.forget("shared")
+    host.flush(build_a)
+    build_b = host.start(MEMBER + "bob", run_id="shared")
     host.emit(build_b)
-    host.flush(build_b, advance=False)
+    host.flush(build_b)
 
+    host.flush(build_a)
+
+    assert host.collector.asked(build_a.run, "register", build_a.run) == [201, 403]
+    assert host.states()[build_a.run] == (
+        "local_only",
+        LOCAL_ONLY_REJECTED_REGISTRATION,
+    )
+    assert host.states()[build_b.run] == ("pending", None)
     assert host.collector.accepted[build_b.run] == set(build_b.appended)
+    warning = capsys.readouterr().err
+    assert warning.count("local-only for this run") == 1
+    assert "Hugging Face user" in warning and "HTTP 403" in warning
+    assert "organization member" not in warning
     _assert_own_credential_only(host)
 
 
@@ -1318,9 +1410,14 @@ def test_two_real_services_on_one_spool_leave_each_others_runs_alone(
 def _label_paths(host: Host) -> None:
     """Report which delivery paths a generated scenario reached."""
 
+    registered: set[tuple[Run, Run]] = set()
     for caller, kind, about, status in host.collector.requests:
         if about is not None and about != caller:
             event(f"adopted orphan: {kind} {status}")
+        if kind == "register" and status == 201:
+            if (caller, about) in registered:
+                event(f"{'own' if caller == about else 'adopted'} run registered again")
+            registered.add((caller, about))
     for caller, run, reason, *_ in host.local_only:
         event(f"{'own' if caller == run else 'adopted'} run local-only: {reason}")
 
@@ -1338,6 +1435,8 @@ OPERATIONS = st.lists(
         st.tuples(st.just("flush"), PRODUCER),
         st.tuples(st.just("kill"), PRODUCER),
         st.tuples(st.just("login"), PRODUCER, st.sampled_from(CREDENTIALS)),
+        # The collector loses a run it registered, any build's.
+        st.tuples(st.just("forget"), PRODUCER),
         # One service flushes while another's request is in flight, and may
         # then exit: the first service's list of pending runs goes stale.
         st.tuples(st.just("interleave"), PRODUCER, PRODUCER, st.booleans()),
@@ -1368,6 +1467,7 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     rejected=st.sets(st.integers(0, 7), max_size=2),
     conflicted=st.sets(st.integers(0, 7), max_size=2),
     malformed=st.sets(st.integers(0, 7), max_size=1),
+    unfindable=st.sets(st.integers(0, 7), max_size=1),
     # The logins the two last services start under, before Alice's and Bob's.
     rescue_logins=st.tuples(st.sampled_from(CREDENTIALS), st.sampled_from(CREDENTIALS)),
 )
@@ -1380,6 +1480,7 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     rejected=set(),
     conflicted=set(),
     malformed=set(),
+    unfindable=set(),
     rescue_logins=(MEMBER + "alice", MEMBER + "bob"),
 )
 # From review: a service refused for every pending run, whose own run is not
@@ -1390,10 +1491,30 @@ def _start_build(host: Host, build: tuple[str | None, int]) -> Producer:
     rejected=set(),
     conflicted=set(),
     malformed=set(),
+    unfindable=set(),
     rescue_logins=(OUTSIDER, EXPIRED),
 )
+# Alice's service loses its run at the collector, and Bob's build of the same
+# run id registers it first.
+@example(
+    builds=[(MEMBER + "alice", 0), (MEMBER + "bob", 1)],
+    operations=[("flush", 0), ("emit", 0, 1), ("forget", 0), ("flush", 0)]
+    + [("flush", 1), ("flush", 0)],
+    rejected=set(),
+    conflicted=set(),
+    malformed=set(),
+    unfindable=set(),
+    rescue_logins=(MEMBER + "alice", MEMBER + "bob"),
+)
 def test_no_service_decides_another_producers_run_from_its_own_credential(
-    tmp_path_factory, builds, operations, rejected, conflicted, malformed, rescue_logins
+    tmp_path_factory,
+    builds,
+    operations,
+    rejected,
+    conflicted,
+    malformed,
+    unfindable,
+    rescue_logins,
 ):
     host = Host(
         tmp_path_factory.mktemp("foreign"),
@@ -1401,6 +1522,7 @@ def test_no_service_decides_another_producers_run_from_its_own_credential(
             {f"run-{index}" for index in rejected},
             {f"run-{index}" for index in conflicted},
             {f"run-{index}" for index in malformed},
+            {f"run-{index}" for index in unfindable},
         ),
     )
     try:
@@ -1411,6 +1533,10 @@ def test_no_service_decides_another_producers_run_from_its_own_credential(
             kind = operation[0]
             if kind == "start":
                 _start_build(host, operation[1])
+                continue
+            if kind == "forget":
+                lost = host.producers[operation[1] % len(host.producers)]
+                host.collector.forget(lost.run[0])
                 continue
             live = [producer for producer in host.producers if producer.alive]
             if not live:
@@ -1477,8 +1603,12 @@ def test_no_service_decides_another_producers_run_from_its_own_credential(
                     LOCAL_ONLY_REJECTED_REGISTRATION,
                 ), producer.run
                 continue
-            elif run_id in host.collector.rejected_run_ids:
-                # Its owner, whoever that is, gets 422: a refusal of the batch.
+            elif (
+                run_id in host.collector.rejected_run_ids
+                or run_id in host.collector.unfindable_run_ids
+            ):
+                # Its owner, whoever that is, gets 422, or 404 twice: a
+                # refusal of the batch.
                 assert after[producer.run] == (
                     "local_only",
                     LOCAL_ONLY_REJECTED_EVENTS,

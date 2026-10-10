@@ -317,7 +317,6 @@ def test_non_org_credential_keeps_event_local(
     ("status", "retried"),
     [
         (422, False),
-        (404, False),
         (413, False),
         (400, False),
         (429, True),
@@ -330,7 +329,8 @@ def test_a_settled_collector_rejection_goes_local_only_instead_of_retrying(
 ) -> None:
     """A 4xx the collector will repeat (an event shape it does not accept, say)
     must not wedge the queue: the run goes local-only with a reason and one
-    warning. A timeout, a rate limit or a server error still retries."""
+    warning. A timeout, a rate limit or a server error still retries. A 404 is
+    first answered by registering the run again: see ``test_collector_delivery``."""
     spool_path = tmp_path / "events.sqlite3"
     spool = EventSpool(spool_path)
     registration = _registration()
@@ -455,7 +455,8 @@ def test_every_client_error_has_one_outcome(
 ) -> None:
     """Every 4xx, on either request. 401 is about the collector token, which is
     exchanged again; 403 is about the login; 408 and 429 wait and retry; any
-    other is the collector's settled answer about the run."""
+    other is the collector's settled answer about the run. A 404 for a run's
+    events settles it the second time: the first has the run registered again."""
     spool_path = tmp_path / "events.sqlite3"
     spool = EventSpool(spool_path)
     monkeypatch.setattr(collector_module, "_huggingface_token", lambda: "hf-member")
@@ -512,7 +513,12 @@ def test_every_client_error_has_one_outcome(
                 assert reason is None, status
                 assert warnings == "", status
                 continue
-            assert again == [], (status, again)
+            if refused == "events" and status == 404:
+                # Registered again and sent again, once.
+                assert again == [RUN_REGISTRATION_PATH, refused_path], again
+                first = len(sent)
+            else:
+                assert again == [], (status, again)
             if status in (408, 429):
                 assert reason is None, status
                 assert warnings == "", status
@@ -522,8 +528,8 @@ def test_every_client_error_has_one_outcome(
                 continue
             assert reason == (login_reason if status == 403 else settled_reason), status
             assert warnings.count("local-only for this run") == 1, status
-            if refused == "events" and status != 403:
-                assert f"HTTP {status}" in warnings, status
+            assert f"HTTP {status}" in warnings, status
+            assert "organization member" not in warnings, status
             # Nothing is sent again, however long the service waits.
             clock[0] += MAX_RETRY_SECONDS + 1
             assert not delivery.flush_once(), status
