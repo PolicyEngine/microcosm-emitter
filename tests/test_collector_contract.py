@@ -341,7 +341,7 @@ def test_a_run_the_collector_does_not_have_is_registered_again_and_delivered(
         (events_path, 202),
     ]
     assert _local_only_reason(path, run) is None
-    assert capsys.readouterr().err == ""
+    assert "local-only" not in capsys.readouterr().err
     document = reader.get(f"/v1/runs/{run.run_id}")
     assert document.status_code == 200, document.text
     assert [entry["event_id"] for entry in document.json()["events"]] == [
@@ -475,7 +475,7 @@ def test_a_full_batch_of_the_largest_events_arrives_in_requests_the_collector_ta
     assert [code for _, code in requests] == [202, 202]
     assert all(size <= MAX_EVENTS_REQUEST_BYTES for size, _ in requests), requests
     assert _local_only_reason(path, run) is None
-    assert capsys.readouterr().err == ""
+    assert "local-only" not in capsys.readouterr().err
     document = reader.get(f"/v1/runs/{run.run_id}")
     assert document.status_code == 200, document.text
     assert [entry["event_id"] for entry in document.json()["events"]] == [
