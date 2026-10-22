@@ -52,6 +52,9 @@ RELEASED_FIXTURE_DIGESTS = {
     "protocol-v1/huggingface-handover-receipt.json": (
         "e3d6735361da9326ce9c1aeb893d1c644a749e574ded8c1f2f2071f12e00ca09"
     ),
+    "protocol-v1/huggingface-stage-dataset-bundle-with-collector.json": (
+        "d676520e82c54e8c72ab2f54b73e8c29fdc02c295ac31ed23e970160c0cf9a26"
+    ),
     "protocol-v1/huggingface-stage-dataset-bundle.json": (
         "6f576285b7a87607c47755ebee00ca051694b39455812a0068ebee2c27277728"
     ),

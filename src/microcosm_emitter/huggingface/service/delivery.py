@@ -72,30 +72,58 @@ def iso_timestamp(seconds: float) -> str:
 class HeldLeases:
     """A repository lease, and the job lease once one is claimed, kept renewed.
 
-    A thread renews both every ``renewal_seconds`` until ``stop``. Read
-    ``repository_lease`` and ``job`` only after ``stop``: they then name the
-    current leases, which releasing the repository and finishing the job
-    must match.
+    A thread renews both every ``renewal_seconds`` until ``stop``, or until
+    ``stop_requested`` turns true: an attempt abandoned at shutdown then
+    frees its leases within one lease. Read ``repository_lease`` and ``job``
+    only after ``stop``: they then name the current leases, which releasing
+    the repository and finishing the job must match. ``for_job`` holds a job
+    without a repository lease, as a collector submission does.
     """
 
     def __init__(
         self,
         queue: HandoverQueue,
-        repository: str,
+        repository: str | None,
         lease: float,
         *,
         clock: Callable[[], float],
         lease_seconds: float,
         renewal_seconds: float,
+        stop_requested: Callable[[], bool] = never_stop,
     ) -> None:
         self.queue, self.repository = queue, repository
         self.repository_lease = lease
         self.job: ClaimedJob | None = None
         self.clock = clock
         self.lease_seconds, self.renewal_seconds = lease_seconds, renewal_seconds
+        self.stop_requested = stop_requested
         self._lock = threading.Lock()
         self._stopped = threading.Event()
         self._thread = threading.Thread(target=self._renew_until_stopped, daemon=True)
+
+    @classmethod
+    def for_job(
+        cls,
+        queue: HandoverQueue,
+        job: ClaimedJob,
+        *,
+        clock: Callable[[], float],
+        lease_seconds: float,
+        renewal_seconds: float,
+        stop_requested: Callable[[], bool] = never_stop,
+    ) -> HeldLeases:
+        """``job``'s lease alone, with no repository lease."""
+        held = cls(
+            queue,
+            None,
+            0.0,
+            clock=clock,
+            lease_seconds=lease_seconds,
+            renewal_seconds=renewal_seconds,
+            stop_requested=stop_requested,
+        )
+        held.hold_job(job)
+        return held
 
     def start(self) -> HeldLeases:
         self._thread.start()
@@ -108,8 +136,12 @@ class HeldLeases:
     def renew(self) -> None:
         with self._lock:
             renewed = self.clock() + self.lease_seconds
-            if renewed > self.repository_lease and self.queue.renew_repository(
-                self.repository, self.repository_lease, renewed
+            if (
+                self.repository is not None
+                and renewed > self.repository_lease
+                and self.queue.renew_repository(
+                    self.repository, self.repository_lease, renewed
+                )
             ):
                 self.repository_lease = renewed
             job = self.job
@@ -122,6 +154,8 @@ class HeldLeases:
 
     def _renew_until_stopped(self) -> None:
         while not self._stopped.wait(self.renewal_seconds):
+            if self.stop_requested():
+                return
             try:
                 self.renew()
             except Exception:

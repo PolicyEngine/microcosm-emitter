@@ -38,6 +38,7 @@ from microcosm_emitter_interface.identifiers import (
     safe_identifier,
 )
 from microcosm_emitter_interface.protocol import PROTOCOL_VERSION
+from microcosm_emitter_interface.submissions import CollectorProvenance
 
 DEFAULT_BUNDLE_PREFIX: Final = "staged"
 #: The bundle's own inventory, compared with the repository copy.
@@ -103,6 +104,10 @@ class StageDatasetBundle:
 
     The files are written in the order given, in one commit whose message
     defaults to Microcosm's ``Stage <run_id> under <prefix>/<run_id>``.
+
+    With ``collector``, the emitter also submits the calibration diagnostics
+    and Orrery inputs the bundle names to the collector, once the Hugging
+    Face commit lands and while its collector submissions are switched on.
     """
 
     repository: str
@@ -110,6 +115,7 @@ class StageDatasetBundle:
     files: Sequence[BundleFile]
     prefix: str = DEFAULT_BUNDLE_PREFIX
     commit_message: str | None = None
+    collector: CollectorProvenance | None = None
     protocol_version: int = field(default=PROTOCOL_VERSION, repr=False)
 
     def __post_init__(self) -> None:
@@ -124,13 +130,17 @@ class StageDatasetBundle:
             not isinstance(self.commit_message, str) or not self.commit_message.strip()
         ):
             raise ValueError("commit_message must be nonempty when given.")
+        if self.collector is not None and not isinstance(
+            self.collector, CollectorProvenance
+        ):
+            raise ValueError("collector must be a CollectorProvenance value.")
 
     @property
     def remote_prefix(self) -> str:
         return f"{self.prefix}/{self.run_id}"
 
     def message(self) -> dict[str, Any]:
-        return {
+        message = {
             "protocol_version": self.protocol_version,
             "command": "stage_dataset_bundle",
             "repository": self.repository,
@@ -148,6 +158,11 @@ class StageDatasetBundle:
             ],
             "commit_message": self.commit_message,
         }
+        # Only when given, so a bundle without it keeps its message and
+        # hand-over ID.
+        if self.collector is not None:
+            message["collector"] = self.collector.message()
+        return message
 
     def handover_id(self) -> str:
         return handover_identifier("dataset_bundle", self.message())

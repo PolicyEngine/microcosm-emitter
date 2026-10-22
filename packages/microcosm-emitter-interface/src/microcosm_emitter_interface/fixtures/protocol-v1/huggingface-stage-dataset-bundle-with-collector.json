@@ -1,0 +1,67 @@
+{
+  "protocol_version": 1,
+  "module": "huggingface",
+  "kind": "query",
+  "sequence": 11,
+  "files": {
+    "dataset.h5": "synthetic rows",
+    "calibration_diagnostics.json": "{\"schema_version\":8}",
+    "build_manifest.json": "{\"outputs\":{}}",
+    "staged_manifest.json": "{\"files\":{}}",
+    "sha256sums.txt": "fixture  dataset.h5\n"
+  },
+  "body": {
+    "protocol_version": 1,
+    "command": "stage_dataset_bundle",
+    "repository": "policyengine/fixture-private",
+    "run_id": "fixture-run-described",
+    "prefix": "staged",
+    "files": [
+      {
+        "name": "dataset.h5",
+        "role": "dataset",
+        "local_path": "{directory}/dataset.h5",
+        "sha256": "5cc590aa15e97595e13963c72aea8d3fbe65fbf5dd5f8fc690ee479f73d45548",
+        "bytes": 14
+      },
+      {
+        "name": "calibration_diagnostics.json",
+        "role": "calibration_diagnostics",
+        "local_path": "{directory}/calibration_diagnostics.json",
+        "sha256": "2300b80de59210bc04c40b1aade68e7b5fc265901dbc9af4e9f506c0bcc36e7c",
+        "bytes": 20
+      },
+      {
+        "name": "build_manifest.json",
+        "role": "build_manifest",
+        "local_path": "{directory}/build_manifest.json",
+        "sha256": "5dbd51d32a488390bb3bfcea54726682fd3d80e073ddc7caf7df9d40404276b0",
+        "bytes": 14
+      },
+      {
+        "name": "staged_manifest.json",
+        "role": "staged_manifest",
+        "local_path": "{directory}/staged_manifest.json",
+        "sha256": "aae5a71db7cd42382ef749f87ca847684d9d4a517cc8235f53ea31bd492c3577",
+        "bytes": 12
+      },
+      {
+        "name": "sha256sums.txt",
+        "role": "checksums",
+        "local_path": "{directory}/sha256sums.txt",
+        "sha256": "167666035837f1b2e262cca1a2caef817e4fd111ea3fc9283328a2d79b4be4ed",
+        "bytes": 20
+      }
+    ],
+    "commit_message": null,
+    "collector": {
+      "country_code": "UK",
+      "build_id": "fixture-run-described",
+      "licensed_data": true,
+      "release": null
+    }
+  },
+  "response_keys": [
+    "receipt"
+  ]
+}

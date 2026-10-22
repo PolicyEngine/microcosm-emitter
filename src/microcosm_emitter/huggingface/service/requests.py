@@ -33,6 +33,7 @@ from microcosm_emitter_interface.publication import (
     ReleaseFile,
     WithdrawBuild,
 )
+from microcosm_emitter_interface.submissions import CollectorProvenance
 
 #: Transport bounds for one staging run file and one hand-over. Microcosm's
 #: staging contract keeps its own, smaller limits.
@@ -196,6 +197,20 @@ def copy_small_files(files: Sequence[BundleFile]) -> dict[str, bytes]:
     return copied
 
 
+COLLECTOR_PROVENANCE_KEYS = frozenset(
+    {"country_code", "build_id", "licensed_data", "release"}
+)
+
+
+def _collector_provenance(value: Any) -> CollectorProvenance | None:
+    """The optional build description for the collector, checked like the rest."""
+    if value is None:
+        return None
+    if not isinstance(value, Mapping) or set(value) != COLLECTOR_PROVENANCE_KEYS:
+        raise ValueError("collector must name exactly the provenance fields.")
+    return CollectorProvenance(**value)
+
+
 def parse_stage_dataset_bundle(message: Mapping[str, Any]) -> BundleHandOver:
     """Check a bundle with the interface's rules and the files' sizes.
 
@@ -215,6 +230,7 @@ def parse_stage_dataset_bundle(message: Mapping[str, Any]) -> BundleHandOver:
             run_id=message.get("run_id"),
             prefix=message.get("prefix"),
             commit_message=message.get("commit_message"),
+            collector=_collector_provenance(message.get("collector")),
             files=tuple(
                 BundleFile(
                     name=entry.get("name"),

@@ -517,3 +517,35 @@ def test_write_access_check_without_a_credential(hugging_face_module):
         "can_write": None,
         "error_type": None,
     }
+
+
+@pytest.mark.parametrize("failure", ["error", "no-commit-reported"])
+def test_an_already_staged_bundle_waits_for_the_commit_that_added_its_folder(
+    hugging_face_module, monkeypatch, failure
+):
+    """The collector's provenance must name that commit, never a later head."""
+    from microcosm_emitter.huggingface.service.hub import DatasetRepository
+
+    controls = hugging_face_module
+    stage_bundle(controls)
+    cycle(controls)
+    (staged,) = private_commits(controls)
+    controls.hub.write_directly(PRIVATE_REPOSITORY, {"later.json": b"{}"})
+    controls.clock.advance(60)
+    again, _, _ = stage_bundle(controls, directory="again", manifest_note="evidence")
+    if failure == "error":
+        controls.hub.fail_next("get_paths_info", FakeHubHTTPError(503))
+    else:
+        monkeypatch.setattr(DatasetRepository, "last_commit", lambda self, path: None)
+    cycle(controls)
+    receipt = receipt_of(controls, again.handover_id())
+    assert (receipt["status"], receipt["error_code"], receipt["revision"]) == (
+        "pending",
+        "REPOSITORY_UNAVAILABLE",
+        None,
+    )
+    monkeypatch.undo()
+    controls.clock.advance(2)
+    cycle(controls)
+    receipt = receipt_of(controls, again.handover_id())
+    assert (receipt["status"], receipt["revision"]) == ("already_staged", staged.oid)

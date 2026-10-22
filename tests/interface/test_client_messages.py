@@ -26,6 +26,7 @@ from microcosm_emitter_interface.staging import (
     RunFile,
     StageRunFiles,
 )
+from microcosm_emitter_interface.submissions import CollectorProvenance
 from microcosm_emitter_interface.telemetry import TelemetryRun, TelemetrySettings
 
 FIXTURE_STAGING_REPOSITORY = "policyengine/fixture-staging"
@@ -56,13 +57,21 @@ def fixture_publication(directory: Path) -> PublishRelease:
     )
 
 
-def fixture_bundle(directory: Path) -> StageDatasetBundle:
-    """The bundle recorded in huggingface-stage-dataset-bundle.json."""
-    fixture = fixtures_by_name()["huggingface-stage-dataset-bundle"]
+def fixture_bundle(
+    directory: Path,
+    *,
+    fixture_name: str = "huggingface-stage-dataset-bundle",
+    run_id: str = "fixture-run",
+    collector: CollectorProvenance | None = None,
+) -> StageDatasetBundle:
+    """The bundle recorded in huggingface-stage-dataset-bundle.json, or in
+    another bundle fixture."""
+    fixture = fixtures_by_name()[fixture_name]
     recorded = materialize(fixture, directory=directory, spool_path=Path("unused"))
     return StageDatasetBundle(
         repository=FIXTURE_PRIVATE_REPOSITORY,
-        run_id="fixture-run",
+        run_id=run_id,
+        collector=collector,
         files=tuple(
             BundleFile(
                 name=entry["name"],
@@ -241,6 +250,20 @@ SENT_BY: dict[str, Callable[[EmitterClient, Path], Any]] = {
     ),
     "huggingface-stage-dataset-bundle": lambda client, directory: (
         client.stage_dataset_bundle(fixture_bundle(directory))
+    ),
+    "huggingface-stage-dataset-bundle-with-collector": lambda client, directory: (
+        client.stage_dataset_bundle(
+            fixture_bundle(
+                directory,
+                fixture_name="huggingface-stage-dataset-bundle-with-collector",
+                run_id="fixture-run-described",
+                collector=CollectorProvenance(
+                    country_code="UK",
+                    build_id="fixture-run-described",
+                    licensed_data=True,
+                ),
+            )
+        )
     ),
     "huggingface-handover-receipt": lambda client, directory: (
         client.dataset_bundle_receipt("fixture-handover")

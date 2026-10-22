@@ -19,6 +19,13 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from microcosm_emitter.core.auth import (
+    CollectorSession,
+    _collector_origin,
+    _development_collector_url,
+    huggingface_token,
+)
+from microcosm_emitter.core.constants import PRODUCTION_COLLECTOR_URL
 from microcosm_emitter.host.constants import TICK_SECONDS
 from microcosm_emitter.host.contracts import JsonObject, ModuleContext
 from microcosm_emitter.huggingface.service.delivery import (
@@ -45,14 +52,41 @@ from microcosm_emitter.huggingface.service.requests import (
     run_reference,
 )
 from microcosm_emitter.huggingface.service.workers import DeliveryWorker
+from microcosm_emitter.submissions.client import (
+    SUBMIT_SCOPE,
+    CollectorSubmissionClient,
+)
+from microcosm_emitter.submissions.delivery import (
+    COLLECTOR_SUBMISSION,
+    COLLECTOR_SUBMISSIONS_ENABLED_BY_DEFAULT,
+    CollectorSubmissionDelivery,
+)
+from microcosm_emitter.submissions.planning import wants_collector_submission
 from microcosm_emitter_interface.identifiers import repository_identifier
 from microcosm_emitter_interface.publication import RELEASE_CHANGE
 
 #: A read-back of a run with no file this emitter committed: nothing to compare.
 NO_COMMITTED_FILES = "NO_COMMITTED_FILES"
+#: At shutdown, how long the module waits for a collector submission in
+#: progress, after both Hugging Face shutdown commits and never past the
+#: shutdown deadline. A submission still running then is abandoned; its row
+#: is retried later.
+COLLECTOR_SHUTDOWN_WAIT_SECONDS = 2.0
 WORKER_ERROR_MESSAGE = (
     "Microcosm Hugging Face delivery hit a local queue error; handed-over files "
     "stay queued for a later attempt."
+)
+COLLECTOR_WORKER_ERROR_MESSAGE = (
+    "Microcosm collector submission hit a local queue error; handed-over files "
+    "stay queued for a later attempt."
+)
+COLLECTOR_QUEUE_ERROR_MESSAGE = (
+    "A bundle could not be queued for the collector ({error_type}); its Hugging "
+    "Face upload is queued as usual."
+)
+COLLECTOR_SETTING_MESSAGE = (
+    "Microcosm collector submissions are off: the collector settings are "
+    "unusable ({error_type}). Hugging Face uploads continue."
 )
 
 
@@ -93,6 +127,11 @@ class HuggingFaceModule:
     ``background_workers`` false runs every delivery on the host's ``tick``
     instead of starting the module's own workers; tests that drive the
     module by hand use it.
+
+    With ``collector_submissions`` true in the configuration, bundles that
+    describe their build are also submitted to the collector after their
+    Hugging Face commit; ``development_collector_url`` points at a loopback
+    collector. Collector submissions are off by default.
     """
 
     def __init__(
@@ -105,14 +144,17 @@ class HuggingFaceModule:
         release_change_policy: ReleaseChangePolicy = allow_every_change,
         background_workers: bool = True,
         worker_interval_seconds: float = TICK_SECONDS,
+        collector_credential: Callable[[], str | None] = huggingface_token,
     ) -> None:
         self.configuration, self.context = configuration, context
         self.api_factory, self.clock = api_factory, clock
         self.release_change_policy = release_change_policy
         self.background_workers = background_workers
         self.worker_interval_seconds = worker_interval_seconds
+        self.collector_credential = collector_credential
         self.queue: HandoverQueue | None = None
         self.delivery: HuggingFaceDelivery | None = None
+        self.collector_delivery: CollectorSubmissionDelivery | None = None
         self.workers: dict[str, DeliveryWorker] = {}
         self._closed = False
 
@@ -125,6 +167,18 @@ class HuggingFaceModule:
             api_factory=self.api_factory,
             clock=self.clock,
         )
+        enabled = self.configuration.get(
+            "collector_submissions", COLLECTOR_SUBMISSIONS_ENABLED_BY_DEFAULT
+        )
+        if enabled is True:
+            try:
+                self.collector_delivery = self._collector_delivery(self.queue)
+            except ValueError as error:
+                # A collector setting never stops the Hugging Face module.
+                self.delivery.warn_once(
+                    "collector settings",
+                    COLLECTOR_SETTING_MESSAGE.format(error_type=type(error).__name__),
+                )
         if self.background_workers:
             self.workers = self._delivery_workers(self.delivery)
             for worker in self.workers.values():
@@ -133,8 +187,13 @@ class HuggingFaceModule:
     def _delivery_workers(
         self, delivery: HuggingFaceDelivery
     ) -> dict[str, DeliveryWorker]:
-        """One worker per kind of upload that can take minutes."""
-        return {
+        """One worker per kind of upload that can take minutes.
+
+        Collector submissions get their own: a slow or stalled submission
+        never delays a Hugging Face commit, the commit at shutdown or a
+        read-back.
+        """
+        workers = {
             DATASET_BUNDLE: DeliveryWorker(
                 "dataset-bundles",
                 lambda stop_requested: delivery.job_cycle(
@@ -154,10 +213,43 @@ class HuggingFaceModule:
                 on_error=self._worker_error,
             ),
         }
+        if self.collector_delivery is not None:
+            workers[COLLECTOR_SUBMISSION] = DeliveryWorker(
+                "collector-submissions",
+                lambda stop_requested: self.collector_delivery.run_cycle(
+                    stop_requested=stop_requested
+                ),
+                interval_seconds=self.worker_interval_seconds,
+                on_error=self._collector_error,
+            )
+        return workers
 
     def _worker_error(self) -> None:
         if self.delivery is not None:
             self.delivery.warn_once("worker", WORKER_ERROR_MESSAGE)
+
+    def _collector_error(self) -> None:
+        if self.delivery is not None:
+            self.delivery.warn_once("collector", COLLECTOR_WORKER_ERROR_MESSAGE)
+
+    def _collector_delivery(self, queue: HandoverQueue) -> CollectorSubmissionDelivery:
+        development_url = self.configuration.get("development_collector_url")
+        origin = (
+            _development_collector_url(development_url)
+            if development_url
+            else _collector_origin(PRODUCTION_COLLECTOR_URL)
+        )
+        session = CollectorSession(
+            origin, credential=self.collector_credential, scope=SUBMIT_SCOPE
+        )
+        client = CollectorSubmissionClient(
+            origin,
+            credential=session.credential,
+            invalidate_credential=session.invalidate,
+            allow_loopback_uploads=bool(development_url),
+            clock=self.clock,
+        )
+        return CollectorSubmissionDelivery(queue, client, clock=self.clock)
 
     def handle_message(self, message: JsonObject) -> None:
         raise ValueError("Hugging Face hand-overs are queries with receipts.")
@@ -184,6 +276,8 @@ class HuggingFaceModule:
             return {"receipt": self._stage_dataset_bundle(message)}
         if command == "handover_receipt":
             return {"receipt": self._handover_receipt(message)}
+        if command == "collector_submission_receipt":
+            return {"receipt": self._collector_submission_receipt(message)}
         if command == "check_write_access":
             return {"access": self._check_write_access(message)}
         if command in {"publish_release", "promote_build", "withdraw_build"}:
@@ -206,7 +300,7 @@ class HuggingFaceModule:
                 "prefix": "",
                 "copied_files": [],
             }
-        return self.queue.enqueue_job(
+        receipt = self.queue.enqueue_job(
             handover_id=hand_over.handover_id,
             kind=DATASET_BUNDLE,
             target=hand_over.repository,
@@ -224,6 +318,22 @@ class HuggingFaceModule:
             now=self.clock(),
             files=hand_over.copied,
         )
+        if self.collector_delivery is not None and wants_collector_submission(
+            hand_over.request
+        ):
+            try:
+                self.collector_delivery.enqueue_for_bundle(
+                    hand_over.handover_id, hand_over.request, hand_over.copied
+                )
+            except Exception as error:
+                # The Hugging Face row is queued: answer with its receipt.
+                self.delivery.warn_once(
+                    "collector queue",
+                    COLLECTOR_QUEUE_ERROR_MESSAGE.format(
+                        error_type=type(error).__name__
+                    ),
+                )
+        return receipt
 
     def _caller(self) -> ReleaseCaller:
         return ReleaseCaller(user=_user_name(), parent_pid=self.context.parent_pid)
@@ -283,6 +393,17 @@ class HuggingFaceModule:
         if not isinstance(handover_id, str) or not handover_id:
             raise ValueError("handover_id must be a nonempty string")
         return self.queue.job_receipt(handover_id)
+
+    def _collector_submission_receipt(
+        self, message: JsonObject
+    ) -> dict[str, Any] | None:
+        require_supported_version(message)
+        handover_id = message.get("handover_id")
+        if not isinstance(handover_id, str) or not handover_id:
+            raise ValueError("handover_id must be a nonempty string")
+        if self.collector_delivery is None:
+            return None
+        return self.collector_delivery.receipt(handover_id)
 
     def _check_write_access(self, message: JsonObject) -> dict[str, Any]:
         """Microcosm's staged-dataset preflight: credential, reach and scope."""
@@ -385,6 +506,11 @@ class HuggingFaceModule:
             # The host stops a module whose tick raises; a local queue error
             # leaves the work queued and must not end every later delivery.
             self._worker_error()
+        if self.collector_delivery is not None and not self.workers:
+            try:
+                self.collector_delivery.run_cycle()
+            except Exception:
+                self._collector_error()
 
     def parent_exited(self) -> None:
         """Queued hand-overs stay eligible for the next emitter host."""
@@ -394,31 +520,48 @@ class HuggingFaceModule:
 
         The commit at shutdown runs first, on the calling thread, for every
         repository a worker is not uploading to at that moment. Once stopped,
-        a worker starts no new upload. Its upload in progress has until
-        ``deadline`` to finish, and that repository's run files are committed
-        after it if time remains. An upload still running at ``deadline`` is
-        abandoned when the process exits; its job lease expires and the next
-        emitter retries the job.
+        a worker starts no new upload or submission. A Hugging Face upload in
+        progress has until ``deadline`` to finish, and that repository's run
+        files are committed after it if time remains. Only then does the
+        module wait for a collector submission in progress, for at most
+        ``COLLECTOR_SHUTDOWN_WAIT_SECONDS`` and never past ``deadline``, so
+        collector work never uses up the time the Hugging Face commits need.
+        An upload or submission still running at the end is abandoned when
+        the process exits; its lease expires and the next emitter retries it.
         """
         if self._closed:
             return
         self._closed = True
         for worker in self.workers.values():
             worker.stop()
+        hugging_face_workers = [
+            worker
+            for kind, worker in self.workers.items()
+            if kind != COLLECTOR_SUBMISSION
+        ]
+        collector_worker = self.workers.get(COLLECTOR_SUBMISSION)
         try:
             self._drain(deadline)
-            workers_stopped = all(
-                [worker.wait(deadline) for worker in self.workers.values()]
+            hugging_face_stopped = all(
+                [worker.wait(deadline) for worker in hugging_face_workers]
             )
-            if self.workers and workers_stopped:
+            if hugging_face_workers and hugging_face_stopped:
                 self._drain(deadline)
+            collector_stopped = collector_worker is None or collector_worker.wait(
+                min(deadline, time.monotonic() + COLLECTOR_SHUTDOWN_WAIT_SECONDS)
+            )
+            workers_stopped = hugging_face_stopped and collector_stopped
         except Exception:
             self._worker_error()
             workers_stopped = False
         finally:
-            # A worker still uploading needs the queue to record its result.
-            if self.queue is not None and (not self.workers or workers_stopped):
-                self.queue.close()
+            # A worker still uploading needs its HTTP client, and the queue to
+            # record its result; both go with the process.
+            if not self.workers or workers_stopped:
+                if self.collector_delivery is not None:
+                    self.collector_delivery.client.close()
+                if self.queue is not None:
+                    self.queue.close()
 
     def _drain(self, deadline: float) -> None:
         if self.delivery is not None and time.monotonic() < deadline:

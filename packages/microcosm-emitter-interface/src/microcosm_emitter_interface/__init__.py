@@ -27,11 +27,13 @@ from microcosm_emitter_interface.staging import (
     RunFile,
     StageRunFiles,
 )
+from microcosm_emitter_interface.submissions import CollectorProvenance
 from microcosm_emitter_interface.telemetry import TelemetryRun, TelemetrySettings
 
 __all__ = [
     "BundleFile",
     "COMMAND_ENVIRONMENT_VARIABLE",
+    "CollectorProvenance",
     "DEFAULT_COMMAND",
     "PROTOCOL_VERSION",
     "EmitterClient",

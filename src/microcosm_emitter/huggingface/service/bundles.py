@@ -109,17 +109,20 @@ def stage_bundle(
         if exists:
             try:
                 remote = json.loads(repository.download(remote_inventory))
-                head = repository.head_revision()
             except Exception:
                 return BundleOutcome("pending", REPOSITORY_UNAVAILABLE, retry=True)
             remote_files = remote.get("files") if isinstance(remote, Mapping) else None
             if not _same_digests(remote_files, outputs):
                 return BundleOutcome("failed", REMOTE_DIFFERS)
-            # The bundle's own commit, not the repository head at re-run time.
+            # The commit that added the folder (a bundle is never rewritten,
+            # so it last changed the inventory), never a later head: the
+            # collector's provenance names it. Without it, ask again later.
             try:
-                revision = repository.last_commit(remote_inventory) or head
+                revision = repository.last_commit(remote_inventory)
             except Exception:
-                revision = head
+                revision = None
+            if not revision:
+                return BundleOutcome("pending", REPOSITORY_UNAVAILABLE, retry=True)
             return BundleOutcome("already_staged", revision=revision)
         try:
             parent = repository.head_revision()
