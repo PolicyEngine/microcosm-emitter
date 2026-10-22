@@ -10,6 +10,12 @@ BATCH_SIZE: Final = 100
 PRODUCTION_COLLECTOR_URL: Final = (
     "https://microcosm-telemetry-389282473430.us-central1.run.app"
 )
+# The only origins that may receive the builder's Hugging Face token. A module's
+# `collector_origin` setting must name one of them, and nothing else (no
+# environment variable) chooses the destination. To move the collector, add its
+# new origin here and point PRODUCTION_COLLECTOR_URL at it, in one release; keep
+# the old origin listed while it still serves, so a build can still select it.
+TRUSTED_COLLECTOR_ORIGINS: Final = frozenset({PRODUCTION_COLLECTOR_URL})
 
 LOOPBACK_HOSTS: Final = frozenset({"localhost", "127.0.0.1", "::1"})
 TOKEN_EXCHANGE_PATH: Final = "/v1/auth/huggingface/exchange"
@@ -42,6 +48,12 @@ COLLECTOR_URL_ORIGIN_ERROR: Final = (
 )
 DEVELOPMENT_COLLECTOR_LOOPBACK_ERROR: Final = (
     "development collector URL must use a loopback address"
+)
+UNTRUSTED_COLLECTOR_ORIGIN_ERROR: Final = (
+    "collector origin is not one of the emitter's trusted collector origins"
+)
+CONFLICTING_COLLECTOR_ORIGIN_ERROR: Final = (
+    "set a development collector URL or a collector origin, not both"
 )
 COLLECTOR_RESPONSE_TOO_LARGE_ERROR: Final = "collector response exceeds 1 MiB"
 

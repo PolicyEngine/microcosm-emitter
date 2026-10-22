@@ -4,17 +4,17 @@ import math
 import threading
 import time
 
-from microcosm_emitter.core.auth import (
-    _collector_origin,
-    _development_collector_url,
-    shared_session,
+from microcosm_emitter.core.auth import shared_session
+from microcosm_emitter.core.collector_origin import (
+    COLLECTOR_ORIGIN_SETTING,
+    DEVELOPMENT_COLLECTOR_URL_SETTING,
+    configured_collector_origin,
 )
 from microcosm_emitter.core.constants import (
     DEFAULT_HEARTBEAT_SECONDS,
     DRAIN_RETRY_SECONDS,
     FAILURE_CLASS_UNEXPECTED_PROCESS_EXIT,
     MINIMUM_HEARTBEAT_SECONDS,
-    PRODUCTION_COLLECTOR_URL,
 )
 from microcosm_emitter.host.contracts import JsonObject, ModuleContext
 from microcosm_emitter.telemetry.protocol import UNEXPECTED_PROCESS_EXIT_MESSAGE
@@ -57,14 +57,15 @@ class TelemetryModule:
                 self.spool,
                 session=shared_session(
                     self.context.services,
-                    _development_collector_url(
-                        self.configuration["development_collector_url"]
-                    )
-                    if self.configuration.get("development_collector_url")
-                    else _collector_origin(PRODUCTION_COLLECTOR_URL),
+                    configured_collector_origin(self.configuration),
                 ),
-                development_collector_url=self.configuration.get(
-                    "development_collector_url"
+                # Empty settings count as unset, as configured_collector_origin
+                # treats them, so the delivery and the session agree.
+                development_collector_url=(
+                    self.configuration.get(DEVELOPMENT_COLLECTOR_URL_SETTING) or None
+                ),
+                collector_origin=(
+                    self.configuration.get(COLLECTOR_ORIGIN_SETTING) or None
                 ),
             )
             self.spool.register(self.registration)

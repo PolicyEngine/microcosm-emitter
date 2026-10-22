@@ -10,11 +10,10 @@ from typing import Any
 
 from microcosm_emitter.core.auth import (
     CollectorSession,
-    _collector_origin,
-    _development_collector_url,
     _http_post,
     huggingface_token,
 )
+from microcosm_emitter.core.collector_origin import resolve_collector_origin
 from microcosm_emitter.core.constants import (
     INITIAL_RETRY_SECONDS,
     LOCAL_ONLY_MISSING_CREDENTIAL,
@@ -23,7 +22,6 @@ from microcosm_emitter.core.constants import (
     LOCAL_ONLY_REJECTED_REGISTRATION,
     MAX_RETRY_SECONDS,
     NO_CREDENTIAL_MESSAGE,
-    PRODUCTION_COLLECTOR_URL,
     REJECTED_CREDENTIAL_MESSAGE,
     RUN_EVENTS_PATH_TEMPLATE,
     RUN_REGISTRATION_PATH,
@@ -55,12 +53,12 @@ class CollectorDelivery:
         spool: EventSpool,
         *,
         development_collector_url: str | None = None,
+        collector_origin: str | None = None,
         session: CollectorSession | None = None,
     ) -> None:
-        self.collector_url = (
-            _development_collector_url(development_collector_url)
-            if development_collector_url is not None
-            else _collector_origin(PRODUCTION_COLLECTOR_URL)
+        self.collector_url = resolve_collector_origin(
+            development_collector_url=development_collector_url,
+            collector_origin=collector_origin,
         )
         self.spool = spool
         self.session = session or CollectorSession(

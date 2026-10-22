@@ -4,12 +4,8 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from microcosm_emitter.core.auth import (
-    _collector_origin,
-    _development_collector_url,
-    shared_session,
-)
-from microcosm_emitter.core.constants import PRODUCTION_COLLECTOR_URL
+from microcosm_emitter.core.auth import shared_session
+from microcosm_emitter.core.collector_origin import configured_collector_origin
 from microcosm_emitter.host.contracts import JsonObject, ModuleContext
 from microcosm_emitter.orrery.contracts import PublicationInventory
 from microcosm_emitter.orrery.service.queue import (
@@ -29,13 +25,10 @@ class OrreryModule:
         self._warned = False
 
     def initialize(self) -> None:
+        # Refuse an untrusted collector origin before opening the queue.
+        origin = configured_collector_origin(self.configuration)
         queue = GraphPublicationQueue(Path(self.configuration["spool_path"]))
         self.queue = queue
-        origin = (
-            _development_collector_url(self.configuration["development_collector_url"])
-            if self.configuration.get("development_collector_url")
-            else _collector_origin(PRODUCTION_COLLECTOR_URL)
-        )
         session = shared_session(self.context.services, origin)
         self.delivery = GraphPublicationDelivery(
             queue,

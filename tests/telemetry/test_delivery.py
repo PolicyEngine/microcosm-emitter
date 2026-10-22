@@ -7,6 +7,7 @@ import pytest
 from alembic import command
 from sqlalchemy.orm import Session
 
+from microcosm_emitter.core.auth import _development_collector_url
 from microcosm_emitter.core.constants import (
     PRODUCTION_COLLECTOR_URL,
 )
@@ -62,12 +63,12 @@ def _event(stage_id: str = "compile_targets") -> dict[str, object]:
 
 
 def test_development_collector_must_be_on_loopback() -> None:
-    assert collector_module._development_collector_url("http://127.0.0.1:8080") == (
+    assert _development_collector_url("http://127.0.0.1:8080") == (
         "http://127.0.0.1:8080"
     )
     for value in ("https://collector.example", "http://192.0.2.1:8080"):
         try:
-            collector_module._development_collector_url(value)
+            _development_collector_url(value)
         except ValueError as error:
             assert "loopback" in str(error)
         else:
