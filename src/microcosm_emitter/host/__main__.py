@@ -1,6 +1,7 @@
 """Command-line entry for the generic service host."""
 
 import argparse
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -109,10 +110,8 @@ def main(
     else:
         return 0
     finally:
-        try:
+        with contextlib.suppress(OSError):
             args.socket.parent.rmdir()
-        except OSError:
-            pass
 
 
 if __name__ == "__main__":

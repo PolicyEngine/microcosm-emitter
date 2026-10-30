@@ -159,9 +159,11 @@ class TestRepositoryLayout(unittest.TestCase):
         self.assertEqual(
             [str(problem) for problem in problems],
             [
-                "[registry] schema: ci_scripts.workflows must be a glob or a "
-                'non-empty list of globs. Fix: set workflows = [".github/workflows/'
-                '*.yml", ".github/workflows/*.yaml"].'
+                (
+                    "[registry] schema: ci_scripts.workflows must be a glob or a "
+                    'non-empty list of globs. Fix: set workflows = [".github/workflows/'
+                    '*.yml", ".github/workflows/*.yaml"].'
+                )
             ],
         )
 
@@ -193,12 +195,16 @@ class TestRepositoryLayout(unittest.TestCase):
         self.assertEqual(
             [str(violation) for violation in compare(registry, findings, root)],
             [
-                "[ex.ci.multiline] ci-scripts: multi-line run: block wf.yml :: job "
-                ":: step. Fix: move the commands into a tested script under tools "
-                "or scripts and call it from a single-line run:.",
-                "[registry] ci-scripts: untested workflow script tools/x.sh. Fix: "
-                "add a "
-                "test that runs the script.",
+                (
+                    "[ex.ci.multiline] ci-scripts: multi-line run: block wf.yml :: job "
+                    ":: step. Fix: move the commands into a tested script under tools "
+                    "or scripts and call it from a single-line run:."
+                ),
+                (
+                    "[registry] ci-scripts: untested workflow script tools/x.sh. Fix: "
+                    "add a "
+                    "test that runs the script."
+                ),
             ],
         )
 

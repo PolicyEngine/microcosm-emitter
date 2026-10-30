@@ -31,19 +31,19 @@ from microcosm_emitter_interface.submissions import CollectorProvenance
 from microcosm_emitter_interface.telemetry import TelemetryRun, TelemetrySettings
 
 __all__ = [
-    "BundleFile",
     "COMMAND_ENVIRONMENT_VARIABLE",
-    "CollectorProvenance",
     "DEFAULT_COMMAND",
     "PROTOCOL_VERSION",
+    "BundleFile",
+    "CollectorProvenance",
     "EmitterClient",
     "EmitterStartupError",
     "HuggingFaceSettings",
     "OrrerySettings",
-    "RequestFailure",
     "PromoteBuild",
     "PublishRelease",
     "ReleaseFile",
+    "RequestFailure",
     "RunFile",
     "StageDatasetBundle",
     "StageRunFiles",

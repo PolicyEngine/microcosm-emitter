@@ -17,7 +17,8 @@ def host_smoke() -> None:
     from microcosm_emitter.host.client import SocketClient
     from microcosm_emitter.host.launcher import start_service
 
-    assert SocketClient and start_service
+    assert SocketClient
+    assert start_service
     assert find_spec("microcosm") is None
     emitter = distribution("microcosm-emitter")
     assert emitter.version
@@ -104,7 +105,8 @@ def graph_only_smoke() -> None:
     assert client.available
     try:
         inventory = client.inventory(directory, {"graph.orrery.json": "graph"})
-        assert inventory is not None and "run_id" not in inventory
+        assert inventory is not None
+        assert "run_id" not in inventory
         receipt = publish_graph(directory, inventory, client=client, wait_seconds=0)
         assert receipt["status"] == "pending"
     finally:

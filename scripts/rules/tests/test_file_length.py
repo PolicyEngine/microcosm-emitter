@@ -108,10 +108,12 @@ class TestViolations(unittest.TestCase):
         self.assertEqual(
             [str(violation) for violation in compare(found, set(), None)],
             [
-                "[registry] file-length: pkg/module.py has 801 lines, over the "
-                "800-line limit for source code. Fix: split it into modules that "
-                "each hold one responsibility and stay under the limit, keeping "
-                "its public names importable from the original module."
+                (
+                    "[registry] file-length: pkg/module.py has 801 lines, over the "
+                    "800-line limit for source code. Fix: split it into modules that "
+                    "each hold one responsibility and stay under the limit, keeping "
+                    "its public names importable from the original module."
+                )
             ],
         )
 
@@ -282,8 +284,10 @@ class TestRunCheckTestDirectories(unittest.TestCase):
         self.assertEqual(
             messages,
             [
-                "tests/test_long.py has 801 lines, over the 800-line limit for "
-                "source code"
+                (
+                    "tests/test_long.py has 801 lines, over the 800-line limit for "
+                    "source code"
+                )
             ],
         )
 
@@ -309,8 +313,10 @@ class TestRunCheck(unittest.TestCase):
             self.check_tree("# Tolerated.\npkg/short.py\n"),
             [
                 "pkg/listed.py has 801 lines, over the 800-line limit for source code",
-                "baseline entry no longer applies: pkg/short.py is within its limit "
-                "or is no longer tracked",
+                (
+                    "baseline entry no longer applies: pkg/short.py is within its "
+                    "limit or is no longer tracked"
+                ),
             ],
         )
 

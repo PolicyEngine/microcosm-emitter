@@ -54,6 +54,7 @@ import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 #: Anonymous key exchange only: no certificate on either side.
@@ -189,6 +190,7 @@ class FakeCollector:
                     if self.path.endswith("/complete"):
                         return collector._complete(self, self.path.split("/")[3])
                 self._json(404, {"detail": "Not Found"})
+                return None
 
             def do_GET(self) -> None:
                 if self.path.startswith("/v1/submissions/"):
@@ -208,6 +210,7 @@ class FakeCollector:
                     if len(parts) == 5 and parts[4] == "receipt":
                         return collector._receipt(self, parts[3])
                 self._json(404, {"detail": "Not Found"})
+                return None
 
             def do_PUT(self) -> None:
                 collector.upload_started.set()
@@ -259,7 +262,8 @@ class FakeCollector:
             self._socket_directory = tempfile.mkdtemp(
                 prefix="fake-storage-", dir="/tmp"
             )
-            self.upload_socket_path = os.path.join(self._socket_directory, "tls.sock")
+            # A str, not a Path: httpx's uds option takes the socket path as a str.
+            self.upload_socket_path = os.path.join(self._socket_directory, "tls.sock")  # noqa: PTH118
             self._servers.append(UnixTlsServer(self.upload_socket_path, Handler))
             self.upload_origin = "https://127.0.0.1"
             self.client_tls_context = anonymous_tls_context(ssl.PROTOCOL_TLS_CLIENT)
@@ -317,8 +321,8 @@ class FakeCollector:
             server.shutdown()
             server.server_close()
         if self.upload_socket_path is not None and self._socket_directory:
-            os.unlink(self.upload_socket_path)
-            os.rmdir(self._socket_directory)
+            Path(self.upload_socket_path).unlink()
+            Path(self._socket_directory).rmdir()
 
     def _intake_not_available(self, handler: Any) -> None:
         if self.intake == "off":
@@ -326,6 +330,7 @@ class FakeCollector:
                 404, {"detail": "Intake is off.", "code": "intake_not_enabled"}
             )
         handler._json(404, {"detail": "Not Found"})
+        return None
 
     def _exchange(self, handler: Any, body: bytes) -> None:
         request = json.loads(body) if body else {}
@@ -335,7 +340,7 @@ class FakeCollector:
         )
         if self.malformed_exchange_answer:
             handler.wfile.write(b"not an HTTP answer\r\n")
-            return
+            return None
         if self.exchange_status != 200:
             return handler._json(self.exchange_status, {"detail": "refused"})
         if self.exchange_answer is not None:
@@ -367,6 +372,7 @@ class FakeCollector:
                 "scope": scope,
             },
         )
+        return None
 
     @staticmethod
     def _chosen(handler: Any, answer: int | tuple[int, str]) -> None:
@@ -423,6 +429,7 @@ class FakeCollector:
             201 if created else 200,
             {**self._status_document(submission_id), "uploads": uploads},
         )
+        return None
 
     @staticmethod
     def _files(submission: dict[str, Any]) -> list[dict[str, Any]]:
@@ -512,15 +519,16 @@ class FakeCollector:
     def _status(self, handler: Any, submission_id: str) -> None:
         self.status_requests.append(submission_id)
         if self._chosen_answer(handler, self.status_answers):
-            return
+            return None
         if submission_id not in self.submissions:
             return self._unknown_submission(handler)
         handler._json(200, self._status_document(submission_id))
+        return None
 
     def _receipt(self, handler: Any, submission_id: str) -> None:
         self.receipt_requests.append(submission_id)
         if self._chosen_answer(handler, self.receipt_answers):
-            return
+            return None
         submission = self.submissions.get(submission_id)
         if submission is None:
             return self._unknown_submission(handler)
@@ -537,6 +545,7 @@ class FakeCollector:
         if self.corrupt_receipts:
             receipt["receipt_sha256"] = "0" * 64
         handler._json(200, receipt)
+        return None
 
     def _store(self, handler: Any, object_name: str, body: bytes) -> None:
         self.uploads.append(object_name)
@@ -548,6 +557,7 @@ class FakeCollector:
             return handler._json(412, {"detail": "exists"})
         self.objects[object_name] = body[::-1] if self.corrupt_uploads else body
         handler._json(200, {})
+        return None
 
     def _complete(self, handler: Any, submission_id: str) -> None:
         self.completed.append(submission_id)
@@ -596,3 +606,4 @@ class FakeCollector:
             "attempts": 0,
         }
         handler._json(202, self._status_document(submission_id))
+        return None

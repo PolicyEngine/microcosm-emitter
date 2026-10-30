@@ -1,6 +1,7 @@
 """Durable graph jobs use fake HTTP, independently of the visualization app."""
 
 import json
+import re
 from dataclasses import FrozenInstanceError
 
 import httpx
@@ -92,7 +93,9 @@ def test_queue_rejects_changed_bytes_and_conflicting_inventory(tmp_path):
     (directory / "graph.orrery.json").write_text("changed")
     with pytest.raises(ValueError, match="digest"):
         queue.enqueue(directory, inventory)
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match=re.escape("Ineligible graph publication filename or role.")
+    ):
         publication_inventory(directory, {"private.h5": "graph"})
 
 
@@ -466,9 +469,11 @@ def test_status_file_reloads_newer_receipt_after_an_older_commit(tmp_path):
         )
         release.set()
         thread.join(3)
-        assert not thread.is_alive() and not errors
+        assert not thread.is_alive()
+        assert not errors
         receipt = newer.receipt(lease.publication_id)
-        assert receipt["status"] == "published" and receipt["attempts"] == 2
+        assert receipt["status"] == "published"
+        assert receipt["attempts"] == 2
         assert (
             json.loads((directory / "publication.status.json").read_text()) == receipt
         )
@@ -504,7 +509,11 @@ def pause(session):
             raise TimeoutError('status test release')
         time.sleep(0.01)
 event.listen(queue._sessions, 'after_commit', pause)
-queue.finish(lease.publication_id, error_code='publication_network_error', expected_lease=lease.lease_until)
+queue.finish(
+    lease.publication_id,
+    error_code='publication_network_error',
+    expected_lease=lease.lease_until,
+)
 queue.close()
 """
     process = subprocess.Popen(
@@ -533,7 +542,8 @@ queue.close()
         stdout, stderr = process.communicate(timeout=3)
         assert process.returncode == 0, stdout + stderr
         receipt = queue.receipt(inventory["publication_id"])
-        assert receipt["status"] == "published" and receipt["attempts"] == 2
+        assert receipt["status"] == "published"
+        assert receipt["attempts"] == 2
         assert (
             json.loads((directory / "publication.status.json").read_text()) == receipt
         )
@@ -593,8 +603,16 @@ from microcosm_emitter.orrery.service.queue import GraphPublicationQueue
 queue = GraphPublicationQueue(Path(sys.argv[1]))
 queue.retry(sys.argv[2])
 lease = queue.claim()
-event.listen(queue._sessions, 'after_commit', lambda session: Path(sys.argv[3]).write_text('published'))
-queue.finish(lease.publication_id, url='https://runs.example/runs/published/', expected_lease=lease.lease_until)
+event.listen(
+    queue._sessions,
+    'after_commit',
+    lambda session: Path(sys.argv[3]).write_text('published'),
+)
+queue.finish(
+    lease.publication_id,
+    url='https://runs.example/runs/published/',
+    expected_lease=lease.lease_until,
+)
 queue.close()
 """
     thread = threading.Thread(target=old_attempt)
@@ -633,7 +651,8 @@ queue.close()
         thread.join(3)
         stdout, stderr = process.communicate(timeout=3)
         assert process.returncode == 0, stdout + stderr
-        assert not thread.is_alive() and not errors
+        assert not thread.is_alive()
+        assert not errors
         assert json.loads(
             (directory / "publication.status.json").read_text()
         ) == queue.receipt(lease.publication_id)
