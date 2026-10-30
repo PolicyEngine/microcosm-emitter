@@ -63,7 +63,9 @@ class OrreryModule:
         ``GraphPublicationQueue.enqueue`` hashes the files again and raises
         ``ValueError`` if they differ from the inventory.
         """
-        assert self.queue is not None, "The host initializes modules first."
+        if self.queue is None:
+            error_message = "The host initializes modules first."
+            raise AssertionError(error_message)
         # enqueue() recomputes the inventory from the files and rejects any
         # message whose inventory differs, so this boundary is validated.
         inventory = cast("PublicationInventory", dict(message["inventory"]))
@@ -71,7 +73,9 @@ class OrreryModule:
 
     def query(self, message: JsonObject) -> dict:
         """Construct/persist results before the host returns its JSON response."""
-        assert self.queue is not None, "The host initializes modules first."
+        if self.queue is None:
+            error_message = "The host initializes modules first."
+            raise AssertionError(error_message)
         command = message.get("command")
         if command == "inventory":
             return {
@@ -99,15 +103,19 @@ class OrreryModule:
         An exception from the attempt is not raised, since the host stops a
         module whose ``tick`` raises. ``now`` is not used.
         """
-        assert self.delivery is not None, "The host initializes modules first."
+        if self.delivery is None:
+            error_message = "The host initializes modules first."
+            raise AssertionError(error_message)
         try:
             self.delivery.flush_once()
-        except Exception:
-            # The host stops a module whose tick raises. A database or
-            # filesystem error leaves the job leased for a later retry; it
-            # must not end delivery of every other job.
+        # The host stops a module whose tick raises. A database or
+        # filesystem error leaves the job leased for a later retry; it
+        # must not end delivery of every other job.
+        except Exception:  # noqa: BLE001
             if not self._warned:
-                print(GRAPH_WORKER_ERROR_MESSAGE, file=sys.stderr, flush=True)
+                # A message on standard error, on purpose. Unlike sys.stderr.write,
+                # print does not raise when sys.stderr is None.
+                print(GRAPH_WORKER_ERROR_MESSAGE, file=sys.stderr, flush=True)  # noqa: T201
                 self._warned = True
 
     def parent_exited(self) -> None:

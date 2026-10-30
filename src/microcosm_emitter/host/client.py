@@ -162,7 +162,9 @@ class ModuleClient:
         if self.client.closed:
             error_message = "client is closed"
             raise LocalServiceError(error_message)
-        self.client._request(
+        # ModuleClient, defined beside SocketClient in this file, sends through
+        # SocketClient's private request method with its module's name.
+        self.client._request(  # noqa: SLF001
             {"action": "message", "module": self.name, "message": message}
         )
 

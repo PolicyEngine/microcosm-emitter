@@ -143,7 +143,9 @@ def publication_id_of(inventory: object) -> str | None:
     """Return the inventory's ``publication_id``, or None if it has no string one."""
     try:
         value = inventory["publication_id"]
-    except Exception:
+    # No call raises into the build: an inventory that cannot be indexed this
+    # way, whatever it raises, has no publication ID.
+    except Exception:  # noqa: BLE001
         return None
     return value if isinstance(value, str) else None
 

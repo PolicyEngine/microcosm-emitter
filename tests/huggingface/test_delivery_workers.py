@@ -89,7 +89,8 @@ def running_module(tmp_path):
     def run_runtime():
         try:
             runtime.run()
-        except BaseException as error:
+        # Keeps any exception this thread's call raises, for the test to check.
+        except BaseException as error:  # noqa: BLE001
             runtime_errors.append(error)
 
     runtime_thread = threading.Thread(target=run_runtime, daemon=True)
@@ -122,7 +123,8 @@ def running_module(tmp_path):
 def _answers_ping(transport) -> bool:
     try:
         transport.ping()
-    except Exception:
+    # Any failure to answer means not ready yet, and the caller asks again.
+    except Exception:  # noqa: BLE001
         return False
     return True
 

@@ -190,7 +190,9 @@ class FakeHuggingFaceApi:
         added: dict[str, bytes] | None = None,
     ) -> str:
         self._sequence += 1
-        oid = hashlib.sha1(f"{repository}:{self._sequence}".encode()).hexdigest()
+        oid = hashlib.sha1(
+            f"{repository}:{self._sequence}".encode(), usedforsecurity=False
+        ).hexdigest()
         date = None if self.commit_clock is None else self.commit_clock()
         self.repositories[repository].commits.append(
             FakeCommit(oid, parent, message, files, dict(added or {}), date)

@@ -92,7 +92,8 @@ def test_one_worker_failure_does_not_stop_another_module(tmp_path):
         def run():
             try:
                 runtime.run()
-            except Exception as error:
+            # Keeps any exception this thread's call raises, for the test to check.
+            except Exception as error:  # noqa: BLE001
                 errors.append(error)
 
         thread = threading.Thread(target=run)
@@ -175,7 +176,8 @@ def test_bounded_module_queue_preserves_order_and_other_module_control(monkeypat
         def serve():
             try:
                 runtime.run()
-            except Exception as error:
+            # Keeps any exception this thread's call raises, for the test to check.
+            except Exception as error:  # noqa: BLE001
                 errors.append(error)
 
         thread = threading.Thread(target=serve)
@@ -260,7 +262,8 @@ def test_parent_exit_waits_for_active_requests_before_lifecycle_callbacks():
         def serve():
             try:
                 runtime.run()
-            except Exception as error:
+            # Keeps any exception this thread's call raises, for the test to check.
+            except Exception as error:  # noqa: BLE001
                 errors.append(error)
 
         thread = threading.Thread(target=serve)
@@ -317,7 +320,8 @@ def test_shutdown_timeout_does_not_close_an_active_callback():
         def serve():
             try:
                 runtime.run()
-            except Exception as error:
+            # Keeps any exception this thread's call raises, for the test to check.
+            except Exception as error:  # noqa: BLE001
                 errors.append(error)
 
         thread = threading.Thread(target=serve)

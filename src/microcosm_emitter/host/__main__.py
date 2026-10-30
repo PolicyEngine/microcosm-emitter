@@ -100,7 +100,9 @@ def main(
             is_parent_alive=parent.alive,
             description=hello_response,
         ).run()
-    except Exception as error:
+    # Any failure exits 1 with only safe_startup_error's fixed reason, never the
+    # exception's details.
+    except Exception as error:  # noqa: BLE001
         # Never include configuration or module exception payloads in stderr.
         print(str(safe_startup_error(error)), file=sys.stderr)
         return 1

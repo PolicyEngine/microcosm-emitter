@@ -263,7 +263,9 @@ def unavailable_bundle_receipt(request: StageDatasetBundle) -> DatasetBundleRece
     """
     try:
         handover_id = request.handover_id()
-    except Exception:
+    # No call raises into the build: a request whose files cannot be converted
+    # gets an empty handover_id.
+    except Exception:  # noqa: BLE001
         handover_id = ""
     return {
         "handover_id": handover_id,

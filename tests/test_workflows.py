@@ -20,9 +20,11 @@ def workflow_paths():
 
 
 def workflow(name):
-    # BaseLoader keeps YAML's 'on' key a string, matching GitHub's parser.
+    # BaseLoader keeps YAML's 'on' key a string, matching GitHub's parser, and
+    # builds only strings, lists and mappings.
     return yaml.load(
-        (ROOT / ".github/workflows" / name).read_text(), Loader=yaml.BaseLoader
+        (ROOT / ".github/workflows" / name).read_text(),
+        Loader=yaml.BaseLoader,  # noqa: S506
     )
 
 

@@ -74,7 +74,9 @@ def sanitize_json(value: object, *, depth: int = 0) -> JsonValue:
 def sanitize_details(value: Mapping[str, Any]) -> dict[str, Any]:
     """Return a redacted details object within the wire-size limit."""
     sanitized = sanitize_json(value)
-    assert isinstance(sanitized, dict)
+    # An assert, since an explicit isinstance check would have to raise
+    # TypeError (TRY004) instead of AssertionError.
+    assert isinstance(sanitized, dict)  # noqa: S101
     if (
         len(json.dumps(sanitized, separators=(",", ":")).encode())
         <= MAX_TELEMETRY_DETAILS_BYTES
