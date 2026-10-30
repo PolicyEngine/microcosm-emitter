@@ -1,5 +1,7 @@
 """The emitter's Hugging Face repository calls, ported from Microcosm's storage."""
 
+from pathlib import Path
+
 import pytest
 from fake_hugging_face import (
     EntryNotFoundError,
@@ -211,9 +213,9 @@ def test_uploads_use_the_build_credential_found_in_the_core_auth_order(
     for name, value in variables.items():
         monkeypatch.setenv(name, value)
     if saved_login is not None:
-        token_path = os.environ["HF_TOKEN_PATH"]
-        os.makedirs(os.path.dirname(token_path), exist_ok=True)
-        with open(token_path, "w") as token_file:
+        token_path = Path(os.environ["HF_TOKEN_PATH"])
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        with token_path.open("w") as token_file:
             token_file.write(saved_login)
     api = hugging_face_api()
     if expected_token is None:

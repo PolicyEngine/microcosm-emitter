@@ -308,7 +308,8 @@ def test_startup_diagnostic_omits_all_exception_names_and_payloads(custom):
     )
     failure = safe_startup_error(error_class("Bearer hf_synthetic_private_payload"))
     assert str(failure) == "Service startup failed (startup_failure)."
-    assert failure.reason == "startup_failure" and failure.exit_code is None
+    assert failure.reason == "startup_failure"
+    assert failure.exit_code is None
     assert not hasattr(failure, "error_type")
     assert failure.__cause__ is failure.__context__ is failure.__traceback__ is None
 
@@ -322,15 +323,13 @@ def test_startup_diagnostic_clones_only_reason_and_exit_code():
             "Bearer hf_synthetic_private_payload"
         )
 
-    try:
+    with pytest.raises(ServiceStartupError) as raised:
         fail_with_a_private_cause()
-    except ServiceStartupError as original:
-        failure = safe_startup_error(original)
-        assert failure is not original
-        assert (
-            str(failure)
-            == "Service exited before readiness (child_exit, exit_code=-9)."
-        )
-        assert failure.reason == "child_exit" and failure.exit_code == -9
-        assert not hasattr(failure, "error_type")
-        assert failure.__cause__ is failure.__context__ is failure.__traceback__ is None
+    original = raised.value
+    failure = safe_startup_error(original)
+    assert failure is not original
+    assert str(failure) == "Service exited before readiness (child_exit, exit_code=-9)."
+    assert failure.reason == "child_exit"
+    assert failure.exit_code == -9
+    assert not hasattr(failure, "error_type")
+    assert failure.__cause__ is failure.__context__ is failure.__traceback__ is None

@@ -33,7 +33,9 @@ class JsonObjectText(TypeDecorator[dict[str, Any]]):
     def process_bind_param(
         self,
         value: dict[str, Any] | None,
-        dialect: Dialect,
+        # SQLAlchemy's TypeDecorator calls this override with the dialect; the
+        # JSON text is the same for every dialect.
+        dialect: Dialect,  # noqa: ARG002
     ) -> str | None:
         """Serialize ``value`` as compact, key-sorted JSON text, or keep ``None``."""
         if value is None:
@@ -43,7 +45,9 @@ class JsonObjectText(TypeDecorator[dict[str, Any]]):
     def process_result_value(
         self,
         value: str | None,
-        dialect: Dialect,
+        # SQLAlchemy's TypeDecorator calls this override with the dialect; the
+        # JSON text is decoded the same way for every dialect.
+        dialect: Dialect,  # noqa: ARG002
     ) -> dict[str, Any] | None:
         """Decode the stored JSON text, or keep ``None``.
 

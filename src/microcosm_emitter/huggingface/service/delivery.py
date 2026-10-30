@@ -355,7 +355,12 @@ class HuggingFaceDelivery:
             self.queue.release_repository(repository, held.repository_lease)
 
     def _run_files_to_commit(
-        self, repository: str, run_files: bool, at_shutdown: bool
+        self,
+        repository: str,
+        # Both calls in this class pass these two flags positionally; making them
+        # keyword-only would change the method's call signature.
+        run_files: bool,  # noqa: FBT001
+        at_shutdown: bool,  # noqa: FBT001
     ) -> bool:
         return run_files and (
             at_shutdown or self.queue.run_files_due(repository, self.clock())

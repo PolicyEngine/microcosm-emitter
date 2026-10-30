@@ -645,11 +645,13 @@ class PyrightPackageTest(unittest.TestCase):
                 self.assertEqual(
                     violations,
                     [
-                        "[ex.quality.pyright-beta] baseline: package projects/beta "
-                        "moved from enforced rule ex.quality.pyright to "
-                        f"{status} rule ex.quality.pyright-beta. Fix: list "
-                        "projects/beta in an enforced Pyright rule again; "
-                        f"{PERSON_DOWNGRADE_FIX}"
+                        (
+                            "[ex.quality.pyright-beta] baseline: package projects/beta "
+                            "moved from enforced rule ex.quality.pyright to "
+                            f"{status} rule ex.quality.pyright-beta. Fix: list "
+                            "projects/beta in an enforced Pyright rule again; "
+                            f"{PERSON_DOWNGRADE_FIX}"
+                        )
                     ],
                 )
 
@@ -668,9 +670,11 @@ class PyrightPackageTest(unittest.TestCase):
             (
                 [],
                 [
-                    "package projects/beta moved from enforced rule "
-                    "ex.quality.pyright to ratcheted rule ex.quality.pyright-beta: "
-                    "a Pyright upgrade (issue #912)"
+                    (
+                        "package projects/beta moved from enforced rule "
+                        "ex.quality.pyright to ratcheted rule ex.quality.pyright-beta: "
+                        "a Pyright upgrade (issue #912)"
+                    )
                 ],
             ),
         )
@@ -695,10 +699,12 @@ class PyrightPackageTest(unittest.TestCase):
         self.assertEqual(
             violations,
             [
-                "[ex.quality.pyright] baseline: package projects/beta left enforced "
-                "rule ex.quality.pyright, and no Pyright rule lists it now. Fix: "
-                "list projects/beta in an enforced Pyright rule again, or delete "
-                "the package."
+                (
+                    "[ex.quality.pyright] baseline: package projects/beta left "
+                    "enforced rule ex.quality.pyright, and no Pyright rule lists it "
+                    "now. Fix: list projects/beta in an enforced Pyright rule again, "
+                    "or delete the package."
+                )
             ],
         )
 
@@ -741,11 +747,13 @@ class PyrightPackageTest(unittest.TestCase):
             self.compare(head_rules),
             (
                 [
-                    "[ex.quality.pyright-beta] baseline: package projects/beta "
-                    "moved from ratcheted rule ex.quality.pyright to advisory rule "
-                    "ex.quality.pyright-beta. Fix: list projects/beta in an "
-                    "enforced or ratcheted Pyright rule again; "
-                    f"{PERSON_DOWNGRADE_FIX}"
+                    (
+                        "[ex.quality.pyright-beta] baseline: package projects/beta "
+                        "moved from ratcheted rule ex.quality.pyright to advisory rule "
+                        "ex.quality.pyright-beta. Fix: list projects/beta in an "
+                        "enforced or ratcheted Pyright rule again; "
+                        f"{PERSON_DOWNGRADE_FIX}"
+                    )
                 ],
                 [],
             ),
@@ -777,10 +785,12 @@ class PyrightPackageTest(unittest.TestCase):
         self.assertEqual(
             violations,
             [
-                "[ex.quality.pyright] baseline: package projects/beta left ratcheted "
-                "rule ex.quality.pyright, and no Pyright rule lists it now. Fix: "
-                "list projects/beta in an enforced or ratcheted Pyright rule again, "
-                "or delete the package."
+                (
+                    "[ex.quality.pyright] baseline: package projects/beta left "
+                    "ratcheted rule ex.quality.pyright, and no Pyright rule lists it "
+                    "now. Fix: list projects/beta in an enforced or ratcheted Pyright "
+                    "rule again, or delete the package."
+                )
             ],
         )
 
@@ -1137,10 +1147,12 @@ class BaselineTest(unittest.TestCase):
         self.assertEqual(
             [str(violation) for violation in violations],
             [
-                "[ex.layers.ratcheted] baseline: status weakened from enforced to "
-                'ratcheted. Fix: restore status = "enforced"; only a person may '
-                'weaken a rule, by adding [rule.downgrade] with reason = "..." and '
-                "issue = <number of the open issue that tracks restoring the rule>."
+                (
+                    "[ex.layers.ratcheted] baseline: status weakened from enforced to "
+                    'ratcheted. Fix: restore status = "enforced"; only a person may '
+                    'weaken a rule, by adding [rule.downgrade] with reason = "..." and '
+                    "issue = <number of the open issue that tracks restoring the rule>."
+                )
             ],
         )
         with_reason = self.registry(
@@ -1161,11 +1173,13 @@ class BaselineTest(unittest.TestCase):
         self.assertEqual(
             [str(violation) for violation in violations],
             [
-                "[ex.layers.ratcheted] baseline: new rule starts ratcheted with 2 "
-                "tolerated violations. Fix: fix them and make the rule enforced; "
-                "only a person may weaken a rule, by adding [rule.downgrade] with "
-                'reason = "..." and issue = <number of the open issue that tracks '
-                "restoring the rule>."
+                (
+                    "[ex.layers.ratcheted] baseline: new rule starts ratcheted with 2 "
+                    "tolerated violations. Fix: fix them and make the rule enforced; "
+                    "only a person may weaken a rule, by adding [rule.downgrade] with "
+                    'reason = "..." and issue = <number of the open issue that tracks '
+                    "restoring the rule>."
+                )
             ],
         )
         self.assertEqual(notes, ["rule ex.layers.ratcheted is new"])
@@ -1187,8 +1201,10 @@ class BaselineTest(unittest.TestCase):
             notes,
             [
                 "rule ex.layers.ratcheted is new",
-                "rule ex.layers.ratcheted starts ratcheted with 2 tolerated "
-                "violations: a new checker (issue #912)",
+                (
+                    "rule ex.layers.ratcheted starts ratcheted with 2 tolerated "
+                    "violations: a new checker (issue #912)"
+                ),
             ],
         )
 

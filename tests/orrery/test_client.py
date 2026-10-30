@@ -41,7 +41,8 @@ def test_public_client_enqueues_through_graph_only_service_without_run(tmp_path)
             {"graph.orrery.json": "graph"},
             publication_id="independent-graph",
         )
-        assert inventory is not None and "run_id" not in inventory
+        assert inventory is not None
+        assert "run_id" not in inventory
         receipt = publish_graph(directory, inventory, client=client, wait_seconds=0)
         assert receipt["status"] == "pending"
         assert receipt["publication_id"] == "independent-graph"
@@ -341,7 +342,8 @@ def test_graph_file_work_does_not_block_telemetry_or_control(
             release.set()
             graph_thread.join(3)
             thread.join(3)
-            assert not thread.is_alive() and not graph_thread.is_alive()
+            assert not thread.is_alive()
+            assert not graph_thread.is_alive()
             assert results[0] is not None
             if command == "enqueue":
                 assert results[0]["status"] == "pending"

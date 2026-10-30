@@ -111,42 +111,66 @@ class RuleTableTest(unittest.TestCase):
             [str(violation) for violation in self.violations],
             [
                 "[registry] schema: rule #1 must be a table. Fix: write [[rule]].",
-                "[ex.layers.malformed] schema: unknown key 'bogus' in "
-                "ex.layers.malformed. Fix: remove it or use one of "
-                f"{KNOWN_RULE_KEYS}.",
+                (
+                    "[ex.layers.malformed] schema: unknown key 'bogus' in "
+                    "ex.layers.malformed. Fix: remove it or use one of "
+                    f"{KNOWN_RULE_KEYS}."
+                ),
                 f"{MALFORMED}.enforcer must be a table. Fix: add [rule.enforcer].",
                 f"{MALFORMED}.ci entries must be tables. Fix: write [[rule.ci]].",
-                "[ex.layers.malformed] schema: unknown key 'extra' in "
-                "ex.layers.malformed.ci. Fix: remove it or use one of "
-                "['invocation', 'job', 'workflow'].",
+                (
+                    "[ex.layers.malformed] schema: unknown key 'extra' in "
+                    "ex.layers.malformed.ci. Fix: remove it or use one of "
+                    "['invocation', 'job', 'workflow']."
+                ),
                 f"{MALFORMED}.ci.job must be a non-empty string. Fix: set job.",
                 f"{MALFORMED}.proof must be a table. Fix: write [rule.proof].",
-                f"{MALFORMED}.baseline needs 'file' and an integer 'count'. "
-                "Fix: write [rule.baseline] with file and count.",
-                f"{MALFORMED}.exception entries must be tables. "
-                "Fix: write [[rule.exception]].",
-                "[ex.layers.malformed] schema: unknown key 'extra' in "
-                "ex.layers.malformed.exception. Fix: remove it or use one of "
-                "['category', 'expires', 'issue', 'match', 'path', 'reason', "
-                "'removal'].",
-                f"{MALFORMED}.exception.expires must be a date. "
-                "Fix: write it as YYYY-MM-DD.",
-                "[ex.layers.malformed] schema: unknown key 'why' in "
-                "ex.layers.malformed.downgrade. Fix: remove it or use one of "
-                "['issue', 'reason'].",
-                f"{MALFORMED}.downgrade.reason must be a non-empty string. "
-                "Fix: set reason.",
-                f"{MALFORMED}.downgrade.issue must be a positive issue number. "
-                f"Fix: {DOWNGRADE_ISSUE_FIX}.",
+                (
+                    f"{MALFORMED}.baseline needs 'file' and an integer 'count'. "
+                    "Fix: write [rule.baseline] with file and count."
+                ),
+                (
+                    f"{MALFORMED}.exception entries must be tables. "
+                    "Fix: write [[rule.exception]]."
+                ),
+                (
+                    "[ex.layers.malformed] schema: unknown key 'extra' in "
+                    "ex.layers.malformed.exception. Fix: remove it or use one of "
+                    "['category', 'expires', 'issue', 'match', 'path', 'reason', "
+                    "'removal']."
+                ),
+                (
+                    f"{MALFORMED}.exception.expires must be a date. "
+                    "Fix: write it as YYYY-MM-DD."
+                ),
+                (
+                    "[ex.layers.malformed] schema: unknown key 'why' in "
+                    "ex.layers.malformed.downgrade. Fix: remove it or use one of "
+                    "['issue', 'reason']."
+                ),
+                (
+                    f"{MALFORMED}.downgrade.reason must be a non-empty string. "
+                    "Fix: set reason."
+                ),
+                (
+                    f"{MALFORMED}.downgrade.issue must be a positive issue number. "
+                    f"Fix: {DOWNGRADE_ISSUE_FIX}."
+                ),
                 f"{MALFORMED}.autofix must be true or false. Fix: set autofix.",
                 f"{MALFORMED}.review_by must be a date. Fix: write it as YYYY-MM-DD.",
-                f"[registry] schema: rule #3.enforcer.kind is 'flake8'. "
-                f"Fix: use one of {KINDS}.",
-                "[registry] schema: rule #3.tier is 'unknown'. "
-                "Fix: use one of ['mechanical', 'metric', 'judgment'].",
-                "[ex.layers.single-tables] schema: unknown key 'extra' in "
-                "ex.layers.single-tables.baseline. Fix: remove it or use one of "
-                "['count', 'file'].",
+                (
+                    f"[registry] schema: rule #3.enforcer.kind is 'flake8'. "
+                    f"Fix: use one of {KINDS}."
+                ),
+                (
+                    "[registry] schema: rule #3.tier is 'unknown'. "
+                    "Fix: use one of ['mechanical', 'metric', 'judgment']."
+                ),
+                (
+                    "[ex.layers.single-tables] schema: unknown key 'extra' in "
+                    "ex.layers.single-tables.baseline. Fix: remove it or use one of "
+                    "['count', 'file']."
+                ),
             ],
         )
 
@@ -265,9 +289,11 @@ class DowngradeTest(unittest.TestCase):
                 self.assertEqual(
                     problems,
                     [
-                        "[ex.layers.single-tables] schema: ex.layers.single-tables"
-                        ".downgrade.issue must be a positive issue number. "
-                        f"Fix: {DOWNGRADE_ISSUE_FIX}."
+                        (
+                            "[ex.layers.single-tables] schema: ex.layers.single-tables"
+                            ".downgrade.issue must be a positive issue number. "
+                            f"Fix: {DOWNGRADE_ISSUE_FIX}."
+                        )
                     ],
                 )
                 assert rule is not None
@@ -279,8 +305,10 @@ class DowngradeTest(unittest.TestCase):
         self.assertEqual(
             problems,
             [
-                "[ex.layers.single-tables] schema: ex.layers.single-tables"
-                ".downgrade.reason must be a non-empty string. Fix: set reason."
+                (
+                    "[ex.layers.single-tables] schema: ex.layers.single-tables"
+                    ".downgrade.reason must be a non-empty string. Fix: set reason."
+                )
             ],
         )
         assert rule is not None
@@ -292,9 +320,11 @@ class DowngradeTest(unittest.TestCase):
         self.assertEqual(
             problems,
             [
-                "[ex.layers.single-tables] schema: ex.layers.single-tables"
-                ".downgrade must be a table. Fix: write [rule.downgrade] with "
-                'reason = "..." and issue = <number>.'
+                (
+                    "[ex.layers.single-tables] schema: ex.layers.single-tables"
+                    ".downgrade must be a table. Fix: write [rule.downgrade] with "
+                    'reason = "..." and issue = <number>.'
+                )
             ],
         )
         assert rule is not None

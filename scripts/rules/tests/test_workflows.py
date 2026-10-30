@@ -162,8 +162,10 @@ class MatrixTest(unittest.TestCase):
                 self.assertEqual(
                     problems,
                     [
-                        f"job 'test': a matrix {key} written inline is not "
-                        "supported; write it as a block list"
+                        (
+                            f"job 'test': a matrix {key} written inline is not "
+                            "supported; write it as a block list"
+                        )
                     ],
                 )
                 self.assertNotIn(key, jobs["test"].matrix)

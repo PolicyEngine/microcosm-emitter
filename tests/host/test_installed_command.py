@@ -1,5 +1,6 @@
 """The installed `microcosm-emitter` command runs the host as its caller's child."""
 
+import contextlib
 import json
 import os
 import shutil
@@ -129,10 +130,8 @@ def runtime_directory(runtime_directories):
 
 
 def stop(process: subprocess.Popen, socket_path: Path) -> int:
-    try:
+    with contextlib.suppress(OSError):
         socket_request(socket_path, {"action": "close"})
-    except OSError:
-        pass
     try:
         return process.wait(timeout=20)
     finally:

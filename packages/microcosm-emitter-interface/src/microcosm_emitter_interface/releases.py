@@ -259,7 +259,7 @@ def add_build(
     if build in entry.builds:
         refusal_code = "BUILD_ALREADY_LISTED"
         raise _refuse(refusal_code, f"Build {build} of {release} is listed.")
-    builds = {**entry.builds, build: BuildEntry(published_at, False)}
+    builds = {**entry.builds, build: BuildEntry(published_at, withdrawn=False)}
     updated = replace(
         entry, builds=builds, current=build if make_current else entry.current
     )
@@ -461,7 +461,6 @@ def check_commit(
       until the old pointer files are deleted, they and the record could
       disagree.
     """
-    violations = []
     existing_folders = {
         folder
         for folder in (_build_folder_of(path) for path in before_files)
@@ -473,19 +472,19 @@ def check_commit(
             for release, entry in before.releases.items()
             for build in entry.builds
         }
-    for path in sorted({*added_paths, *deleted_paths}):
-        if _build_folder_of(path) in existing_folders:
-            violations.append(
-                Violation(
-                    "EXISTING_BUILD_FOLDER_CHANGED",
-                    f"{path} is inside an existing build folder.",
-                )
-            )
-    for path in sorted(added_paths):
-        if is_pointer_file(path):
-            violations.append(
-                Violation("POINTER_FILE_WRITE", f"{path} is a pointer file.")
-            )
+    violations = [
+        Violation(
+            "EXISTING_BUILD_FOLDER_CHANGED",
+            f"{path} is inside an existing build folder.",
+        )
+        for path in sorted({*added_paths, *deleted_paths})
+        if _build_folder_of(path) in existing_folders
+    ]
+    violations.extend(
+        Violation("POINTER_FILE_WRITE", f"{path} is a pointer file.")
+        for path in sorted(added_paths)
+        if is_pointer_file(path)
+    )
     before_current = _current_builds(before)
     changed_current = any(
         before_current.get(release) != current

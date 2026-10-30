@@ -2,12 +2,14 @@
 
 import hashlib
 import json
+import re
 from pathlib import Path
 
 import pytest
 from fake_hugging_face import PRIVATE_REPOSITORY
 
 from microcosm_emitter_interface.client import EmitterClient
+from microcosm_emitter_interface.identifiers import ROLE_IDENTIFIER, SAFE_IDENTIFIER
 from microcosm_emitter_interface.publication import (
     PromoteBuild,
     PublishRelease,
@@ -59,39 +61,59 @@ def publication(directory: Path, **changes) -> PublishRelease:
     return PublishRelease(**arguments)
 
 
+MANIFEST_REQUIRED = (
+    "A build has one release_manifest.json with the role release_manifest."
+)
+
+
 @pytest.mark.parametrize(
-    "changes",
+    ("changes", "message"),
     [
-        lambda files: {"files": files[1:]},
-        lambda files: {
-            "files": (
-                ReleaseFile(
-                    name="release_manifest.json",
-                    role="dataset",
-                    local_path=files[0].local_path,
-                    sha256=files[0].sha256,
-                    bytes=files[0].bytes,
-                ),
-                files[1],
-            )
-        },
-        lambda files: {
-            "files": files
-            + (
-                ReleaseFile(
-                    name="latest-national.json",
-                    role="pointer",
-                    local_path=files[0].local_path,
-                    sha256=files[0].sha256,
-                    bytes=files[0].bytes,
-                ),
-            )
-        },
-        lambda files: {"files": files + (files[1],)},
-        lambda files: {"release": "../escape"},
-        lambda files: {"build": "two/parts"},
-        lambda files: {"release_role": "National Default"},
-        lambda files: {"make_current": "yes"},
+        (lambda files: {"files": files[1:]}, MANIFEST_REQUIRED),
+        (
+            lambda files: {
+                "files": (
+                    ReleaseFile(
+                        name="release_manifest.json",
+                        role="dataset",
+                        local_path=files[0].local_path,
+                        sha256=files[0].sha256,
+                        bytes=files[0].bytes,
+                    ),
+                    files[1],
+                )
+            },
+            MANIFEST_REQUIRED,
+        ),
+        (
+            lambda files: {
+                "files": (
+                    *files,
+                    ReleaseFile(
+                        name="latest-national.json",
+                        role="pointer",
+                        local_path=files[0].local_path,
+                        sha256=files[0].sha256,
+                        bytes=files[0].bytes,
+                    ),
+                )
+            },
+            "A release file may not be a latest*.json pointer.",
+        ),
+        (lambda files: {"files": (*files, files[1])}, "A build names each file once."),
+        (
+            lambda files: {"release": "../escape"},
+            f"release must match {SAFE_IDENTIFIER.pattern}.",
+        ),
+        (
+            lambda files: {"build": "two/parts"},
+            f"build must match {SAFE_IDENTIFIER.pattern}.",
+        ),
+        (
+            lambda files: {"release_role": "National Default"},
+            f"release_role must match {ROLE_IDENTIFIER.pattern}.",
+        ),
+        (lambda files: {"make_current": "yes"}, "make_current must be a boolean."),
     ],
     ids=[
         "no-manifest",
@@ -104,8 +126,8 @@ def publication(directory: Path, **changes) -> PublishRelease:
         "make-current",
     ],
 )
-def test_publications_that_break_the_rules_cannot_be_built(tmp_path, changes):
-    with pytest.raises(ValueError):
+def test_publications_that_break_the_rules_cannot_be_built(tmp_path, changes, message):
+    with pytest.raises(ValueError, match=re.escape(message)):
         publication(tmp_path, **changes(build_files(tmp_path)))
 
 
@@ -218,7 +240,9 @@ def test_publications_carry_a_request_id(tmp_path):
 
 @pytest.mark.parametrize("request_id", ["", "../escape", "two words", 7])
 def test_a_request_id_must_be_a_safe_identifier(request_id):
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match=re.escape(f"request_id must match {SAFE_IDENTIFIER.pattern}.")
+    ):
         PromoteBuild(
             repository=PRIVATE_REPOSITORY,
             release=RELEASE,

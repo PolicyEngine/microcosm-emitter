@@ -1,7 +1,6 @@
 """Host explicitly selected modules with independent periodic workers."""
 
 import json
-import os
 import socket
 import threading
 import time
@@ -122,7 +121,7 @@ class ServiceRuntime:
                 # existing socket which might belong to another running host.
                 server.bind(str(self.socket_path))
                 bound = True
-                os.chmod(self.socket_path, 0o600)
+                self.socket_path.chmod(0o600)
                 server.listen(16)
                 server.settimeout(SOCKET_TIMEOUT)
                 self._requests = ModuleRequestDispatcher(

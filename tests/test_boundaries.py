@@ -189,9 +189,9 @@ def test_hand_over_codes_and_limits_are_defined_once():
         for name in module_level_names(path):
             if name in shared:
                 defined_in[name].append(path.relative_to(ROOT))
-    assert {name: len(places) for name, places in defined_in.items()} == {
-        name: 1 for name in shared
-    }, defined_in
+    assert {name: len(places) for name, places in defined_in.items()} == dict.fromkeys(
+        shared, 1
+    ), defined_in
 
 
 def test_the_credential_lookup_is_public():
