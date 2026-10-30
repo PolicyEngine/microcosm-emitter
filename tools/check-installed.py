@@ -28,7 +28,7 @@ UNPUBLISHED_PATHS = (
 )
 
 
-def run(*arguments, **kwargs):
+def run(*arguments: str, **kwargs: Path | dict[str, str]) -> None:
     """Run ``arguments`` as a command, raising ``CalledProcessError`` if it fails."""
     subprocess.run(arguments, check=True, **kwargs)
 
@@ -65,7 +65,7 @@ def create_environment(directory: Path, *wheels: Path) -> Path:
     return interpreter
 
 
-def main():
+def main() -> None:
     """Check the built archives and run the installed checks in clean environments.
 
     ``dist`` must hold one wheel and one source archive for each distribution, and

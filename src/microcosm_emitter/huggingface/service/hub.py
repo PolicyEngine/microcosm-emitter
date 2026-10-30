@@ -12,9 +12,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from microcosm_emitter.core.auth import huggingface_token
+
+if TYPE_CHECKING:
+    from huggingface_hub import CommitOperationAdd, HfApi
+    from huggingface_hub.hf_api import LastCommitInfo
 
 #: HTTP statuses the Hub returns when ``parent_commit`` is no longer the head.
 PARENT_CONFLICT_STATUSES = frozenset({409, 412})
@@ -38,14 +42,14 @@ _MISSING_FILE_ERROR_NAMES = frozenset(
 _NO_ANSWER_ERROR_NAME = "LocalEntryNotFoundError"
 
 
-def _field(value: Any, name: str) -> Any:
+def _field(value: object, name: str) -> object:
     """``name`` of a Hub answer, which may be a mapping or an object."""
     if isinstance(value, Mapping):
         return value.get(name)
     return getattr(value, name, None)
 
 
-def _seconds_since_epoch(value: Any) -> float | None:
+def _seconds_since_epoch(value: object) -> float | None:
     """Convert a date the Hub reported to seconds; ``None`` if it is not a date.
 
     A string must be in ISO 8601 format, and a date without a time zone is read
@@ -61,7 +65,7 @@ def _seconds_since_epoch(value: Any) -> float | None:
     return (value if value.tzinfo else value.replace(tzinfo=UTC)).timestamp()
 
 
-def hugging_face_api() -> Any | None:
+def hugging_face_api() -> HfApi | None:
     """Return an ``HfApi`` with the build's credential, or ``None`` without one.
 
     The credential is ``HF_TOKEN``, then ``HUGGINGFACE_TOKEN``, then the token
@@ -76,7 +80,7 @@ def hugging_face_api() -> Any | None:
     return HfApi(token=token)
 
 
-def add_operation(path_in_repo: str, content: bytes | Path) -> Any:
+def add_operation(path_in_repo: str, content: bytes | Path) -> CommitOperationAdd:
     """One file write in a commit, from bytes or a preserved local file."""
     from huggingface_hub import CommitOperationAdd
 
@@ -115,7 +119,7 @@ def is_absent(error: BaseException) -> bool:
 class DatasetRepository:
     """Read and write files in one Hugging Face dataset repository."""
 
-    def __init__(self, repo_id: str, api: Any) -> None:
+    def __init__(self, repo_id: str, api: HfApi) -> None:
         """Hold the repository ID, stripped, and the ``HfApi``-shaped client ``api``.
 
         A ``repo_id`` that is not a string, or is blank, raises ``ValueError``.
@@ -230,10 +234,12 @@ class DatasetRepository:
 
     def _last_commit_field(
         self, path_in_repo: str, name: str, *, revision: str | None
-    ) -> Any:
+    ) -> object:
         return _field(self._last_commit_info(path_in_repo, revision=revision), name)
 
-    def _last_commit_info(self, path_in_repo: str, *, revision: str | None) -> Any:
+    def _last_commit_info(
+        self, path_in_repo: str, *, revision: str | None
+    ) -> LastCommitInfo | None:
         entries = self.api.get_paths_info(
             repo_id=self.repo_id,
             paths=[path_in_repo],
@@ -244,7 +250,7 @@ class DatasetRepository:
         for entry in entries or []:
             commit = _field(entry, "last_commit")
             if commit:
-                return commit
+                return cast("LastCommitInfo", commit)
         return None
 
     def _access_token(self) -> Mapping[str, Any] | None:

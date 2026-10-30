@@ -71,7 +71,7 @@ class ServiceRuntime:
         tick_seconds: float = TICK_SECONDS,
         drain_seconds: float = DRAIN_SECONDS,
         description: Mapping[str, Any] | None = None,
-    ):
+    ) -> None:
         """Hold the socket path, the modules and the timing settings.
 
         Pass either one ``module``, served as ``default``, or a non-empty

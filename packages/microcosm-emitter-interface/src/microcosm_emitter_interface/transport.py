@@ -95,12 +95,14 @@ class SocketTransport:
         except (OSError, ValueError, TypeError) as error:
             raise LocalEmitterError(type(error).__name__) from error
 
-    def _acknowledged(self, payload: Mapping[str, Any], **limits: Any) -> None:
+    def _acknowledged(self, payload: Mapping[str, Any], **limits: float | None) -> None:
         if self._exchange(payload, **limits) != ACK_OK:
             error_message = "emitter refused the request"
             raise LocalEmitterError(error_message)
 
-    def _answered(self, payload: Mapping[str, Any], **limits: Any) -> dict[str, Any]:
+    def _answered(
+        self, payload: Mapping[str, Any], **limits: float | None
+    ) -> dict[str, Any]:
         response = self._exchange(payload, **limits)
         try:
             result = json.loads(response.removesuffix(DELIMITER))
