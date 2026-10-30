@@ -46,7 +46,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import socket
 import socketserver
 import ssl
@@ -262,8 +261,8 @@ class FakeCollector:
             self._socket_directory = tempfile.mkdtemp(
                 prefix="fake-storage-", dir="/tmp"
             )
-            # A str, not a Path: httpx's uds option takes the socket path as a str.
-            self.upload_socket_path = os.path.join(self._socket_directory, "tls.sock")  # noqa: PTH118
+            # A str: httpx's uds option takes the socket path as a str.
+            self.upload_socket_path = str(Path(self._socket_directory) / "tls.sock")
             self._servers.append(UnixTlsServer(self.upload_socket_path, Handler))
             self.upload_origin = "https://127.0.0.1"
             self.client_tls_context = anonymous_tls_context(ssl.PROTOCOL_TLS_CLIENT)

@@ -92,10 +92,8 @@ class CollectorDelivery:
         self.spool = spool
         self.session = session or CollectorSession(
             self.collector_url,
-            # Each lambda looks up its function in this module when called, so
-            # a replacement set on the module later (as tests do) takes effect.
-            post=lambda *args: _http_post(*args),  # noqa: PLW0108
-            credential=lambda: huggingface_token(),  # noqa: PLW0108
+            post=_http_post,
+            credential=huggingface_token,
         )
         self._registered: set[str] = set()
         self._warned_no_token = False
