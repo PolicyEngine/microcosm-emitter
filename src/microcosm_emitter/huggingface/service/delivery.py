@@ -11,6 +11,7 @@ into the build.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 import threading
 import time
@@ -173,12 +174,10 @@ class HeldLeases:
         while not self._stopped.wait(self.renewal_seconds):
             if self.stop_requested():
                 return
-            try:
+            # A failed renewal leaves the lease to expire; the delivery's
+            # own result is recorded only if it still holds the lease.
+            with contextlib.suppress(Exception):
                 self.renew()
-            except Exception:
-                # A failed renewal leaves the lease to expire; the delivery's
-                # own result is recorded only if it still holds the lease.
-                pass
 
     def stop(self) -> None:
         """Stop renewing and wait for the renewal thread to finish."""
@@ -216,7 +215,9 @@ class HuggingFaceDelivery:
             if key in self._warned:
                 return
             self._warned.add(key)
-        print(message, file=sys.stderr, flush=True)
+        # A message on standard error, on purpose. Unlike sys.stderr.write, print
+        # does not raise when sys.stderr is None.
+        print(message, file=sys.stderr, flush=True)  # noqa: T201
 
     def run_cycle(self) -> int:
         """Every kind of work, on the calling thread; return how many commits.
@@ -415,7 +416,9 @@ class HuggingFaceDelivery:
 
     def _deliver_job(self, hub: DatasetRepository, held: HeldLeases) -> bool:
         job = held.job
-        assert job is not None, "The job is claimed before delivery."
+        if job is None:
+            error_message = "The job is claimed before delivery."
+            raise AssertionError(error_message)
         current = None
         if job.kind == RELEASE_CHANGE:
             outcome = self._release_outcome(hub, job)
@@ -430,7 +433,8 @@ class HuggingFaceDelivery:
                 UPLOAD_FAILED_MESSAGE.format(error_type=outcome.error_code),
             )
         held.stop()
-        assert held.job is not None
+        if held.job is None:
+            raise AssertionError
         self._finish_job(
             held.job,
             status=outcome.status,
@@ -496,7 +500,8 @@ class HuggingFaceDelivery:
         if job is not None:
             held.hold_job(job)
             held.stop()
-            assert held.job is not None
+            if held.job is None:
+                raise AssertionError
             expired = (
                 expired_change(job.created_at, self.clock())
                 if job.kind == RELEASE_CHANGE
@@ -542,7 +547,9 @@ class HuggingFaceDelivery:
                 index_entries,
                 updated_at=iso_timestamp(self.clock()),
             )
-        except Exception as error:
+        # Nothing here raises into the build: a failed commit keeps the run
+        # files queued for a later cycle.
+        except Exception as error:  # noqa: BLE001
             # Only the type name: Hub errors can carry URLs and identifiers.
             self.warn_once(
                 UPLOAD_FAILED,

@@ -84,7 +84,8 @@ UNREADABLE_LOGIN_MESSAGE: Final = (
 #: Only the error's type: its text can quote the credential, as http.client's
 #: error for a header it cannot send does.
 TELEMETRY_TOKEN_UNEXPECTED_FAILURE: Final = (
-    "No telemetry token was obtained: an unexpected {error_type} occurred. Its "
+    # A message, not a secret.
+    "No telemetry token was obtained: an unexpected {error_type} occurred. Its "  # noqa: S105
     "details are not printed, because they can contain the credential."
 )
 
@@ -241,7 +242,9 @@ def main(argv: list[str] | None = None) -> int:
     if parsed.command == "telemetry-token":
         try:
             return telemetry_token(parsed)
-        except Exception as error:
+        # Any other failure exits 7 and names only the exception's type, since
+        # its text can contain the credential.
+        except Exception as error:  # noqa: BLE001
             print(
                 TELEMETRY_TOKEN_UNEXPECTED_FAILURE.format(
                     error_type=type(error).__name__
