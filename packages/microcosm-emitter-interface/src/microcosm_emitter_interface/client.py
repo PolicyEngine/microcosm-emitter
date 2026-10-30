@@ -87,6 +87,9 @@ if TYPE_CHECKING:
 
     from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 
+# Each print in this module, marked `# noqa: T201`, writes one of its
+# messages to standard error on purpose; none is leftover debugging output.
+
 STARTUP_WARNING = (
     "Local Microcosm emitter failed to start ({reason}); the build will continue."
 )
@@ -168,8 +171,6 @@ class EmitterClient:
         # client with a fixed startup reason.
         except Exception:  # noqa: BLE001
             failure = EmitterStartupError("invalid_configuration")
-            # A message on standard error, on purpose. Unlike sys.stderr.write,
-            # print does not raise when sys.stderr is None.
             print(STARTUP_WARNING.format(reason=failure.reason), file=sys.stderr)  # noqa: T201
             return cls(startup_error=failure)
         try:
@@ -177,16 +178,12 @@ class EmitterClient:
                 modules, command=command, startup_timeout=startup_timeout
             )
         except EmitterStartupError as error:
-            # A message on standard error, on purpose. Unlike sys.stderr.write,
-            # print does not raise when sys.stderr is None.
             print(STARTUP_WARNING.format(reason=error.reason), file=sys.stderr)  # noqa: T201
             return cls(startup_error=error)
         # No call raises into the build: any failure gives an unavailable
         # client with a fixed startup reason.
         except Exception:  # noqa: BLE001
             failure = EmitterStartupError("startup_failure")
-            # A message on standard error, on purpose. Unlike sys.stderr.write,
-            # print does not raise when sys.stderr is None.
             print(STARTUP_WARNING.format(reason=failure.reason), file=sys.stderr)  # noqa: T201
             return cls(startup_error=failure)
         return cls(process)
@@ -236,8 +233,6 @@ class EmitterClient:
             if kind in self._warned:
                 return
             self._warned.add(kind)
-        # A message on standard error, on purpose. Unlike sys.stderr.write, print
-        # does not raise when sys.stderr is None.
         print(  # noqa: T201
             REQUEST_WARNING.format(kind=kind, reason=reason, error_type=error_type),
             file=sys.stderr,

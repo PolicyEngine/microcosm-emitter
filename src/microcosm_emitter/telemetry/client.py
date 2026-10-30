@@ -46,6 +46,9 @@ from microcosm_emitter_interface.telemetry import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+# Each print in this module, marked `# noqa: T201`, writes one of its
+# messages to standard error on purpose; none is leftover debugging output.
+
 # Every public name, including those re-exported from the interface package,
 # so type checkers of this py.typed package treat them as exported.
 __all__ = [
@@ -121,8 +124,6 @@ class LocalTelemetryEmitter:
         # with a fixed startup reason.
         except Exception as error:  # noqa: BLE001
             failure = safe_startup_error(error)
-            # A message on standard error, on purpose. Unlike sys.stderr.write,
-            # print does not raise when sys.stderr is None.
             print(  # noqa: T201
                 SERVICE_START_WARNING.format(error_type=str(failure)),
                 file=sys.stderr,
@@ -155,8 +156,6 @@ class LocalTelemetryEmitter:
 
     def _warn(self, error: Exception) -> None:
         if not self._warned:
-            # A message on standard error, on purpose. Unlike sys.stderr.write,
-            # print does not raise when sys.stderr is None.
             print(  # noqa: T201
                 QUEUE_WARNING.format(error_type=type(error).__name__), file=sys.stderr
             )
