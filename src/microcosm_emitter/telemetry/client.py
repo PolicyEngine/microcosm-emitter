@@ -46,7 +46,7 @@ from microcosm_emitter_interface.telemetry import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-# Each print in this module, marked `# noqa: T201`, writes one of its
+# Each print in this module that suppresses Ruff's T201 writes one of its
 # messages to standard error on purpose; none is leftover debugging output.
 
 # Every public name, including those re-exported from the interface package,
