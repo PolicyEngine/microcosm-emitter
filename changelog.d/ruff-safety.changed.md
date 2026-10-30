@@ -1,0 +1,1 @@
+Broad excepts, prints and the other kept security findings carry a `# noqa` with their reason. Invariant asserts in package code become explicit checks that raise the same `AssertionError`, so they also hold under `python -O`. The two modules that run as programs may print, and Ruff no longer ignores `BLE`, `S`, `T20` and `SLF`.
