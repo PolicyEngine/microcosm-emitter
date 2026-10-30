@@ -32,6 +32,7 @@ class JsonObjectText(TypeDecorator[dict[str, Any]]):
         value: dict[str, Any] | None,
         dialect,
     ) -> str | None:
+        """Serialize ``value`` as compact, key-sorted JSON text, or keep ``None``."""
         if value is None:
             return None
         return _serialize_json_object(value)
@@ -41,6 +42,10 @@ class JsonObjectText(TypeDecorator[dict[str, Any]]):
         value: str | None,
         dialect,
     ) -> dict[str, Any] | None:
+        """Decode the stored JSON text, or keep ``None``.
+
+        Raises ``ValueError`` when the text is not JSON or not a JSON object.
+        """
         if value is None:
             return None
         decoded = json.loads(value)
@@ -53,7 +58,6 @@ class JsonObjectText(TypeDecorator[dict[str, Any]]):
 
 def serialized_json_length(value: dict[str, Any]) -> int:
     """Return the stored character count for one mapped JSON object."""
-
     return len(_serialize_json_object(value))
 
 

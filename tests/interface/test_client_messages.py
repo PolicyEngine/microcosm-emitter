@@ -34,7 +34,7 @@ FIXTURE_PRIVATE_REPOSITORY = "policyengine/fixture-private"
 
 
 def fixture_publication(directory: Path) -> PublishRelease:
-    """The publication recorded in huggingface-publish-release.json."""
+    """Return the publication recorded in huggingface-publish-release.json."""
     fixture = fixtures_by_name()["huggingface-publish-release"]
     recorded = materialize(fixture, directory=directory, spool_path=Path("unused"))
     return PublishRelease(
@@ -64,8 +64,10 @@ def fixture_bundle(
     run_id: str = "fixture-run",
     collector: CollectorProvenance | None = None,
 ) -> StageDatasetBundle:
-    """The bundle recorded in huggingface-stage-dataset-bundle.json, or in
-    another bundle fixture."""
+    """Return the bundle recorded in the ``fixture_name`` bundle fixture.
+
+    By default, that fixture is huggingface-stage-dataset-bundle.json.
+    """
     fixture = fixtures_by_name()[fixture_name]
     recorded = materialize(fixture, directory=directory, spool_path=Path("unused"))
     return StageDatasetBundle(

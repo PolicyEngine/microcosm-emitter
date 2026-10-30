@@ -41,6 +41,12 @@ class EventSpool:
     """Small SQLite queue shared by successive emitter service processes."""
 
     def __init__(self, path: Path | str) -> None:
+        """Open the event queue file at ``path``, creating it if needed.
+
+        Its directory is created too, and only this user can read or write the
+        file or open the directory. The schema is upgraded to the latest
+        revision, and events past the retention limits are pruned.
+        """
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.parent.chmod(0o700)
@@ -68,7 +74,6 @@ class EventSpool:
 
     def register(self, registration: Mapping[str, Any]) -> None:
         """Create or refresh a producer registration."""
-
         run_id = str(registration["run_id"])
         producer_id = str(registration["producer_id"])
         with self._lock, self._session_factory.begin() as session:
@@ -112,7 +117,6 @@ class EventSpool:
         resources: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Commit all events from one request and their sequences atomically."""
-
         run_id = str(registration["run_id"])
         producer_id = str(registration["producer_id"])
         payloads = []
@@ -159,7 +163,6 @@ class EventSpool:
 
     def pending_runs(self) -> list[dict[str, Any]]:
         """Return registrations that have events eligible for delivery."""
-
         statement = (
             select(TelemetryRunRecord)
             .join(TelemetryRunRecord.events)
@@ -178,7 +181,6 @@ class EventSpool:
         reason: str,
     ) -> None:
         """Permanently exclude one producer's queued events from upload."""
-
         with self._lock, self._session_factory.begin() as session:
             run = session.get(TelemetryRunRecord, (run_id, producer_id))
             if run is None:
@@ -197,7 +199,6 @@ class EventSpool:
 
         A local-only run keeps the reason it was excluded for.
         """
-
         with self._lock, self._session_factory.begin() as session:
             run = session.get(TelemetryRunRecord, (run_id, producer_id))
             if run is None or run.upload_state != UPLOAD_STATE_PENDING:
@@ -208,7 +209,6 @@ class EventSpool:
 
     def has_deliverable(self) -> bool:
         """Return whether any queued event remains eligible for delivery."""
-
         statement = (
             select(TelemetryEventRecord)
             .join(TelemetryEventRecord.run)
@@ -225,7 +225,6 @@ class EventSpool:
         limit: int = BATCH_SIZE,
     ) -> list[dict[str, Any]]:
         """Return the next ordered batch for one producer."""
-
         statement = (
             select(TelemetryEventRecord)
             .where(
@@ -241,7 +240,6 @@ class EventSpool:
 
     def acknowledge(self, event_ids: list[str]) -> None:
         """Remove events acknowledged by the collector."""
-
         if not event_ids:
             return
         statement = select(TelemetryEventRecord).where(
@@ -253,14 +251,12 @@ class EventSpool:
 
     def has_pending(self) -> bool:
         """Return whether any event remains in local storage."""
-
         statement = select(TelemetryEventRecord).limit(1)
         with self._lock, self._session_factory() as session:
             return session.scalar(statement) is not None
 
     def prune(self) -> None:
         """Enforce the age and total-size retention limits."""
-
         cutoff = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS)).isoformat()
         with self._lock, self._session_factory.begin() as session:
             expired_events = session.scalars(

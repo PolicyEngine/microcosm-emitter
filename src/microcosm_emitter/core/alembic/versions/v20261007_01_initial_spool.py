@@ -79,7 +79,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Remove the local spool schema."""
-
     op.drop_index(_EVENTS_INDEX, table_name=_EVENTS_TABLE)
     op.drop_table(_EVENTS_TABLE)
     op.drop_table(_RUNS_TABLE)

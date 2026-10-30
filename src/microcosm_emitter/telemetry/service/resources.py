@@ -11,12 +11,12 @@ class ProcessTreeSampler:
     """Collect cumulative CPU and resident memory for a build process tree."""
 
     def __init__(self, parent_pid: int) -> None:
+        """Hold the build's process ID; the peak resident memory starts at zero."""
         self.parent_pid = parent_pid
         self._peak_rss = 0
 
     def sample(self) -> dict[str, Any]:
         """Sample the parent and every currently visible child process."""
-
         processes = []
         try:
             parent = psutil.Process(self.parent_pid)

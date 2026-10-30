@@ -117,8 +117,11 @@ class TestViolations(unittest.TestCase):
 
 
 class TestLineLimit(unittest.TestCase):
-    """Test code is under a test directory, a path from the repository root, or
-    under the rules tool's own tests; nothing else gets its limit."""
+    """Test code is under a test directory or the rules tool's own tests.
+
+    A test directory is a path from the repository root; nothing else gets the
+    test-code limit.
+    """
 
     def test_files_under_the_test_directories_are_test_code(self) -> None:
         for path in (

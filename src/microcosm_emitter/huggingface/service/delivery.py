@@ -60,7 +60,7 @@ UPLOAD_FAILED_MESSAGE = (
 
 
 def never_stop() -> bool:
-    """The stop check of a cycle that no worker runs: it is never stopped."""
+    """Return ``False``: the stop check of a cycle that no worker runs."""
     return False
 
 
@@ -91,6 +91,11 @@ class HeldLeases:
         renewal_seconds: float,
         stop_requested: Callable[[], bool] = never_stop,
     ) -> None:
+        """Record the leases to renew; ``start`` runs the renewal thread.
+
+        ``lease`` is when the repository lease ends. ``repository`` is ``None``
+        when only a job is held (see ``for_job``).
+        """
         self.queue, self.repository = queue, repository
         self.repository_lease = lease
         self.job: ClaimedJob | None = None
@@ -126,14 +131,21 @@ class HeldLeases:
         return held
 
     def start(self) -> HeldLeases:
+        """Start the renewal thread and return this object."""
         self._thread.start()
         return self
 
     def hold_job(self, job: ClaimedJob) -> None:
+        """Hold ``job``'s lease too, so that later renewals extend it."""
         with self._lock:
             self.job = job
 
     def renew(self) -> None:
+        """Extend the held leases to ``lease_seconds`` from now.
+
+        A lease that already ends later is left as it is, and so is one the
+        queue no longer matches because another writer has taken it over.
+        """
         with self._lock:
             renewed = self.clock() + self.lease_seconds
             if (
@@ -164,6 +176,7 @@ class HeldLeases:
                 pass
 
     def stop(self) -> None:
+        """Stop renewing and wait for the renewal thread to finish."""
         self._stopped.set()
         if self._thread.is_alive():
             self._thread.join()
@@ -180,6 +193,11 @@ class HuggingFaceDelivery:
         clock: Callable[[], float] = time.time,
         lease_renewal_seconds: float = LEASE_RENEWAL_SECONDS,
     ) -> None:
+        """Hold the queue, the Hub client factory and the clock.
+
+        ``api_factory`` returns a Hub client, or ``None`` when there is no
+        credential.
+        """
         self.queue = queue
         self.api_factory = api_factory
         self.clock = clock
@@ -188,6 +206,7 @@ class HuggingFaceDelivery:
         self._warning_lock = threading.Lock()
 
     def warn_once(self, key: str, message: str) -> None:
+        """Print ``message`` to standard error, once per ``key``."""
         with self._warning_lock:
             if key in self._warned:
                 return
@@ -336,8 +355,10 @@ class HuggingFaceDelivery:
         )
 
     def _claim_job(self, repository: str, kinds: frozenset[str]) -> ClaimedJob | None:
-        """The next due job of ``kinds``; within the commit spacing, only a
-        release change."""
+        """Claim the next due job of ``kinds``, or return ``None``.
+
+        Before the commit spacing has elapsed, only a release change is claimed.
+        """
         now = self.clock()
         if not self.queue.commit_spacing_elapsed(repository, now):
             kinds = kinds & UNSPACED_JOB_KINDS
@@ -437,9 +458,11 @@ class HuggingFaceDelivery:
         )
 
     def _newest_current_changes_landed(self, repository: str) -> dict[str, float]:
-        """For each release, when the newest change to its ``current`` (see
-        ``sets_current``) that this machine landed on ``repository`` was
-        handed over."""
+        """Return when each release's newest landed ``current`` change was handed over.
+
+        Only the release changes in this machine's queue for ``repository`` that
+        are ``published`` and set ``current`` (see ``sets_current``) count.
+        """
         newest_requests: dict[str, float] = {}
         for created_at, request in self.queue.requests_with_status(
             repository, kind=RELEASE_CHANGE, status="published"

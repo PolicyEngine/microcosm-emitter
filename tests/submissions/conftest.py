@@ -31,7 +31,7 @@ def collector():
 def new_module(
     tmp_path, collector, *, background_workers=False, clock=None, **configuration
 ):
-    """The module and its in-memory Hub, not yet initialized.
+    """Build the module and its in-memory Hub, not yet initialized.
 
     ``clock`` is the module's clock; by default a manual one the test moves.
     """
@@ -77,7 +77,7 @@ def start_module(tmp_path, collector, **options):
 
 @pytest.fixture
 def submitting_module(tmp_path, collector):
-    """The module with collector submissions switched on, as for development."""
+    """Start the module with collector submissions switched on, as for development."""
     controls = start_module(
         tmp_path,
         collector,
@@ -92,7 +92,7 @@ def submitting_module(tmp_path, collector):
 
 @pytest.fixture
 def default_module(tmp_path, collector):
-    """The module as production starts it: collector submissions off."""
+    """Start the module as production starts it: collector submissions off."""
     controls = start_module(tmp_path, collector)
     try:
         yield controls
@@ -102,8 +102,11 @@ def default_module(tmp_path, collector):
 
 @pytest.fixture
 def module_factory(tmp_path, collector):
-    """Build modules wired to this test's collector: ``new`` leaves the module
-    uninitialized (for a host runtime to start), ``start`` initializes it."""
+    """Build modules wired to this test's collector.
+
+    ``new`` leaves the module uninitialized (for a host runtime to start),
+    ``start`` initializes it.
+    """
     return SimpleNamespace(
         new=lambda **options: new_module(tmp_path, collector, **options),
         start=lambda **options: start_module(tmp_path, collector, **options),

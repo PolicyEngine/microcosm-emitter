@@ -79,13 +79,12 @@ def _kinds_named(request: Mapping[str, Any]) -> list[SubmissionKind]:
 
 
 def bundle_folder(request: Mapping[str, Any]) -> str:
-    """The bundle's Hugging Face folder, ``<prefix>/<run_id>``."""
+    """Return the bundle's Hugging Face folder, ``<prefix>/<run_id>``."""
     return f"{request['prefix']}/{request['run_id']}"
 
 
 def wants_collector_submission(request: Mapping[str, Any]) -> bool:
     """Whether a bundle describes its build and names files the collector takes."""
-
     return isinstance(request.get("collector"), Mapping) and bool(_kinds_named(request))
 
 
@@ -94,9 +93,10 @@ def planned_submissions(
     revision: str,
     copied: Mapping[str, bytes] | None = None,
 ) -> list[PlannedSubmission]:
-    """The submissions for a bundle committed to Hugging Face at ``revision``.
+    """Plan the submissions for a bundle committed to Hugging Face at ``revision``.
 
-    ``copied`` are the bytes copied at hand-over, by file name.
+    ``copied`` are the bytes copied at hand-over, by file name. There are no
+    submissions when the request has no ``collector`` mapping.
     """
     copied = {} if copied is None else copied
 

@@ -52,7 +52,6 @@ def alembic_config(
     history: MigrationHistory = SPOOL_HISTORY,
 ) -> Iterator[Config]:
     """Yield Alembic configuration with ``history``'s migrations on the filesystem."""
-
     migration_resources = files(__package__).joinpath(history.directory)
     with as_file(migration_resources) as migration_directory:
         config = Config()
@@ -64,7 +63,6 @@ def alembic_config(
 
 def upgrade_database(engine: Engine, history: MigrationHistory) -> None:
     """Apply every committed migration of ``history`` to an engine."""
-
     # All build processes share these databases. Serialize migration checks and
     # upgrades; SQLite transaction locks alone do not serialize schema inspection.
     path = Path(engine.url.database)
@@ -90,19 +88,16 @@ def upgrade_database(engine: Engine, history: MigrationHistory) -> None:
 
 def upgrade_spool_database(engine: Engine) -> None:
     """Apply every committed spool migration to an engine."""
-
     upgrade_database(engine, SPOOL_HISTORY)
 
 
 def upgrade_handover_database(engine: Engine) -> None:
     """Apply every committed hand-over migration to an engine."""
-
     upgrade_database(engine, HANDOVER_HISTORY)
 
 
 def current_database_revision(path: Path | str) -> str | None:
     """Return the Alembic revision recorded by one emitter database."""
-
     engine = create_spool_engine(path)
     try:
         with engine.connect() as connection:
@@ -113,6 +108,5 @@ def current_database_revision(path: Path | str) -> str | None:
 
 def migration_head_revision(history: MigrationHistory = SPOOL_HISTORY) -> str | None:
     """Return the single current head from one packaged migration history."""
-
     with alembic_config(history=history) as config:
         return ScriptDirectory.from_config(config).get_current_head()

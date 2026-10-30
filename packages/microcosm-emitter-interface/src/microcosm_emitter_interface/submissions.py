@@ -47,6 +47,11 @@ class CollectorProvenance:
     release: str | None = None
 
     def __post_init__(self) -> None:
+        """Raise ``ValueError`` if a field is invalid.
+
+        ``country_code`` must be two upper-case letters, ``build_id`` and a
+        given ``release`` safe identifiers, and ``licensed_data`` a bool.
+        """
         if not isinstance(self.country_code, str) or not _COUNTRY_CODE.fullmatch(
             self.country_code
         ):
@@ -61,6 +66,7 @@ class CollectorProvenance:
             safe_identifier(self.release, label="release")
 
     def message(self) -> dict[str, Any]:
+        """Return the ``collector`` object of a bundle hand-over request."""
         return {
             "country_code": self.country_code,
             "build_id": self.build_id,
@@ -83,8 +89,7 @@ class CollectorRejection(TypedDict):
 
 
 class CollectorSubmission(TypedDict):
-    """One submission of a bundle: ``calibration-diagnostics`` or
-    ``orrery-inputs``.
+    """One submission of a bundle: ``calibration-diagnostics`` or ``orrery-inputs``.
 
     ``status``:
 

@@ -98,6 +98,7 @@ SUBMISSION_OUTCOME_MESSAGE: Final = (
 
 
 def print_to_standard_error(message: str) -> None:
+    """Print ``message`` to standard error and flush it."""
     print(message, file=sys.stderr, flush=True)
 
 
@@ -131,11 +132,17 @@ class CollectorSubmissionDelivery:
         clock: Callable[[], float] = time.time,
         report: Callable[[str], None] = print_to_standard_error,
     ) -> None:
+        """Hold the hand-over queue, the collector client and the clock.
+
+        ``report`` receives the message about each submission that ends
+        without success; by default it prints to standard error.
+        """
         self.queue, self.client, self.clock = queue, client, clock
         self.report = report
 
     @property
     def target(self) -> str:
+        """The collector origin this delivery queues and claims rows under."""
         return self.client.origin
 
     @property
@@ -171,6 +178,7 @@ class CollectorSubmissionDelivery:
         )
 
     def receipt(self, handover_id: str) -> dict[str, Any] | None:
+        """Return the collector row's receipt for ``handover_id``, or ``None``."""
         return self.queue.job_receipt(handover_id, DESTINATION_COLLECTOR)
 
     @staticmethod
@@ -374,7 +382,7 @@ class CollectorSubmissionDelivery:
     def _result(
         self, submissions: list[dict[str, Any]], waits: list[float]
     ) -> AttemptResult:
-        """The hand-over's state from its submissions' states.
+        """Derive the hand-over's state from its submissions' states.
 
         Still sending one of them is ``pending``; then waiting for one's final
         status is ``awaiting_final_status``. Once every one is settled, the

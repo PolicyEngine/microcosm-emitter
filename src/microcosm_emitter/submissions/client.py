@@ -139,8 +139,11 @@ class StatusCheckOutcome:
 
 
 def canonical_sha256(value: Any) -> str:
-    """SHA-256 of the contract's canonical JSON: keys sorted, no whitespace,
-    non-ASCII characters escaped."""
+    """Return the hex SHA-256 digest of ``value`` in the contract's canonical JSON.
+
+    That JSON has its keys sorted, no whitespace and non-ASCII characters
+    escaped.
+    """
     encoded = json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     ).encode()
@@ -148,8 +151,11 @@ def canonical_sha256(value: Any) -> str:
 
 
 def receipt_matches(receipt: Any, submission_id: str) -> bool:
-    """Whether a receipt is final, names ``submission_id`` and carries the
-    ``receipt_sha256`` of its other fields, as the contract derives it."""
+    """Return whether a receipt is a valid final receipt for ``submission_id``.
+
+    It must be a mapping with a final ``status``, that ``submission_id``, and a
+    ``receipt_sha256`` of its other fields, as the contract derives it.
+    """
     if not isinstance(receipt, Mapping):
         return False
     digest = receipt.get("receipt_sha256")
@@ -174,7 +180,6 @@ def _json_object(response: httpx.Response) -> Mapping[str, Any] | None:
 
 def upload_url_allowed(url: str, *, allow_loopback: bool) -> bool:
     """Whether a signed URL may receive a build's files."""
-
     parsed = urlsplit(url)
     if parsed.username or parsed.password:
         return False
@@ -235,6 +240,12 @@ class CollectorSubmissionClient:
         allow_loopback_uploads: bool = False,
         clock: Callable[[], float] = time.time,
     ) -> None:
+        """Hold the collector origin, the credential callables and the HTTP client.
+
+        Without ``http``, a new ``httpx.Client`` that does not follow redirects
+        is made. ``allow_loopback_uploads`` also accepts signed upload URLs on a
+        loopback host, for a development collector.
+        """
         self.origin = origin.rstrip("/")
         self._credential = credential
         self._invalidate_credential = invalidate_credential
@@ -264,6 +275,7 @@ class CollectorSubmissionClient:
         )
 
     def close(self) -> None:
+        """Close the HTTP client."""
         self._http.close()
 
     def _token(self) -> str:
@@ -281,7 +293,7 @@ class CollectorSubmissionClient:
 
     @staticmethod
     def _error_code(response: httpx.Response) -> str | None:
-        """The ``code`` of an error body, if it has one."""
+        """Return the string ``code`` of a JSON error body, or ``None``."""
         try:
             document = response.json()
         except ValueError:
@@ -292,7 +304,7 @@ class CollectorSubmissionClient:
     def _settled_answer(
         self, response: httpx.Response, *, names_submission: bool
     ) -> SubmissionOutcome:
-        """What a non-success answer means.
+        """Return the outcome that a non-success answer means.
 
         ``names_submission`` is true for the requests about one submission
         (completion, status, receipt), where a 404 ``submission_not_found``
@@ -409,7 +421,6 @@ class CollectorSubmissionClient:
 
     def submit(self, planned: PlannedSubmission) -> SubmissionOutcome:
         """Make one attempt; safe to repeat until the outcome is final."""
-
         preserved = _preserved_files_outcome(planned)
         if preserved is not None:
             return preserved
@@ -529,7 +540,7 @@ class CollectorSubmissionClient:
     def _unanswered_check(
         self, response: httpx.Response, collector_status: str | None
     ) -> StatusCheckOutcome:
-        """What a status or receipt request answered with an error means."""
+        """Return what an error answer to a status or receipt request means."""
         answer = self._settled_answer(response, names_submission=True)
         if answer.error_code == SUBMISSION_NOT_FOUND:
             return StatusCheckOutcome("pending", SUBMISSION_NOT_FOUND)

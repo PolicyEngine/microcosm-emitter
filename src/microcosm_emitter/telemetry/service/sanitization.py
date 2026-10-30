@@ -33,13 +33,11 @@ _DETAILS_TRUNCATED_KEY: Final = "telemetry_details_truncated"
 
 def sanitize_text(value: str, *, limit: int = MAX_TELEMETRY_TEXT_CHARS) -> str:
     """Redact credential-like text and apply a character limit."""
-
     return _SECRET_TEXT.sub(_REDACTED_VALUE, value)[:limit]
 
 
 def sanitize_json(value: Any, *, depth: int = 0) -> Any:
     """Return bounded JSON-compatible telemetry without model objects."""
-
     if depth >= MAX_TELEMETRY_DETAILS_DEPTH:
         return _MAXIMUM_DEPTH_VALUE
     if isinstance(value, Mapping):
@@ -72,7 +70,6 @@ def sanitize_json(value: Any, *, depth: int = 0) -> Any:
 
 def sanitize_details(value: Mapping[str, Any]) -> dict[str, Any]:
     """Return a redacted details object within the wire-size limit."""
-
     sanitized = sanitize_json(value)
     assert isinstance(sanitized, dict)
     if (

@@ -79,7 +79,7 @@ def test_downloads_read_exact_bytes_at_a_revision(hub):
 
 
 def real_http_error(error_class, status_code):
-    """A huggingface_hub HTTP error with a response; nothing is sent."""
+    """Build a huggingface_hub HTTP error with a response; nothing is sent."""
     import httpx
 
     request = httpx.Request("GET", "https://hub.invalid/runs.json")
@@ -89,10 +89,13 @@ def real_http_error(error_class, status_code):
 
 
 def test_only_the_hub_answering_404_for_the_file_counts_as_absent():
-    """``LocalEntryNotFoundError`` subclasses ``EntryNotFoundError`` and
+    """Only the Hub answering 404 for the file counts as the file being absent.
+
+    ``LocalEntryNotFoundError`` subclasses ``EntryNotFoundError`` and
     ``FileNotFoundError``, but huggingface_hub raises it when the Hub did not
     answer: a connection error, a timeout or a 429 or 5xx response for a file
-    that is not in the local cache."""
+    that is not in the local cache.
+    """
     from huggingface_hub import errors
 
     assert is_absent(real_http_error(errors.RemoteEntryNotFoundError, 404))

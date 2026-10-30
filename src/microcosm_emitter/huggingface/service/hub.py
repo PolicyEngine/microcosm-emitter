@@ -46,7 +46,11 @@ def _field(value: Any, name: str) -> Any:
 
 
 def _seconds_since_epoch(value: Any) -> float | None:
-    """A date the Hub reported, in seconds; ``None`` if it is not a date."""
+    """Convert a date the Hub reported to seconds; ``None`` if it is not a date.
+
+    A string must be in ISO 8601 format, and a date without a time zone is read
+    as UTC.
+    """
     if isinstance(value, str):
         try:
             value = datetime.fromisoformat(value)
@@ -58,7 +62,7 @@ def _seconds_since_epoch(value: Any) -> float | None:
 
 
 def hugging_face_api() -> Any | None:
-    """An ``HfApi`` with the build's credential, or ``None`` without one.
+    """Return an ``HfApi`` with the build's credential, or ``None`` without one.
 
     The credential is ``HF_TOKEN``, then ``HUGGINGFACE_TOKEN``, then the token
     saved by ``hf auth login``: the same order telemetry uses. It is read again
@@ -83,6 +87,7 @@ def add_operation(path_in_repo: str, content: bytes | Path) -> Any:
 
 
 def status_code(error: BaseException) -> int | None:
+    """Return the HTTP status of the response an error carries, or ``None``."""
     response = getattr(error, "response", None)
     code = getattr(response, "status_code", None)
     return code if isinstance(code, int) else None
@@ -94,7 +99,7 @@ def is_parent_conflict(error: BaseException) -> bool:
 
 
 def is_absent(error: BaseException) -> bool:
-    """The Hub answered HTTP 404 because the file does not exist, nothing else.
+    """Return whether the Hub answered HTTP 404 because the file does not exist.
 
     Every other error, including a missing revision or repository and every
     error raised without the Hub's answer, means the file's state is unknown.
@@ -111,6 +116,10 @@ class DatasetRepository:
     """Read and write files in one Hugging Face dataset repository."""
 
     def __init__(self, repo_id: str, api: Any) -> None:
+        """Hold the repository ID, stripped, and the ``HfApi``-shaped client ``api``.
+
+        A ``repo_id`` that is not a string, or is blank, raises ``ValueError``.
+        """
         if not isinstance(repo_id, str) or not repo_id.strip():
             error_message = "A Hugging Face hand-over requires a repository."
             raise ValueError(error_message)
@@ -118,6 +127,10 @@ class DatasetRepository:
         self.api = api
 
     def head_revision(self) -> str:
+        """Return the ID of the newest commit on ``main``.
+
+        ``RuntimeError`` is raised when the Hub reports none.
+        """
         info = self.api.repo_info(
             repo_id=self.repo_id, repo_type="dataset", revision="main"
         )
@@ -157,6 +170,11 @@ class DatasetRepository:
         return oid.strip()
 
     def download(self, path_in_repo: str, *, revision: str | None = None) -> bytes:
+        """Download ``path_in_repo`` at ``revision`` and return its bytes.
+
+        Without a ``revision`` it reads ``main`` and bypasses the local cache, so
+        the bytes are the current ones.
+        """
         local = self.api.hf_hub_download(
             repo_id=self.repo_id,
             filename=path_in_repo,
@@ -167,6 +185,7 @@ class DatasetRepository:
         return Path(local).read_bytes()
 
     def file_exists(self, path_in_repo: str, *, revision: str | None = None) -> bool:
+        """Return whether ``path_in_repo`` exists at ``revision``, or on ``main``."""
         return bool(
             self.api.file_exists(
                 repo_id=self.repo_id,
@@ -177,6 +196,7 @@ class DatasetRepository:
         )
 
     def list_files(self, *, revision: str) -> list[str]:
+        """Return the sorted paths of every file in the repository at ``revision``."""
         return sorted(
             self.api.list_repo_files(
                 repo_id=self.repo_id, repo_type="dataset", revision=revision
@@ -184,16 +204,23 @@ class DatasetRepository:
         )
 
     def last_commit(self, path_in_repo: str) -> str | None:
-        """The commit that last changed ``path_in_repo``, when the Hub reports it."""
+        """Return the ID of the last commit to change ``path_in_repo`` on ``main``.
+
+        ``None`` when the Hub does not report one.
+        """
         oid = self._last_commit_field(path_in_repo, "oid", revision=None)
         return str(oid) if oid else None
 
     def last_commit_title_and_date(
         self, path_in_repo: str, *, revision: str | None = None
     ) -> tuple[str | None, float | None]:
-        """The commit that last changed ``path_in_repo`` at ``revision``: the
-        first line of its message, and the Hub's date for it in seconds since
-        the epoch. Each is ``None`` when the Hub does not report it."""
+        """Return the title and date of the last commit to change ``path_in_repo``.
+
+        The commit is the last one at ``revision`` (``main`` when it is
+        ``None``). The title is the first line of its message, and the date is
+        the Hub's, in seconds since the epoch. Each is ``None`` when the Hub does
+        not report it.
+        """
         commit = self._last_commit_info(path_in_repo, revision=revision)
         title = _field(commit, "title")
         return (

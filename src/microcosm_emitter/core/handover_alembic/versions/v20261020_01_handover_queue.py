@@ -14,6 +14,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Create the hand-over database's five tables."""
     op.create_table(
         "staged_run_files",
         sa.Column("repository", sa.Text(), primary_key=True),
@@ -73,6 +74,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the hand-over database's five tables, in the reverse order of creation."""
     op.drop_table("handover_files")
     op.drop_table("handover_jobs")
     op.drop_table("repository_commit_schedules")

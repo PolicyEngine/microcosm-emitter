@@ -71,6 +71,11 @@ class CollectorDelivery:
         collector_origin: str | None = None,
         session: CollectorSession | None = None,
     ) -> None:
+        """Resolve the collector origin and hold the event queue and the session.
+
+        Without ``session``, a ``CollectorSession`` for that origin is created.
+        Raises ``ValueError`` when the origin settings are refused.
+        """
         self.collector_url = resolve_collector_origin(
             development_collector_url=development_collector_url,
             collector_origin=collector_origin,
@@ -96,15 +101,15 @@ class CollectorDelivery:
 
     @property
     def waiting_for_credential(self) -> bool:
-        """Whether nothing can be delivered from this emitter, so its shutdown
-        drain ends at once: the given collector token can no longer be used,
-        or the saved Hugging Face login could not be read at the last attempt.
+        """Whether this emitter cannot deliver anything, so shutdown stops delivering.
+
+        That is so when the given collector token can no longer be used, or when
+        the saved Hugging Face login could not be read at the last attempt.
         """
         return self._given_token_unusable or bool(self._waiting_for_login)
 
     def flush_once(self) -> bool:
         """Attempt one delivery pass without waiting for retry deadlines."""
-
         if time.monotonic() < self._next_attempt_at:
             return False
         made_progress = False
@@ -190,7 +195,6 @@ class CollectorDelivery:
         the run. The login is read again after the backoff, as the exchange
         is after an outage. The warning names only the error's type, once.
         """
-
         if not self._warned_unreadable_login:
             print(
                 UNREADABLE_LOGIN_WAITING_MESSAGE.format(error_type=error_type),
@@ -205,16 +209,17 @@ class CollectorDelivery:
         self._defer_retry()
 
     def _end_wait_for_readable_login(self) -> None:
-        """Clear the reason of every run that waited for the saved login,
-        registered or not, so that the shutdown drain retries as usual."""
+        """Clear the pending reason of every run that waited for the saved login.
 
+        Runs are cleared whether they are registered or not, so that delivery
+        during shutdown retries as usual.
+        """
         for run_id, producer_id in self._waiting_for_login:
             self.spool.record_pending_reason(run_id, producer_id, None)
         self._waiting_for_login.clear()
 
     def _keep_pending(self, registration: Mapping[str, Any], reason: str) -> None:
         """Leave the run for an emitter with a credential, saying why once."""
-
         if not self._given_token_unusable:
             print(GIVEN_TOKEN_UNUSABLE_MESSAGE, file=sys.stderr, flush=True)
             self._given_token_unusable = True

@@ -93,7 +93,7 @@ MALFORMED_ANSWERS = {
 
 
 def _telemetry_module(tmp_path, collector_url: str) -> TelemetryModule:
-    """A telemetry module for one run, started as the host starts it."""
+    """Start a telemetry module for one run, as the host starts it."""
     module = TelemetryModule(
         {
             "registration": _registration(),
@@ -107,7 +107,7 @@ def _telemetry_module(tmp_path, collector_url: str) -> TelemetryModule:
 
 
 def _run_state(spool: EventSpool, run_id: str = "run-a") -> tuple[str, str | None]:
-    """The run's upload state and the reason it records."""
+    """Return the run's upload state and the reason it records."""
     with Session(spool._engine) as session:
         record = session.get(TelemetryRunRecord, (run_id, "producer-a"))
         return record.upload_state, record.local_only_reason
@@ -804,7 +804,7 @@ def test_a_saved_login_that_cannot_be_read_raises_an_error_without_its_details(
 
 
 def _hub_outage() -> HfHubHTTPError:
-    """What huggingface_hub raises for a 503 from the Hub: an OSError."""
+    """Return the error huggingface_hub raises for a 503 from the Hub, an OSError."""
     request = httpx.Request("POST", "https://huggingface.co/oauth/token")
     return HfHubHTTPError(
         "503 Server Error: Service Unavailable",

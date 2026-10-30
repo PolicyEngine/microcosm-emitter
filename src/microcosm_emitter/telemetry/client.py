@@ -48,8 +48,13 @@ from microcosm_emitter_interface.telemetry import TelemetryRun as TelemetryRun
 class Transport(Protocol):
     """Request transport, replaceable without starting a process in unit tests."""
 
-    def send(self, message: Mapping[str, Any]) -> None: ...
-    def close(self) -> None: ...
+    def send(self, message: Mapping[str, Any]) -> None:
+        """Send one message to the telemetry module, raising if it is not accepted."""
+        ...
+
+    def close(self) -> None:
+        """Close the transport; the emitter sends nothing through it afterwards."""
+        ...
 
 
 class LocalTelemetryEmitter:
@@ -63,6 +68,12 @@ class LocalTelemetryEmitter:
         handle: ServiceHandle | None = None,
         close_service_on_finish: bool = True,
     ) -> None:
+        """Hold the run, its transport and the service handle, if any.
+
+        Without a transport the emitter is not ``available`` and sends nothing.
+        With ``close_service_on_finish``, ``fail``, ``block`` and ``complete`` close
+        the service after their request.
+        """
         self.run = run
         self._transport = transport
         self._handle = handle
@@ -116,6 +127,7 @@ class LocalTelemetryEmitter:
 
     @property
     def available(self) -> bool:
+        """Whether the emitter has a transport and is not closed."""
         return self._transport is not None and not self._closed
 
     def _request(self, command: TelemetryCommand) -> None:
@@ -142,6 +154,7 @@ class LocalTelemetryEmitter:
         message: str | None = None,
         details: Mapping[str, Any] | None = None,
     ) -> None:
+        """Send one event whose type and status the caller chooses."""
         self._request(
             EventRecord(
                 event_type,
@@ -160,6 +173,7 @@ class LocalTelemetryEmitter:
         message: str | None = None,
         **details: Any,
     ) -> None:
+        """Send one stage event; the service does not finish the previous stage."""
         self._request(StageEvent(stage_id, status, message, details))
 
     def transition_stage(
@@ -170,6 +184,11 @@ class LocalTelemetryEmitter:
         message: str | None = None,
         **details: Any,
     ) -> None:
+        """Send a sequential stage update for ``stage_id``.
+
+        An update for a stage other than the current one finishes the current one
+        first. The service maps ``status`` to a telemetry status.
+        """
         self._request(StageTransition(stage_id, status, message, details))
 
     def progress(
@@ -181,12 +200,19 @@ class LocalTelemetryEmitter:
         unit: str | None = None,
         **details: Any,
     ) -> None:
+        """Send progress for ``stage_id``: ``done`` of ``total``, in ``unit``."""
         self._request(StageProgress(stage_id, done, total, unit, details))
 
     def calibration_progress(self, event: Mapping[str, Any]) -> None:
+        """Send one calibration progress ``event``."""
         self._request(CalibrationProgress(event))
 
     def transition_calibration_progress(self, event: Mapping[str, Any]) -> None:
+        """Send one calibration progress ``event`` as a stage transition.
+
+        The service first moves the run to the calibrating stage, unless it is
+        already there.
+        """
         self._request(CalibrationProgress(event, transition=True))
 
     def fail(
@@ -197,6 +223,11 @@ class LocalTelemetryEmitter:
         failure_class: str = DEFAULT_FAILURE_CLASS,
         error_code: str | None = None,
     ) -> None:
+        """Finish the run as failed, with the type and text of ``error``.
+
+        When ``str(error)`` raises, the failure is sent without text. With
+        ``close_service_on_finish``, the service is closed afterwards.
+        """
         try:
             try:
                 message = str(error)
@@ -241,6 +272,10 @@ class LocalTelemetryEmitter:
                 self.close()
 
     def complete(self) -> None:
+        """Finish the run as completed.
+
+        With ``close_service_on_finish``, the service is closed afterwards.
+        """
         try:
             self._request(BuildCompleted())
         finally:

@@ -89,8 +89,10 @@ class FirstLineTest(unittest.TestCase):
         self.assertIn("is on line 2", description_error("\nFixes #42"))
 
     def test_leading_whitespace_is_rejected(self) -> None:
-        """Four leading spaces make a Markdown code block, where GitHub reads no
-        closing keyword."""
+        """Four leading spaces make a Markdown code block.
+
+        GitHub reads no closing keyword in a code block.
+        """
         for body in ("    Fixes #42", " Fixes #42", "\tFixes #42"):
             with self.subTest(body=body):
                 self.assertTrue(

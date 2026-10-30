@@ -7,6 +7,13 @@ from pathlib import Path
 
 
 def host_smoke():
+    """Check the host's imports and the installed distribution's metadata.
+
+    Microcosm must not be installed; SQLAlchemy, Alembic and huggingface_hub must
+    be installed but not imported by the host; importing the host must not import
+    the telemetry package, and importing the Orrery client must not import the
+    core or Orrery service packages.
+    """
     from microcosm_emitter.host.client import SocketClient
     from microcosm_emitter.host.launcher import start_service
 
@@ -29,6 +36,13 @@ def host_smoke():
 
 
 def telemetry_smoke():
+    """Run a telemetry emitter, then check the event queue database it leaves.
+
+    Importing the telemetry client must not import SQLAlchemy or huggingface_hub.
+    After a stage and completion, the service process must exit with 0, the
+    database must be at revision 20261008_02, no queued event may still be
+    eligible for delivery, and the run's events must have sequences 1 to 3.
+    """
     from microcosm_emitter.telemetry.client import LocalTelemetryEmitter, TelemetryRun
 
     assert "sqlalchemy" not in sys.modules
@@ -68,6 +82,12 @@ def telemetry_smoke():
 
 
 def graph_only_smoke():
+    """Publish a graph through a service that runs only the Orrery module.
+
+    The inventory must have no run ID, the publication must be pending, the
+    service process must exit with 0, and the publication queue must still hold
+    the publication as pending.
+    """
     from microcosm_emitter.orrery.client import GraphPublicationClient, publish_graph
     from microcosm_emitter.orrery.service.queue import GraphPublicationQueue
 
@@ -99,6 +119,11 @@ def graph_only_smoke():
 
 
 def combined_smoke():
+    """Run the telemetry and Orrery modules in one service sharing one database.
+
+    After a stage, a blocked status and a graph publication, the service process
+    must exit with 0 and the run's last queued event must be the blocked one.
+    """
     from microcosm_emitter.host.launcher import start_services
     from microcosm_emitter.orrery.client import GraphPublicationClient, publish_graph
     from microcosm_emitter.telemetry.client import LocalTelemetryEmitter, TelemetryRun
@@ -154,6 +179,11 @@ def combined_smoke():
 
 
 def coded_failure_smoke():
+    """Record a failure with an error code, then check the events it leaves.
+
+    The service process must exit with 0, and the last two events, the failed
+    stage and the run's failure, must each carry ``BUILD_OUT_OF_MEMORY``.
+    """
     from microcosm_emitter.telemetry.client import LocalTelemetryEmitter, TelemetryRun
 
     run = TelemetryRun("failure-test", "UK", "installed")

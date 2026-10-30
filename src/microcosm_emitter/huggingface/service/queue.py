@@ -80,7 +80,7 @@ MIN_COMMIT_SPACING_SECONDS = 10.0
 
 
 def sha256_file(path: Path) -> str:
-    """The SHA-256 of a preserved file, read in blocks."""
+    """Return the hex SHA-256 digest of the file at ``path``, read in 1 MiB blocks."""
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -118,6 +118,10 @@ class HandoverQueue(HandoverJobs):
     """
 
     def __init__(self, path: Path | str) -> None:
+        """Open the hand-over database at ``path``, applying its migrations.
+
+        The parent folder is created if it is missing.
+        """
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._engine = create_spool_engine(self.path)
@@ -171,6 +175,10 @@ class HandoverQueue(HandoverJobs):
             return 0.0 if schedule is None else schedule.lease_until
 
     def release_repository(self, repository: str, lease: float) -> None:
+        """Free the repository's lease if it still ends at ``lease``.
+
+        A lease another writer has taken since is left as it is.
+        """
         with self._sessions.begin() as session:
             session.execute(
                 update(RepositoryCommitSchedule)
@@ -182,6 +190,10 @@ class HandoverQueue(HandoverJobs):
             )
 
     def record_commit(self, repository: str, *, now: float) -> None:
+        """Record ``now`` as the time of the last commit to ``repository``.
+
+        The repository's schedule is created if it has none.
+        """
         with self._sessions.begin() as session:
             repository_schedule(session, repository).last_commit_at = now
 
@@ -272,6 +284,11 @@ class HandoverQueue(HandoverJobs):
         )
 
     def commit_spacing_elapsed(self, repository: str, now: float) -> bool:
+        """Return whether the commit spacing for ``repository`` has elapsed.
+
+        True when the repository has no schedule, or when this machine's last
+        commit to it was at least ``MIN_COMMIT_SPACING_SECONDS`` before ``now``.
+        """
         with self._sessions() as session:
             return self._spacing_elapsed(
                 session.get(RepositoryCommitSchedule, repository), now
@@ -414,6 +431,10 @@ class HandoverQueue(HandoverJobs):
             return due_file is not None or due_index is not None
 
     def repositories_with_pending_run_files(self) -> list[str]:
+        """List the repositories with a pending run file or run index entry, sorted.
+
+        Due times are not checked.
+        """
         with self._sessions() as session:
             return sorted(
                 set(
@@ -433,6 +454,7 @@ class HandoverQueue(HandoverJobs):
             )
 
     def pending_run_files(self, repository: str) -> list[PendingRunFile]:
+        """Return the pending run files of ``repository``, ordered by path."""
         with self._sessions() as session:
             rows = session.scalars(
                 select(StagedRunFile)
@@ -452,6 +474,10 @@ class HandoverQueue(HandoverJobs):
     def pending_run_index_entries(
         self, repository: str
     ) -> list[tuple[str, dict[str, Any]]]:
+        """Return the pending run index entries of ``repository``, sorted by run.
+
+        Each item is a run ID and that run's entry as a dictionary.
+        """
         with self._sessions() as session:
             rows = session.scalars(
                 select(StagedRunDelivery)
@@ -535,6 +561,11 @@ class HandoverQueue(HandoverJobs):
             schedule.retry_after = now + retry_delay(schedule.consecutive_failures)
 
     def run_receipt(self, repository: str, run_id: str) -> dict[str, Any]:
+        """Return the receipt of one run: pending files, attempt and commit counts.
+
+        A pending run index entry counts as one pending file. A run with no
+        delivery record gets zero counts and no last commit or error code.
+        """
         with self._sessions() as session:
             delivery = session.get(StagedRunDelivery, (repository, run_id))
             pending = len(

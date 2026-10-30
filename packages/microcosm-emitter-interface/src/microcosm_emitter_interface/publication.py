@@ -58,6 +58,10 @@ class ReleaseFile:
     bytes: int
 
     def __post_init__(self) -> None:
+        """Raise ``ValueError`` for an invalid name, role, digest or size.
+
+        The name may also not be a ``latest*.json`` pointer file.
+        """
         bare_file_name(self.name, label="release file name")
         role_identifier(self.role)
         if is_pointer_file(self.name):
@@ -76,7 +80,7 @@ class ReleaseFile:
 
 
 def new_request_id() -> str:
-    """A fresh identifier for one release change request."""
+    """Return a new random identifier for one release change request."""
     return uuid.uuid4().hex
 
 
@@ -109,6 +113,14 @@ class PublishRelease:
     protocol_version: int = field(default=PROTOCOL_VERSION, repr=False)
 
     def __post_init__(self) -> None:
+        """Store ``files`` as a tuple; raise ``ValueError`` if a field is invalid.
+
+        The repository, release, build, request ID and role must follow the
+        identifier rules, ``make_current`` must be a bool, and the files must
+        be ``ReleaseFile`` values with distinct names, among them
+        ``release_manifest.json``, which alone has the role
+        ``release_manifest``.
+        """
         _check_reference(self.repository, self.release, self.build, self.request_id)
         role_identifier(self.release_role, label="release_role")
         if not isinstance(self.make_current, bool):
@@ -135,6 +147,7 @@ class PublishRelease:
             raise ValueError(error_message)
 
     def message(self) -> dict[str, Any]:
+        """Return the ``publish_release`` request, with absolute local paths."""
         return {
             "protocol_version": self.protocol_version,
             "command": "publish_release",
@@ -157,6 +170,7 @@ class PublishRelease:
         }
 
     def handover_id(self) -> str:
+        """Return the hand-over identifier the emitter also computes for it."""
         return handover_identifier(RELEASE_CHANGE, self.message())
 
 
@@ -171,9 +185,11 @@ class PromoteBuild:
     protocol_version: int = field(default=PROTOCOL_VERSION, repr=False)
 
     def __post_init__(self) -> None:
+        """Raise ``ValueError`` if an identifier breaks the shared identifier rules."""
         _check_reference(self.repository, self.release, self.build, self.request_id)
 
     def message(self) -> dict[str, Any]:
+        """Return the ``promote_build`` request."""
         return {
             "protocol_version": self.protocol_version,
             "command": "promote_build",
@@ -184,6 +200,7 @@ class PromoteBuild:
         }
 
     def handover_id(self) -> str:
+        """Return the hand-over identifier the emitter also computes for it."""
         return handover_identifier(RELEASE_CHANGE, self.message())
 
 
@@ -198,9 +215,11 @@ class WithdrawBuild:
     protocol_version: int = field(default=PROTOCOL_VERSION, repr=False)
 
     def __post_init__(self) -> None:
+        """Raise ``ValueError`` if an identifier breaks the shared identifier rules."""
         _check_reference(self.repository, self.release, self.build, self.request_id)
 
     def message(self) -> dict[str, Any]:
+        """Return the ``withdraw_build`` request."""
         return {
             "protocol_version": self.protocol_version,
             "command": "withdraw_build",
@@ -211,6 +230,7 @@ class WithdrawBuild:
         }
 
     def handover_id(self) -> str:
+        """Return the hand-over identifier the emitter also computes for it."""
         return handover_identifier(RELEASE_CHANGE, self.message())
 
 

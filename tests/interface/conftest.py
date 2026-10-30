@@ -22,7 +22,10 @@ from fake_hugging_face import (
 
 @pytest.fixture
 def loopback_collector():
-    """A fake collector that records each request's path and bearer token."""
+    """Serve a fake collector that records each request's path and bearer token.
+
+    Yields the collector's URL and the list of requests it received.
+    """
     received_requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -79,7 +82,7 @@ def emitter_command_script(tmp_path):
 
 @pytest.fixture
 def isolated_path(monkeypatch, tmp_path):
-    """A PATH holding only one fresh directory."""
+    """Set PATH to only one fresh directory, and return that directory."""
     directory = tmp_path / "path-directory"
     directory.mkdir()
     monkeypatch.setenv("PATH", str(directory))
@@ -104,7 +107,7 @@ def in_thread_emitter():
 
 @pytest.fixture
 def emitter_with_hub(tmp_path):
-    """A client talking over a real socket to the module and an in-memory Hub."""
+    """Yield a client talking to the module over a real socket, and an in-memory Hub."""
     from microcosm_emitter.host.contracts import ModuleContext
     from microcosm_emitter.host.runtime import ServiceRuntime
     from microcosm_emitter.huggingface.service.module import HuggingFaceModule
