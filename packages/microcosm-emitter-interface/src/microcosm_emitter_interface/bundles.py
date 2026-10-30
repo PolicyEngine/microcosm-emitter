@@ -72,6 +72,7 @@ class BundleFile:
     bytes: int
 
     def __post_init__(self) -> None:
+        """Raise ``ValueError`` for an invalid name, role, digest or size."""
         bare_file_name(self.name, label="bundle file name")
         role_identifier(self.role)
         if not isinstance(self.sha256, str) or not _SHA256.fullmatch(self.sha256):
@@ -87,6 +88,12 @@ class BundleFile:
 
 
 def check_bundle_files(files: Sequence[BundleFile]) -> None:
+    """Raise ``ValueError`` unless the files together form a valid bundle.
+
+    Each name appears once, exactly one file has the role ``staged_manifest``,
+    at most one each has ``build_manifest`` and ``checksums``, and at least one
+    file has another role, which marks an output.
+    """
     names = [item.name for item in files]
     if len(set(names)) != len(names):
         error_message = "A bundle names each file once."
@@ -125,6 +132,13 @@ class StageDatasetBundle:
     protocol_version: int = field(default=PROTOCOL_VERSION, repr=False)
 
     def __post_init__(self) -> None:
+        """Store ``files`` as a tuple; raise ``ValueError`` if a field is invalid.
+
+        The repository, run ID and prefix must follow the identifier rules, the
+        files must be ``BundleFile`` values that pass ``check_bundle_files``, a
+        given ``commit_message`` must be nonempty, and a given ``collector``
+        must be a ``CollectorProvenance``.
+        """
         repository_identifier(self.repository)
         safe_identifier(self.run_id, label="run_id")
         repository_prefix(self.prefix)
@@ -146,9 +160,14 @@ class StageDatasetBundle:
 
     @property
     def remote_prefix(self) -> str:
+        """The bundle's folder in the repository, ``<prefix>/<run_id>``."""
         return f"{self.prefix}/{self.run_id}"
 
     def message(self) -> dict[str, Any]:
+        """Return the ``stage_dataset_bundle`` request, with absolute local paths.
+
+        The ``collector`` key is present only when ``collector`` is given.
+        """
         message = {
             "protocol_version": self.protocol_version,
             "command": "stage_dataset_bundle",
@@ -174,11 +193,16 @@ class StageDatasetBundle:
         return message
 
     def handover_id(self) -> str:
+        """Return the hand-over identifier the emitter also computes for this bundle."""
         return handover_identifier("dataset_bundle", self.message())
 
 
 def handover_identifier(kind: str, message: dict[str, Any]) -> str:
-    """A stable identifier of a hand-over's content, shared with the emitter."""
+    """Return a stable identifier of a hand-over's content, shared with the emitter.
+
+    It is the first 32 hexadecimal characters of the SHA-256 of ``kind`` and
+    the message without ``protocol_version``, as canonical JSON.
+    """
     content = {
         key: value for key, value in message.items() if key != "protocol_version"
     }
@@ -251,6 +275,7 @@ def unavailable_bundle_receipt(request: StageDatasetBundle) -> DatasetBundleRece
 
 
 def unavailable_write_access() -> WriteAccess:
+    """Return the ``unavailable`` result of a write-access check no emitter answered."""
     return {
         "status": "unavailable",
         "credential": None,

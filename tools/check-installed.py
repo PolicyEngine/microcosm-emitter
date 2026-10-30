@@ -29,10 +29,12 @@ UNPUBLISHED_PATHS = (
 
 
 def run(*arguments, **kwargs):
+    """Run ``arguments`` as a command, raising ``CalledProcessError`` if it fails."""
     subprocess.run(arguments, check=True, **kwargs)
 
 
 def only(paths: list[Path], prefix: str) -> Path:
+    """Return the one path whose name starts with ``prefix``; assert there is one."""
     matches = [path for path in paths if path.name.startswith(prefix)]
     assert len(matches) == 1, f"Expected one {prefix}* artifact, found {matches}"
     return matches[0]
@@ -53,6 +55,10 @@ def unpublished_members(source: Path) -> list[str]:
 
 
 def create_environment(directory: Path, *wheels: Path) -> Path:
+    """Create a virtual environment in ``directory`` and install ``wheels`` in it.
+
+    Returns the environment's Python interpreter.
+    """
     run("uv", "venv", "--python", sys.executable, str(directory))
     interpreter = directory / "bin/python"
     run("uv", "pip", "install", "--python", str(interpreter), *map(str, wheels))
@@ -60,6 +66,14 @@ def create_environment(directory: Path, *wheels: Path) -> Path:
 
 
 def main():
+    """Check the built archives and run the installed checks in clean environments.
+
+    ``dist`` must hold one wheel and one source archive for each distribution, and
+    no source archive may hold ``UNPUBLISHED_PATHS``. The emitter and interface
+    wheels are installed in one environment and only the interface wheel in
+    another; installed-smoke.py and installed-interface-smoke.py then run in them
+    without Hugging Face tokens, ``PYTHONPATH`` or ``MICROCOSM_EMITTER_COMMAND``.
+    """
     with tempfile.TemporaryDirectory(prefix="pe-wheel-") as directory:
         workspace = Path(directory)
         wheels = list((ROOT / "dist").glob("*.whl"))

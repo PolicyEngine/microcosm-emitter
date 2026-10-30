@@ -33,7 +33,11 @@ def collector():
 
 @pytest.fixture
 def operator_login(monkeypatch):
-    """The operator's Hugging Face login, and nothing ambient."""
+    """Provide the operator's Hugging Face login, and nothing ambient.
+
+    Sets ``HF_TOKEN`` to a synthetic token, removes ``HUGGINGFACE_TOKEN`` and makes
+    ``get_token`` find no saved login.
+    """
     monkeypatch.delenv("HUGGINGFACE_TOKEN", raising=False)
     monkeypatch.setenv("HF_TOKEN", SYNTHETIC_HUGGING_FACE_TOKEN)
     monkeypatch.setattr(auth_module, "get_token", lambda: None)

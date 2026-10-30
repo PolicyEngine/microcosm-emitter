@@ -18,13 +18,23 @@ from microcosm_emitter.orrery.service.queue import (
 
 
 class OrreryModule:
+    """Queue graph publications on request and deliver them on each tick."""
+
     def __init__(self, configuration: JsonObject, context: ModuleContext):
+        """Hold the configuration and context; ``initialize`` opens the queue."""
         self.configuration, self.context = configuration, context
         self.queue: GraphPublicationQueue | None = None
         self.delivery: GraphPublicationDelivery | None = None
         self._warned = False
 
     def initialize(self) -> None:
+        """Open the graph publication queue and set up its delivery.
+
+        An untrusted collector origin, or an unusable collector token, raises
+        an error before the queue opens. The queue is kept in the event queue
+        file the ``spool_path`` setting names, and the credential is sent only
+        to the publication origin.
+        """
         # Refuse an untrusted collector origin, or an unusable given
         # collector token, before opening the queue.
         origin = configured_collector_origin(self.configuration)
@@ -46,6 +56,11 @@ class OrreryModule:
         )
 
     def handle_message(self, message: JsonObject) -> None:
+        """Queue the graph in ``message["directory"]`` with the message's inventory.
+
+        ``GraphPublicationQueue.enqueue`` hashes the files again and raises
+        ``ValueError`` if they differ from the inventory.
+        """
         assert self.queue is not None, "The host initializes modules first."
         # enqueue() recomputes the inventory from the files and rejects any
         # message whose inventory differs, so this boundary is validated.
@@ -77,6 +92,11 @@ class OrreryModule:
         return {"receipt": self.queue.receipt(message["publication_id"])}
 
     def tick(self, now: float) -> None:
+        """Try to deliver one queued graph publication; errors print a warning once.
+
+        An exception from the attempt is not raised, since the host stops a
+        module whose ``tick`` raises. ``now`` is not used.
+        """
         assert self.delivery is not None, "The host initializes modules first."
         try:
             self.delivery.flush_once()
@@ -92,6 +112,10 @@ class OrreryModule:
         """Preserved jobs remain eligible when a later host resumes delivery."""
 
     def close(self, deadline: float) -> None:
+        """Close the delivery's HTTP client and the queue's database connections.
+
+        ``deadline`` is not used.
+        """
         if self.delivery is not None:
             self.delivery.client.close()
         if self.queue is not None:

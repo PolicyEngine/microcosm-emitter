@@ -48,7 +48,13 @@ def _decode_response(response: bytearray) -> JsonObject | None:
 
 
 class SocketClient:
+    """Client of the local service host's Unix socket, with one connection per request.
+
+    Socket, encoding and decoding errors are raised as ``LocalServiceError``.
+    """
+
     def __init__(self, socket_path: Path, *, timeout: float = SEND_TIMEOUT):
+        """Hold the socket path and the default timeout of each socket operation."""
         self.socket_path = socket_path
         self.timeout = timeout
         self.closed = False
@@ -116,12 +122,18 @@ class SocketClient:
         return response
 
     def send(self, message: JsonObject) -> None:
+        """Send ``message`` to the host's only module and wait for its acknowledgement.
+
+        Raises ``LocalServiceError`` when the client is closed or the host refuses
+        the message.
+        """
         if self.closed:
             error_message = "client is closed"
             raise LocalServiceError(error_message)
         self._request({"action": "message", "message": message})
 
     def close(self) -> None:
+        """Ask the host to stop; the client counts as closed even if that fails."""
         if self.closed:
             return
         try:
@@ -134,9 +146,15 @@ class ModuleClient:
     """One selected module's transport; the enclosing ServiceHandle owns shutdown."""
 
     def __init__(self, client: SocketClient, name: str):
+        """Hold the shared client and the name of the module that messages go to."""
         self.client, self.name = client, name
 
     def send(self, message: JsonObject) -> None:
+        """Send ``message`` to this module and wait for its acknowledgement.
+
+        Raises ``LocalServiceError`` when the shared client is closed or the host
+        refuses the message.
+        """
         if self.client.closed:
             error_message = "client is closed"
             raise LocalServiceError(error_message)
@@ -147,7 +165,8 @@ class ModuleClient:
     def request(
         self, message: JsonObject, *, timeout: float | None = None
     ) -> JsonObject:
+        """Return this module's result for ``message``."""
         return self.client.request(message, module=self.name, timeout=timeout)
 
     def close(self) -> None:
-        """A domain component cannot close the shared host."""
+        """Do nothing: a domain component cannot close the shared host."""

@@ -107,7 +107,7 @@ def _refused_run_files_receipt(message: Mapping[str, Any], code: str) -> dict[st
 
 
 def _user_name() -> str:
-    """The account the emitter runs as, or its numeric user ID.
+    """Return the name of the account the emitter runs as, or its numeric user ID.
 
     ``getpass.getuser()`` raises when no user name variable is set and the
     user ID has no password-database entry, as in a container run with an
@@ -146,6 +146,7 @@ class HuggingFaceModule:
         worker_interval_seconds: float = TICK_SECONDS,
         collector_credential: Callable[[], str | None] = huggingface_token,
     ) -> None:
+        """Hold the configuration and dependencies; ``initialize`` opens the queue."""
         self.configuration, self.context = configuration, context
         self.api_factory, self.clock = api_factory, clock
         self.release_change_policy = release_change_policy
@@ -159,6 +160,11 @@ class HuggingFaceModule:
         self._closed = False
 
     def initialize(self) -> None:
+        """Open the hand-over queue, set up delivery and start any background workers.
+
+        Collector submissions are set up only when ``collector_submissions`` is
+        true. An unusable collector setting prints a warning and leaves them off.
+        """
         # The hand-over database, never the shared spool database (see
         # ``HandoverQueue``); ``HuggingFaceSettings`` names it.
         self.queue = HandoverQueue(Path(self.configuration["handover_database_path"]))
@@ -250,10 +256,16 @@ class HuggingFaceModule:
         return CollectorSubmissionDelivery(queue, client, clock=self.clock)
 
     def handle_message(self, message: JsonObject) -> None:
+        """Raise ``ValueError``: Hugging Face hand-overs are queries with receipts."""
         error_message = "Hugging Face hand-overs are queries with receipts."
         raise ValueError(error_message)
 
     def query(self, message: JsonObject) -> dict[str, Any]:
+        """Answer one hand-over command with its receipt, read-back or access check.
+
+        The ``command`` field selects the request; an unsupported command raises
+        ``ValueError``.
+        """
         assert self.queue is not None, "The host initializes modules first."
         command = message.get("command")
         if command == "stage_run_files":
@@ -497,6 +509,13 @@ class HuggingFaceModule:
         }
 
     def tick(self, now: float) -> None:
+        """Run one delivery cycle on the host's thread; an error prints a warning.
+
+        With background workers it commits run files only; without them it runs
+        every delivery, collector submissions included. An exception prints a
+        one-time warning (``warn_once``) instead of stopping the module. ``now``
+        is not used.
+        """
         assert self.delivery is not None, "The host initializes modules first."
         try:
             if self.workers:

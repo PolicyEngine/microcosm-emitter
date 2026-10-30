@@ -19,6 +19,10 @@ class ModuleRequestDispatcher:
     """Give each module one serial worker and a bounded pending-request queue."""
 
     def __init__(self, names: Iterable[str], *, max_pending_requests: int) -> None:
+        """Create a queue and an unstarted worker thread for each module name.
+
+        Each queue holds at most ``max_pending_requests`` requests.
+        """
         self._queues: dict[str, Queue[ModuleRequest | None]] = {
             name: Queue(maxsize=max_pending_requests) for name in names
         }
@@ -30,6 +34,7 @@ class ModuleRequestDispatcher:
         }
 
     def start(self) -> None:
+        """Start every module's worker thread."""
         for thread in self._threads.values():
             thread.start()
 
@@ -57,6 +62,7 @@ class ModuleRequestDispatcher:
                 pass
 
     def stop(self) -> None:
+        """Stop intake for every module; accepted requests still finish in order."""
         for name in self._queues:
             self.stop_module(name)
 

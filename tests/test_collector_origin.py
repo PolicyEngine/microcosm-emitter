@@ -51,7 +51,7 @@ def orrery_module(tmp_path, context: ModuleContext, **settings) -> OrreryModule:
 def submitting_huggingface_module(
     tmp_path, context: ModuleContext, **settings
 ) -> HuggingFaceModule:
-    """The Hugging Face module with collector submissions switched on.
+    """Build the Hugging Face module with collector submissions switched on.
 
     It reaches neither the Hub nor a collector: these tests only start it.
     """
@@ -70,7 +70,7 @@ def submitting_huggingface_module(
 
 @pytest.fixture
 def submission_session_origins(monkeypatch) -> list[str]:
-    """The origin of each `artifacts:submit` session the Hugging Face module opens."""
+    """Record the origins of the Hugging Face module's `artifacts:submit` sessions."""
     origins: list[str] = []
 
     class RecordingCollectorSession(CollectorSession):

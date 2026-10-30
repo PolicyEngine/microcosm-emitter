@@ -53,6 +53,7 @@ class SocketTransport:
         *,
         timeout: float = ACKNOWLEDGEMENT_TIMEOUT_SECONDS,
     ) -> None:
+        """Hold the socket's path and the time limit used when a request gives none."""
         self.socket_path = Path(socket_path)
         self.timeout = timeout
         self.closed = False
@@ -118,7 +119,13 @@ class SocketTransport:
         )
 
     def hello(self, *, timeout: float | None = None) -> dict[str, Any]:
-        """The emitter version, accepted protocol versions and loaded modules."""
+        """Return the emitter's ``hello`` answer: its version, protocols and modules.
+
+        The protocol requires the keys ``emitter_version``,
+        ``protocol_versions`` (those accepted), ``modules`` (those loaded) and
+        ``skipped_modules``; an answer may hold more. A given ``timeout``
+        bounds the connection, the send and all reads together.
+        """
         return self._answered(
             {"action": "hello"},
             timeout=timeout,

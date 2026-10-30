@@ -36,6 +36,8 @@ from microcosm_emitter.host.errors import (
 
 @dataclass
 class ServiceHandle:
+    """A started host: its child process, socket client and private directory."""
+
     process: subprocess.Popen
     client: SocketClient
     runtime_dir: Path
@@ -192,6 +194,11 @@ def start_services(
 
 
 def terminate_process(process: subprocess.Popen) -> None:
+    """Stop ``process`` if it still runs, and wait for it to exit.
+
+    It is terminated first, and killed when it has not exited after
+    ``PROCESS_EXIT_TIMEOUT`` seconds.
+    """
     try:
         if process.poll() is None:
             process.terminate()

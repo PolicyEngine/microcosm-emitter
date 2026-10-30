@@ -64,6 +64,11 @@ class OrrerySettings:
     publication_origin: str | None = None
 
     def configuration(self, spool_path: Path) -> dict[str, Any]:
+        """Return the Orrery module's startup settings for the queue at ``spool_path``.
+
+        ``development_collector_url`` and ``publication_origin`` are included
+        only when set.
+        """
         configuration: dict[str, Any] = {"spool_path": str(spool_path)}
         if self.development_collector_url is not None:
             configuration["development_collector_url"] = self.development_collector_url
@@ -98,6 +103,11 @@ def inventory_message(
     roles: Mapping[str, PublicationFileRole],
     publication_id: str | None,
 ) -> dict[str, Any]:
+    """Build the request to inventory the files ``roles`` names in ``directory``.
+
+    ``roles`` maps each file name to its role, and ``directory`` is sent as
+    an absolute path.
+    """
     return {
         "command": "inventory",
         "directory": str(Path(directory).resolve()),
@@ -109,6 +119,7 @@ def inventory_message(
 def enqueue_message(
     directory: str | os.PathLike[str], inventory: PublicationInventory
 ) -> dict[str, Any]:
+    """Build the request to queue an inventory's files from ``directory``."""
     return {
         "command": "enqueue",
         "directory": str(Path(directory).resolve()),
@@ -117,15 +128,17 @@ def enqueue_message(
 
 
 def receipt_message(publication_id: str) -> dict[str, Any]:
+    """Build the request for one publication's latest receipt."""
     return {"command": "receipt", "publication_id": publication_id}
 
 
 def retry_message(publication_id: str) -> dict[str, Any]:
+    """Build the request to attempt a pending publication's delivery again now."""
     return {"command": "retry", "publication_id": publication_id}
 
 
 def publication_id_of(inventory: Any) -> str | None:
-    """The inventory's publication identifier, or None if it has none."""
+    """Return the inventory's ``publication_id``, or None if it has no string one."""
     try:
         value = inventory["publication_id"]
     except Exception:
@@ -134,7 +147,7 @@ def publication_id_of(inventory: Any) -> str | None:
 
 
 def answered_inventory(answer: Mapping[str, Any] | None) -> PublicationInventory | None:
-    """The inventory in the module's answer, if it holds one."""
+    """Return the inventory in the module's answer, or None if it holds none."""
     value = None if answer is None else answer.get("inventory")
     return cast(PublicationInventory, value) if isinstance(value, dict) else None
 
@@ -145,7 +158,7 @@ def answered_receipt(
     *,
     error_code: str = "local_service_unavailable",
 ) -> PublicationReceipt:
-    """The receipt in the module's answer, or an unavailable receipt.
+    """Return the receipt in the module's answer, or an unavailable receipt.
 
     An answer whose receipt has no status is not a receipt: the build reads
     ``status`` from every receipt it gets.

@@ -34,7 +34,10 @@ def installed_command() -> str:
 
 
 def orrery_configuration(spool_path: Path) -> dict:
-    """A real module whose idle worker makes no network requests."""
+    """Return the configuration of a real Orrery module.
+
+    The module's idle worker makes no network requests.
+    """
     return {
         "spool_path": str(spool_path),
         "development_collector_url": "http://127.0.0.1:1",

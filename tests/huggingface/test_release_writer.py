@@ -737,8 +737,11 @@ def test_the_change_policy_receives_the_typed_change_and_its_caller(tmp_path, hu
 
 
 def test_a_user_without_a_name_is_named_by_its_numeric_id(tmp_path, hub, monkeypatch):
-    """In a container run with an arbitrary user ID, ``getpass.getuser()``
-    raises on Python 3.13 and later; the change is still handed over."""
+    """A change is still handed over when ``getpass.getuser()`` raises.
+
+    It raises on Python 3.13 and later in a container run with an arbitrary user
+    ID.
+    """
     import getpass
 
     def no_user_name():
@@ -919,8 +922,11 @@ def test_changes_handed_over_in_order_on_this_machine_all_apply(
 def test_a_publication_queued_before_a_newer_change_still_lands(
     hugging_face_module,
 ):
-    """Adding a build undoes no newer change, and two publications must both
-    land (plan item 5), so a plain publication is never refused for order."""
+    """A plain publication is never refused for order.
+
+    Adding a build undoes no newer change, and two publications must both land
+    (plan item 5).
+    """
     controls = hugging_face_module
     publish_both(controls)
     controls.hub.fail_next("create_commit", FakeHubHTTPError(503))
@@ -948,8 +954,10 @@ def apply_requested_at(hub, request, requested_at):
 
 
 def test_the_record_orders_changes_by_request_time_not_landing_order(hub, tmp_path):
-    """Each writer commit's title records the newest request it has applied,
-    so another machine's older request is refused after it."""
+    """Each writer commit's title records the newest request it has applied.
+
+    Another machine's older request is therefore refused after it.
+    """
     for build in (FIRST_BUILD, SECOND_BUILD):
         request, _ = publish_request(tmp_path, build)
         assert apply_requested_at(hub, request, 100.0).status == "published"
@@ -1013,8 +1021,11 @@ def dense_promotion():
 def test_a_promotion_is_not_refused_for_a_newer_change_to_another_release(
     hub, tmp_path
 ):
-    """The #24 fix review's test: the record names another release's newer
-    change, which cannot be undone by this one."""
+    """A promotion is not refused for a newer change to another release.
+
+    The #24 fix review's test: the record names another release's newer change,
+    which cannot be undone by this one.
+    """
     national, _ = publish_request(tmp_path, FIRST_BUILD)
     assert apply_requested_at(hub, national, 100.0).status == "published"
     assert apply_requested_at(hub, dense_publication(tmp_path), 100.0).status == (
@@ -1033,8 +1044,11 @@ def test_a_promotion_is_not_refused_for_a_newer_change_to_another_release(
 def test_a_queued_promotion_is_not_refused_for_a_later_change_to_another_release(
     hugging_face_module,
 ):
-    """The #24 fix review's trigger A: on one machine, a promotion waits after
-    a transient error while a later change to another release lands."""
+    """A queued promotion is not refused for a later change to another release.
+
+    The #24 fix review's trigger A: on one machine, a promotion waits after a
+    transient error while a later change to another release lands.
+    """
     controls = hugging_face_module
     publish_both(controls)
     dense_receipt = queue_change(controls, dense_publication(controls.tmp_path))
@@ -1056,9 +1070,12 @@ def test_a_queued_promotion_is_not_refused_for_a_later_change_to_another_release
 def test_concurrent_publications_to_two_releases_both_make_their_builds_current(
     hub, tmp_path
 ):
-    """The #24 fix review's trigger B: the dense publication, requested later,
-    lands while the national one is uploading; the national commit is then
-    refused for its stale parent and applied again."""
+    """Concurrent publications to two releases both make their builds current.
+
+    The #24 fix review's trigger B: the dense publication, requested later, lands
+    while the national one is uploading; the national commit is then refused for
+    its stale parent and applied again.
+    """
     national, _ = publish_request(tmp_path, FIRST_BUILD, make_current=True)
     hub.run_before_next_commit(
         lambda: apply_requested_at(
@@ -1079,8 +1096,10 @@ def test_concurrent_publications_to_two_releases_both_make_their_builds_current(
 def test_concurrent_publications_to_one_release_keep_both_builds(
     hub, tmp_path, newer_lands_first
 ):
-    """Both publications make their build current; both builds are listed,
-    and the build of the newer request is current, whichever lands first."""
+    """Both publications make their build current, and both builds are listed.
+
+    The build of the newer request is current, whichever lands first.
+    """
     older, _ = publish_request(tmp_path, FIRST_BUILD, make_current=True)
     newer, _ = publish_request(tmp_path, SECOND_BUILD, make_current=True)
     if newer_lands_first:
@@ -1099,8 +1118,10 @@ def test_concurrent_publications_to_one_release_keep_both_builds(
 def test_a_stale_promotion_is_refused_after_a_later_commit_to_another_release(
     hub, tmp_path
 ):
-    """Another release's later commit carries this release's newest request
-    forward, so the original order fix still holds."""
+    """Another release's later commit carries this release's newest request forward.
+
+    The original order fix therefore still holds.
+    """
     for build in (FIRST_BUILD, SECOND_BUILD):
         request, _ = publish_request(tmp_path, build)
         assert apply_requested_at(hub, request, 100.0).status == "published"
@@ -1250,9 +1271,11 @@ def test_a_withdrawal_is_not_refused_for_a_later_unrelated_promotion(hub, tmp_pa
 def test_a_queued_promotion_lands_after_a_later_withdrawal_on_this_machine(
     hugging_face_module,
 ):
-    """The review's variant on one machine: the promotion waits after a
-    transient error while a withdrawal of another build, handed over later,
-    lands first."""
+    """A queued promotion lands after a later withdrawal on this machine.
+
+    The review's variant on one machine: the promotion waits after a transient
+    error while a withdrawal of another build, handed over later, lands first.
+    """
     controls = hugging_face_module
     for build in (FIRST_BUILD, SECOND_BUILD, THIRD_BUILD):
         request, _ = publish_request(
@@ -1287,8 +1310,11 @@ NO_CURRENT_FIELD = "the receipt does not say which build is current"
 def test_an_overtaken_publication_receipt_names_the_build_that_is_current(
     hugging_face_module,
 ):
-    """The #24 round-2 review's trigger: another machine's later promotion
-    lands while this machine's publication waits after a transient error."""
+    """An overtaken publication's receipt names the build that is current.
+
+    The #24 round-2 review's trigger: another machine's later promotion lands
+    while this machine's publication waits after a transient error.
+    """
     controls = hugging_face_module
     publish_both(controls)
     controls.hub.fail_next("create_commit", FakeHubHTTPError(503))
@@ -1374,8 +1400,11 @@ def dated_hub(hub):
 
 
 def test_a_fast_clock_leaves_other_releases_order_checked(dated_hub, tmp_path):
-    """The #24 round-2 review's CODE QUALITY 1: a machine three hours fast
-    promotes the dense build; a stale national promotion is still refused."""
+    """A fast clock leaves other releases' order checked.
+
+    The #24 round-2 review's CODE QUALITY 1: a machine three hours fast promotes
+    the dense build; a stale national promotion is still refused.
+    """
     hub = dated_hub
     for build in (FIRST_BUILD, SECOND_BUILD):
         request, _ = publish_request(tmp_path, build)
@@ -1419,8 +1448,10 @@ def test_a_fast_clock_does_not_block_its_release_on_other_machines(dated_hub, tm
 
 
 def test_a_time_slightly_after_the_hub_date_still_orders_changes(dated_hub, tmp_path):
-    """A clock a minute fast stays within the tolerance: its change still
-    refuses an older one."""
+    """A clock a minute fast stays within the tolerance.
+
+    Its change still refuses an older one.
+    """
     hub = dated_hub
     for build in (FIRST_BUILD, SECOND_BUILD):
         request, _ = publish_request(tmp_path, build)

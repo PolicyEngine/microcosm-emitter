@@ -71,7 +71,7 @@ RELEASED_SPOOL_REVISION = "20261008_02"
 
 
 def released_spool_history(directory: Path) -> ScriptDirectory:
-    """A migration history holding only the released spool migrations."""
+    """Build a migration history holding only the event queue's released migrations."""
     source = Path(migrations_module.__file__).parent / "alembic"
     (directory / "versions").mkdir(parents=True)
     shutil.copyfile(source / "script.py.mako", directory / "script.py.mako")
@@ -81,7 +81,7 @@ def released_spool_history(directory: Path) -> ScriptDirectory:
 
 
 def released_spool_database(path: Path) -> None:
-    """A spool database as a released emitter leaves it."""
+    """Create an event queue database as a released emitter leaves it."""
     engine = create_spool_engine(path)
     try:
         with (

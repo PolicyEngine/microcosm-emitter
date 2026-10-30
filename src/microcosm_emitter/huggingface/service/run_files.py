@@ -97,6 +97,11 @@ def commit_message(
     entries: Sequence[PendingRunFile],
     index_entries: Sequence[tuple[str, Mapping[str, Any]]],
 ) -> str:
+    """Return the commit message: ``Stage run files for`` and the sorted run IDs.
+
+    The run IDs are those of ``entries`` and ``index_entries``, each once,
+    separated by commas.
+    """
     run_ids = sorted(
         {entry.run_id for entry in entries} | {r for r, _ in index_entries}
     )

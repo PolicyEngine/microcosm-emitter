@@ -45,6 +45,11 @@ class HuggingFaceSettings:
     handover_database_path: Path | None = None
 
     def configuration(self, spool_path: Path) -> dict[str, Any]:
+        """Return the module's startup settings: the hand-over database's path.
+
+        Raise ``ValueError`` when that path resolves to the event queue file
+        at ``spool_path``.
+        """
         handover_database = (
             Path(self.handover_database_path)
             if self.handover_database_path is not None
@@ -67,6 +72,11 @@ class RunFile:
     local_path: Path
 
     def __post_init__(self) -> None:
+        """Raise ``ValueError`` unless ``relative_path`` stays inside the run's folder.
+
+        It must be a nonempty relative POSIX path without a backslash or an
+        empty, ``.`` or ``..`` segment.
+        """
         relative_file_path(self.relative_path, label="relative_path")
 
 
@@ -99,6 +109,14 @@ class StageRunFiles:
     protocol_version: int = field(default=PROTOCOL_VERSION, repr=False)
 
     def __post_init__(self) -> None:
+        """Store ``files`` as a tuple; raise ``ValueError`` if a field is invalid.
+
+        The repository, run ID and prefix must follow the identifier rules,
+        the files must be ``RunFile`` values, ``flush`` must be a bool,
+        ``commit_interval_seconds`` a finite number of at least 0 (stored as a
+        float), and a given ``run_index_entry`` a mapping whose ``run_id`` is
+        this run's.
+        """
         repository_identifier(self.repository)
         safe_identifier(self.run_id, label="run_id")
         repository_prefix(self.prefix)
@@ -128,6 +146,7 @@ class StageRunFiles:
             raise ValueError(error_message)
 
     def message(self) -> dict[str, Any]:
+        """Return the ``stage_run_files`` request, with absolute local paths."""
         return {
             "protocol_version": self.protocol_version,
             "command": "stage_run_files",
@@ -157,6 +176,11 @@ class StageRunFiles:
 
 
 def run_reference_message(command: str, repository: str, run_id: str) -> dict[str, Any]:
+    """Build the request ``command`` for one run of one repository.
+
+    Raise ``ValueError`` if the repository or run ID breaks the identifier
+    rules.
+    """
     return {
         "protocol_version": PROTOCOL_VERSION,
         "command": command,
@@ -202,6 +226,7 @@ class ReadBackResult(TypedDict):
 
 
 def unavailable_run_files_receipt(repository: str, run_id: str) -> RunFilesReceipt:
+    """Return the ``unavailable`` receipt for a run, with every count 0."""
     return {
         "status": "unavailable",
         "repository": repository,
@@ -217,6 +242,7 @@ def unavailable_run_files_receipt(repository: str, run_id: str) -> RunFilesRecei
 
 
 def unavailable_read_back() -> ReadBackResult:
+    """Return the ``unavailable`` read-back result, with no files compared."""
     return {
         "status": "unavailable",
         "files": 0,

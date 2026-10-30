@@ -10,6 +10,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Create the ``graph_publication_jobs`` table."""
     op.create_table(
         "graph_publication_jobs",
         sa.Column("publication_id", sa.Text(), primary_key=True),
@@ -24,4 +25,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop the ``graph_publication_jobs`` table."""
     op.drop_table("graph_publication_jobs")

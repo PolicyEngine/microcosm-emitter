@@ -1,4 +1,4 @@
-"""This emitter accepts every protocol fixture the interface package ships.
+"""The emitter under test accepts every protocol fixture the interface package ships.
 
 Builds keep whichever emitter is installed, so every emitter release must
 accept every protocol version that interface releases still in use send. The

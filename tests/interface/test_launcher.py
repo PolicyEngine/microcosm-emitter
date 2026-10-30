@@ -231,8 +231,10 @@ class AnsweringTransport:
     ids=["module-objects", "module-number", "version-object"],
 )
 def test_a_hello_answer_with_unusable_values_is_refused(description):
-    """A later emitter's differently shaped answer stops at startup, never in a
-    call: every call reads the module names as a set of strings."""
+    """A later emitter's differently shaped answer stops at startup, never in a call.
+
+    Every call reads the module names as a set of strings.
+    """
     from microcosm_emitter_interface.launcher import _accepted_description
 
     with pytest.raises(EmitterStartupError) as failure:

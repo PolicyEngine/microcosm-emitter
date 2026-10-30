@@ -37,6 +37,11 @@ class ServiceStartupError(LocalServiceError):
         *,
         exit_code: int | None = None,
     ) -> None:
+        """Hold ``reason`` and ``exit_code``, and build the fixed message from them.
+
+        Raises ``ValueError`` for an unknown ``reason``. An ``exit_code`` whose type
+        is not ``int`` is dropped.
+        """
         if reason not in _STARTUP_MESSAGES:
             error_message = "Unknown startup failure reason."
             raise ValueError(error_message)

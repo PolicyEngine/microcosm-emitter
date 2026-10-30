@@ -63,6 +63,7 @@ class ReleaseRecordError(ValueError):
     """A record or a change that breaks the publication rules."""
 
     def __init__(self, violations: list[Violation]) -> None:
+        """Hold the violations; the error message joins theirs with ``; ``."""
         self.violations = list(violations)
         super().__init__("; ".join(violation.message for violation in violations))
 
@@ -73,12 +74,16 @@ def _refuse(code: str, message: str) -> ReleaseRecordError:
 
 @dataclass(frozen=True)
 class BuildEntry:
+    """One build's entry: when it was published, and whether it is withdrawn."""
+
     published_at: str
     withdrawn: bool = False
 
 
 @dataclass(frozen=True)
 class ReleaseEntry:
+    """One release's entry: its role, its current build or None, and its builds."""
+
     role: str
     current: str | None
     builds: Mapping[str, BuildEntry] = field(default_factory=dict)
@@ -93,10 +98,17 @@ class ReleasesRecord:
 
     @classmethod
     def empty(cls) -> ReleasesRecord:
+        """Return a record with no default release and no releases."""
         return cls(default=None, releases={})
 
     @classmethod
     def parse(cls, content: bytes) -> ReleasesRecord:
+        """Parse and check ``releases.json``; raise ``ReleaseRecordError`` if invalid.
+
+        Content larger than ``MAX_RECORD_BYTES``, that is not a JSON document,
+        or whose shape is wrong is refused with ``INVALID_RECORD``; a record of
+        the right shape must also pass ``check_record``.
+        """
         if len(content) > MAX_RECORD_BYTES:
             refusal_code = "INVALID_RECORD"
             raise _refuse(
@@ -183,6 +195,7 @@ class ReleasesRecord:
         return cls(default=default, releases=releases)
 
     def to_document(self) -> dict[str, Any]:
+        """Return the record as a JSON object, releases and builds sorted by name."""
         return {
             "schema_version": RELEASES_SCHEMA_VERSION,
             "default": self.default,
@@ -203,14 +216,17 @@ class ReleasesRecord:
         }
 
     def serialize(self) -> bytes:
+        """Return the ``releases.json`` bytes: indented JSON ending in a newline."""
         return (json.dumps(self.to_document(), indent=2) + "\n").encode()
 
 
 def build_folder(release: str, build: str) -> str:
+    """Return a build's folder in the repository, ``releases/<release>/<build>``."""
     return f"{RELEASES_FOLDER}/{release}/{build}"
 
 
 def is_pointer_file(path: str) -> bool:
+    """Return whether the path's file name matches ``latest*.json`` (case-sensitive)."""
     return fnmatch.fnmatchcase(path.rsplit("/", 1)[-1], POINTER_FILE_PATTERN)
 
 
@@ -290,7 +306,11 @@ def withdraw_build(
 
 
 def check_record(record: ReleasesRecord) -> list[Violation]:
-    """``current`` names a listed, non-withdrawn build; ``default`` a release."""
+    """Return the record's violations of the rules on ``current`` and ``default``.
+
+    Each release's ``current``, when set, must name a listed, non-withdrawn
+    build, and ``default``, when set, a listed release.
+    """
     violations = []
     if record.default is not None and record.default not in record.releases:
         violations.append(
@@ -320,8 +340,12 @@ def check_record(record: ReleasesRecord) -> list[Violation]:
 def check_change(
     before: ReleasesRecord | None, after: ReleasesRecord
 ) -> list[Violation]:
-    """Existing build entries are unchanged except for ``withdrawn``, and the
-    new record stays within the size every reader accepts."""
+    """Return the violations of a change from ``before`` to ``after``.
+
+    ``after`` must pass ``check_record`` and stay within the size every
+    reader accepts. With a ``before`` record, every release and build entry
+    it lists must remain, and each build entry may change only ``withdrawn``.
+    """
     violations = check_record(after)
     if len(after.serialize()) > MAX_RECORD_BYTES:
         violations.append(

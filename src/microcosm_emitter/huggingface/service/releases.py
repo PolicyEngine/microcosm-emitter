@@ -1,8 +1,7 @@
-"""The release writer: the only code that changes a dataset repository's
-``releases.json``.
+"""The release writer: the only code that changes a repository's ``releases.json``.
 
-Each change (publish a build, make a build current, withdraw a build) is one
-commit:
+The repository is a Hugging Face dataset repository. Each change (publish a
+build, make a build current, withdraw a build) is one commit:
 
 1. read ``releases.json`` and the file list at ``main``'s head;
 2. apply the change to the record;
@@ -155,7 +154,10 @@ type ReleaseChangePolicy = Callable[[ReleaseChange, ReleaseCaller], str | None]
 
 
 def allow_every_change(change: ReleaseChange, caller: ReleaseCaller) -> str | None:
-    """The default until who may change releases is decided."""
+    """Allow every change by returning ``None``: the default ``ReleaseChangePolicy``.
+
+    It stays the default until who may change releases is decided.
+    """
     return None
 
 
@@ -256,10 +258,11 @@ def _parsed_newest_requests(title: str | None) -> dict[str, float]:
 def _newest_requests_on_record(
     repository: DatasetRepository, head: str, files: list[str]
 ) -> tuple[dict[str, float], float | None]:
-    """Each release's newest request time, from the title of the commit that
-    last changed ``releases.json``, and the Hub's date for that commit.
+    """Read the newest request times and the date of the last ``releases.json`` commit.
 
-    The times are empty without a record, or when that commit was not the
+    The times, one per release, come from the title of the commit that last
+    changed ``releases.json``, and the date is the Hub's for that commit. The
+    times are empty without a record, or when that commit was not the
     writer's (P1's one-time migration, for example). A time more than
     ``CLOCK_TOLERANCE_SECONDS`` after the Hub's date is left out.
     """
@@ -293,7 +296,7 @@ def _newest_per_release(*sources: Mapping[str, float]) -> dict[str, float]:
 def _within_order_window(
     newest_requests: Mapping[str, float], record_committed_at: float | None
 ) -> dict[str, float]:
-    """The times a commit title still needs (see ``ORDER_WINDOW_SECONDS``).
+    """Return the times a commit title still needs (see ``ORDER_WINDOW_SECONDS``).
 
     The window ends at the Hub's date for the last commit to
     ``releases.json``, so no machine's clock decides which times are dropped;
@@ -315,10 +318,10 @@ def _within_order_window(
 
 
 def sets_current(change: ReleaseChange) -> bool:
-    """Whether the change sets the release's ``current``: a promotion, or a
-    publication that makes its build current.
+    """Return whether the change sets the release's ``current``.
 
-    Only such changes to one release can undo each other, so only they are
+    That is a promotion, or a publication that makes its build current. Only
+    such changes to one release can undo each other, so only they are
     overtaken by a newer one that landed first, and only they count as newer
     changes. A withdrawal never changes ``current``, and the record's rules
     refuse whichever of a withdrawal and a promotion of the same build lands
@@ -515,7 +518,7 @@ def _already_published(
     record: ReleasesRecord,
     head: str,
 ) -> ReleaseOutcome:
-    """A build folder that exists is refused, unless this build landed.
+    """Refuse a publication whose build folder exists, unless this build landed.
 
     A retried publication whose earlier attempt landed (its commit raised, or
     the receipt was lost) finds its build listed with a byte-identical

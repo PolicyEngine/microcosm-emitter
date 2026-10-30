@@ -20,6 +20,11 @@ RESERVED_PREFIXES: Final = frozenset({"releases"})
 
 
 def safe_identifier(value: object, *, label: str) -> str:
+    """Return ``value`` if it is a safe identifier; raise ``ValueError`` if not.
+
+    A safe identifier is 1 to 128 letters, digits, ``.``, ``_`` or ``-``,
+    starting with a letter or digit. The error message names ``label``.
+    """
     if not isinstance(value, str) or not SAFE_IDENTIFIER.fullmatch(value):
         error_message = f"{label} must match {SAFE_IDENTIFIER.pattern}."
         raise ValueError(error_message)
@@ -27,7 +32,10 @@ def safe_identifier(value: object, *, label: str) -> str:
 
 
 def repository_identifier(value: object) -> str:
-    """A Hugging Face repository identifier, ``owner/name``."""
+    """Return ``value`` if it is a Hugging Face ``owner/name`` identifier.
+
+    Raise ``ValueError`` otherwise.
+    """
     if not isinstance(value, str) or not REPOSITORY_IDENTIFIER.fullmatch(value):
         error_message = "repository must be a Hugging Face owner/name identifier."
         raise ValueError(error_message)
@@ -35,6 +43,11 @@ def repository_identifier(value: object) -> str:
 
 
 def role_identifier(value: object, *, label: str = "role") -> str:
+    """Return ``value`` if it is a role identifier; raise ``ValueError`` if not.
+
+    A role identifier is 1 to 64 lowercase letters, digits or underscores,
+    starting with a letter. The error message names ``label``.
+    """
     if not isinstance(value, str) or not ROLE_IDENTIFIER.fullmatch(value):
         error_message = f"{label} must match {ROLE_IDENTIFIER.pattern}."
         raise ValueError(error_message)
@@ -42,7 +55,12 @@ def role_identifier(value: object, *, label: str = "role") -> str:
 
 
 def repository_prefix(value: object) -> str:
-    """A folder of safe segments that is not reserved for release records."""
+    """Return ``value`` if it is a folder of safe segments not reserved for releases.
+
+    Each ``/``-separated segment must be a safe identifier, and the first may
+    not be in ``RESERVED_PREFIXES`` (``releases``). Raise ``ValueError``
+    otherwise.
+    """
     if not isinstance(value, str) or not value:
         error_message = "prefix must be a nonempty relative folder."
         raise ValueError(error_message)
@@ -56,7 +74,11 @@ def repository_prefix(value: object) -> str:
 
 
 def relative_file_path(value: object, *, label: str) -> str:
-    """A relative POSIX path that cannot leave its folder."""
+    """Return ``value`` if it is a relative POSIX path that cannot leave its folder.
+
+    Raise ``ValueError`` for an empty or absolute path, a backslash, or an
+    empty, ``.`` or ``..`` segment.
+    """
     if not isinstance(value, str) or not value or "\\" in value:
         error_message = f"{label} must be a nonempty POSIX relative path."
         raise ValueError(error_message)

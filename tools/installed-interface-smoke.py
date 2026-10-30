@@ -7,6 +7,14 @@ from pathlib import Path
 
 
 def main(emitter_command: str) -> None:
+    """Start the emitter at ``emitter_command`` from a build environment and use it.
+
+    The environment must lack the emitter package, and the interface package must
+    have no dependencies and ship its protocol fixtures. The started emitter must
+    run all three modules at the interface's version, accept telemetry, an Orrery
+    hand-over and a run file, create its hand-over database, and exit with 0 once
+    the client closes.
+    """
     assert find_spec("microcosm_emitter") is None, "the build must not hold it"
     interface = distribution("microcosm-emitter-interface")
     assert not interface.requires, interface.requires
