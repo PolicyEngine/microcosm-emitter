@@ -66,7 +66,7 @@ def test_startup_timeout_kills_child_that_ignores_termination(tmp_path, monkeypa
 
 
 @pytest.mark.parametrize(
-    "created,status,alive",
+    ("created", "status", "alive"),
     [
         (11, psutil.STATUS_RUNNING, True),
         (10, psutil.STATUS_ZOMBIE, True),

@@ -316,7 +316,7 @@ def parse_stage_dataset_bundle(message: Mapping[str, Any]) -> BundleHandOver:
         handover_id=handover_identifier("dataset_bundle", canonical),
         repository=request.repository,
         remote_prefix=request.remote_prefix,
-        request={key: value for key, value in canonical.items()},
+        request=dict(canonical.items()),
         copied=copied,
     )
 

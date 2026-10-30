@@ -71,7 +71,7 @@ def running_client() -> tuple[EmitterClient, RecordingTransport]:
 
 
 UNCONVERTIBLE_DETAILS = {
-    "multi-element array": lambda: MultiElementArray(),
+    "multi-element array": MultiElementArray,
     "self-referencing mapping": self_referencing_mapping,
     "deep nesting": deeply_nested_list,
 }
@@ -96,7 +96,8 @@ def test_unconvertible_telemetry_arguments_report_failure_with_an_emitter(
     warning = capsys.readouterr().err
     assert warning.count("did not accept a telemetry request") == 1
     assert "invalid_arguments" in warning
-    assert "synthetic" not in warning and "scalar" not in warning
+    assert "synthetic" not in warning
+    assert "scalar" not in warning
 
 
 @pytest.mark.parametrize(

@@ -6,7 +6,7 @@ from pathlib import Path
 
 # A JSON value: null, a boolean, a number, a string, an array or an object.
 type JsonValue = (
-    None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+    bool | int | float | str | list[JsonValue] | dict[str, JsonValue] | None
 )
 
 

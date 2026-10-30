@@ -129,13 +129,8 @@ def test_development_collector_must_be_on_loopback() -> None:
         "http://127.0.0.1:8080"
     )
     for value in ("https://collector.example", "http://192.0.2.1:8080"):
-        try:
+        with pytest.raises(ValueError, match="loopback"):
             _development_collector_url(value)
-        except ValueError as error:
-            assert "loopback" in str(error)
-        else:
-            error_message = "non-loopback development collector was accepted"
-            raise AssertionError(error_message)
 
 
 def test_production_collector_cannot_be_replaced_by_environment(
@@ -162,7 +157,9 @@ def test_token_bearing_http_post_does_not_follow_redirects() -> None:
             self.send_header("Content-Length", "0")
             self.end_headers()
 
-        def log_message(self, format, *args):
+        # Overrides BaseHTTPRequestHandler.log_message, which names this
+        # parameter format.
+        def log_message(self, format, *args):  # noqa: A002
             return
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -231,9 +228,11 @@ def test_alembic_schema_matches_sqlalchemy_models(tmp_path) -> None:
     EventSpool(spool_path)
     engine = create_spool_engine(spool_path)
     try:
-        with engine.begin() as connection:
-            with alembic_config(connection=connection) as config:
-                command.check(config)
+        with (
+            engine.begin() as connection,
+            alembic_config(connection=connection) as config,
+        ):
+            command.check(config)
     finally:
         engine.dispose()
 
@@ -608,7 +607,8 @@ def test_an_unreadable_saved_login_keeps_runs_pending_until_it_can_be_read(
     assert warning.count("Microcosm telemetry is waiting") == 1
     # Only the error's type: its text names the path or quotes the file.
     assert f"could not be read ({type(unreadable_login).__name__})" in warning
-    assert "synthetic" not in warning and "0xff" not in warning
+    assert "synthetic" not in warning
+    assert "0xff" not in warning
 
     # Once the login can be read, the next emitter delivers both runs.
     def collector(url, payload, token, *, timeout=5.0):
@@ -799,7 +799,8 @@ def test_a_saved_login_that_cannot_be_read_raises_an_error_without_its_details(
     assert unreadable.error_type == type(error).__name__
     # Nothing keeps the original error, not even as context: its text names
     # the file, and a UnicodeDecodeError holds the file's bytes.
-    assert unreadable.__context__ is None and unreadable.__cause__ is None
+    assert unreadable.__context__ is None
+    assert unreadable.__cause__ is None
     assert "synthetic" not in str(unreadable)
 
 
@@ -907,7 +908,8 @@ def test_permanent_collector_rejection_retains_only_rejected_producer(
         warning = capsys.readouterr().err
         assert warning.count("local-only for this run") == 1
         if endpoint == "events":
-            assert f"HTTP {status}" in warning and "will not be retried" in warning
+            assert f"HTTP {status}" in warning
+            assert "will not be retried" in warning
     finally:
         spool.close()
 
@@ -954,7 +956,8 @@ def test_transient_collector_rejection_remains_retryable(
         assert len(attempts) == 1
         clock[0] += 100.0
         assert delivery.flush_once()
-        assert len(attempts) == 2 and not spool.has_pending()
+        assert len(attempts) == 2
+        assert not spool.has_pending()
     finally:
         spool.close()
 
@@ -981,8 +984,9 @@ def test_a_malformed_collector_answer_is_retried_like_a_network_failure(
                 )
             if self.path == malformed_path and paths.count(self.path) == 1:
                 self.wfile.write(MALFORMED_ANSWERS[malformed_answer])
-                return
+                return None
             self._json(201 if self.path == "/v1/runs" else 202, {})
+            return None
 
         def _json(self, status: int, document: dict[str, object]) -> None:
             body = json.dumps(document).encode()
@@ -992,7 +996,9 @@ def test_a_malformed_collector_answer_is_retried_like_a_network_failure(
             self.end_headers()
             self.wfile.write(body)
 
-        def log_message(self, format, *args):
+        # Overrides BaseHTTPRequestHandler.log_message, which names this
+        # parameter format.
+        def log_message(self, format, *args):  # noqa: A002
             return
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Collector)
@@ -1083,7 +1089,7 @@ def test_resource_sampler_keeps_reaped_child_cpu_monotonic(monkeypatch) -> None:
         def create_time(self):
             return float(self.pid)
 
-        def children(self, recursive=False):
+        def children(self, *, recursive=False):
             assert recursive is True
             if self.pid == 10 and state["child_alive"]:
                 return [FakeProcess(11)]

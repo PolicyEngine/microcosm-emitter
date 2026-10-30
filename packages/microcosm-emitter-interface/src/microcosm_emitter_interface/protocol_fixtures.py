@@ -80,9 +80,11 @@ def _fixture_files() -> list[tuple[str, Traversable]]:
             "protocol-v"
         ):
             continue
-        for entry in version_directory.iterdir():
-            if entry.name.endswith(".json"):
-                found.append((f"{version_directory.name}/{entry.name}", entry))
+        found.extend(
+            (f"{version_directory.name}/{entry.name}", entry)
+            for entry in version_directory.iterdir()
+            if entry.name.endswith(".json")
+        )
     return sorted(found, key=lambda item: item[0])
 
 

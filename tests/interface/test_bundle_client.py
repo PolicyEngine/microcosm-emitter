@@ -1,6 +1,7 @@
 """Typed staged-dataset-bundle hand-overs, each file named with its role."""
 
 import hashlib
+import re
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ from fake_hugging_face import PRIVATE_REPOSITORY
 
 from microcosm_emitter_interface.bundles import BundleFile, StageDatasetBundle
 from microcosm_emitter_interface.client import EmitterClient
+from microcosm_emitter_interface.identifiers import ROLE_IDENTIFIER
 from microcosm_emitter_interface.transport import SocketTransport
 
 
@@ -47,20 +49,35 @@ def with_replaced(files, index, **changes):
         sha256=changes.get("sha256", original.sha256),
         bytes=changes.get("bytes", original.bytes),
     )
-    return files[:index] + (replaced,) + files[index + 1 :]
+    return (*files[:index], replaced, *files[index + 1 :])
 
 
 @pytest.mark.parametrize(
-    "build_files",
+    ("build_files", "message"),
     [
-        lambda files: files[:2],
-        lambda files: files + (files[2],),
-        lambda files: with_replaced(files, 0, name="folder/dataset.h5"),
-        lambda files: with_replaced(files, 0, role="Dataset"),
-        lambda files: with_replaced(files, 0, sha256="not-a-digest"),
-        lambda files: with_replaced(files, 0, bytes=-1),
-        lambda files: files[2:],
-        lambda files: with_replaced(files, 1, name="dataset.h5"),
+        (lambda files: files[:2], "A bundle has exactly one staged_manifest file."),
+        (lambda files: (*files, files[2]), "A bundle names each file once."),
+        (
+            lambda files: with_replaced(files, 0, name="folder/dataset.h5"),
+            "bundle file name must be a bare file name.",
+        ),
+        (
+            lambda files: with_replaced(files, 0, role="Dataset"),
+            f"role must match {ROLE_IDENTIFIER.pattern}.",
+        ),
+        (
+            lambda files: with_replaced(files, 0, sha256="not-a-digest"),
+            "sha256 must be a lowercase hexadecimal digest.",
+        ),
+        (
+            lambda files: with_replaced(files, 0, bytes=-1),
+            "bytes must be a nonnegative integer.",
+        ),
+        (lambda files: files[2:], "A bundle has at least one output file."),
+        (
+            lambda files: with_replaced(files, 1, name="dataset.h5"),
+            "A bundle names each file once.",
+        ),
     ],
     ids=[
         "no-inventory",
@@ -73,8 +90,8 @@ def with_replaced(files, index, **changes):
         "duplicate-name",
     ],
 )
-def test_bundles_that_break_the_rules_cannot_be_built(tmp_path, build_files):
-    with pytest.raises(ValueError):
+def test_bundles_that_break_the_rules_cannot_be_built(tmp_path, build_files, message):
+    with pytest.raises(ValueError, match=re.escape(message)):
         StageDatasetBundle(
             repository=PRIVATE_REPOSITORY,
             run_id="uk-run-1",

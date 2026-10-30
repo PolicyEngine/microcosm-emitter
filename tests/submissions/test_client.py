@@ -339,7 +339,7 @@ def test_uploads_go_only_to_cloud_storage_or_an_allowed_loopback(
         ("http://127.0.0.1:8080/storage/object", True, True),
     ],
 )
-def test_upload_url_allowed(url: str, allow_loopback: bool, allowed: bool) -> None:
+def test_upload_url_allowed(url: str, *, allow_loopback: bool, allowed: bool) -> None:
     assert upload_url_allowed(url, allow_loopback=allow_loopback) is allowed
 
 

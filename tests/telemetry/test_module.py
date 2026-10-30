@@ -132,7 +132,8 @@ def test_event_and_stage_requests_are_sanitized_in_service(module):
         }
     )
     details = events(module)[-1]["details"]
-    assert details["HF_TOKEN"] == "[redacted]" and details["traceback"] == "[redacted]"
+    assert details["HF_TOKEN"] == "[redacted]"
+    assert details["traceback"] == "[redacted]"
     assert details["telemetry_details_truncated"]
     assert len(json.dumps(details).encode()) <= 8192
     module.handle_message(
@@ -161,7 +162,8 @@ def test_heartbeat_has_resources_and_current_stage(module):
     module.handle_message({"command": "transition_stage", "stage_id": "compile"})
     module.tick(time.monotonic() + 120)
     event = events(module)[-1]
-    assert event["event_type"] == "heartbeat" and event["stage_id"] == "compile"
+    assert event["event_type"] == "heartbeat"
+    assert event["stage_id"] == "compile"
     assert event["resources"]["rss_bytes"] > 0
 
 
@@ -219,7 +221,7 @@ def test_close_does_not_wait_for_a_given_token_that_expired(tmp_path, monkeypatc
 def test_module_close_disposes_database_when_delivery_fails(module):
     module.delivery.flush_once.side_effect = OSError("network")
     module.spool.close = Mock(wraps=module.spool.close)
-    with pytest.raises(OSError):
+    with pytest.raises(OSError, match=r"^network$"):
         module.close(time.monotonic() + 1)
     module.spool.close.assert_called_once()
 
@@ -391,7 +393,8 @@ def test_block_closes_active_stage_and_finishes_without_failure(module, active):
             "hf_download",
             "completed",
         )
-    assert module.lifecycle.finished and module.lifecycle.transition_stage is None
+    assert module.lifecycle.finished
+    assert module.lifecycle.transition_stage is None
     module.parent_exited()
     module.tick(time.monotonic() + 120)
     module.handle_message({"command": "complete"})
@@ -415,7 +418,7 @@ def test_block_accepts_empty_ids_with_explicit_positive_count(module):
 
 
 @pytest.mark.parametrize(
-    "failure_class,error_code",
+    ("failure_class", "error_code"),
     [
         ("error", "BUILD_FAILED"),
         ("interrupted", "BUILD_INTERRUPTED"),
@@ -464,7 +467,8 @@ def test_block_commit_failure_preserves_stage_and_sequence(module):
             )
     finally:
         sqlalchemy_event.remove(factory, "before_commit", fail_commit)
-    assert events(module) == recorded and not module.lifecycle.finished
+    assert events(module) == recorded
+    assert not module.lifecycle.finished
     assert module.lifecycle.transition_stage == "compile"
     module.handle_message(
         {"command": "block", "phase": "preflight", "blocking_gate_ids": ["check"]}
@@ -500,7 +504,8 @@ def test_invalid_block_cannot_poison_queue_or_lifecycle(module, details):
     }
     with pytest.raises((ValueError, TypeError)):
         module.handle_message(request)
-    assert events(module) == recorded and module.lifecycle == state
+    assert events(module) == recorded
+    assert module.lifecycle == state
 
 
 def test_uncoded_failure_omits_optional_error_code(module):

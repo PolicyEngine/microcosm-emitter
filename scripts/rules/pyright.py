@@ -97,8 +97,10 @@ class PyrightError:
         """Return the error as indented output lines, with its full message."""
         details = [line.strip() for line in self.message.splitlines()[1:]]
         return [
-            f"  {label}: {self.path}:{self.line}:{self.column} - "
-            f"{self.summary} ({self.rule})",
+            (
+                f"  {label}: {self.path}:{self.line}:{self.column} - "
+                f"{self.summary} ({self.rule})"
+            ),
             *(f"      {detail}" for detail in details if detail),
         ]
 
@@ -385,8 +387,10 @@ def _check_enforced(check: _PackageCheck) -> tuple[bool, list[str]]:
     if not check.errors:
         return True, [f"{check.package}: passed with no Pyright errors {check.label}"]
     lines = [
-        f"{check.package}: failed with {_error_count(len(check.errors))}, where "
-        f"{check.rule.id} ({check.rule.status}) allows none"
+        (
+            f"{check.package}: failed with {_error_count(len(check.errors))}, where "
+            f"{check.rule.id} ({check.rule.status}) allows none"
+        )
     ]
     for error in check.errors:
         lines += error.describe("error")
@@ -400,12 +404,16 @@ def _check_ratcheted(
     comparison = compare(check.errors, read_baseline(path) if path.is_file() else [])
     if comparison.passed:
         return True, [
-            f"{check.package}: passed with {_error_count(len(check.errors))}, "
-            f"each listed in {baseline_file} {check.label}"
+            (
+                f"{check.package}: passed with {_error_count(len(check.errors))}, "
+                f"each listed in {baseline_file} {check.label}"
+            )
         ]
     lines = [
-        f"{check.package}: failed, its Pyright errors differ from "
-        f"{baseline_file} {check.label}"
+        (
+            f"{check.package}: failed, its Pyright errors differ from "
+            f"{baseline_file} {check.label}"
+        )
     ]
     for error in comparison.new_errors:
         lines += error.describe("new error")
@@ -435,8 +443,10 @@ def _write_baseline(check: _PackageCheck, baseline_file: str) -> tuple[bool, lis
         comparison = compare(check.errors, read_baseline(path))
         if comparison.new_errors:
             lines = [
-                f"{check.package}: failed, --write-baseline never adds an error "
-                f"to {baseline_file}"
+                (
+                    f"{check.package}: failed, --write-baseline never adds an error "
+                    f"to {baseline_file}"
+                )
             ]
             for error in comparison.new_errors:
                 lines += error.describe("new error")
@@ -448,9 +458,11 @@ def _write_baseline(check: _PackageCheck, baseline_file: str) -> tuple[bool, lis
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(header + "".join(f"{entry}\n" for entry in entries))
     return True, [
-        f"{check.package}: wrote {baseline_file} with {_entry_count(len(entries))}; "
-        f"set count = {len(entries)} under [rule.baseline] of {check.rule.id} "
-        "in rules/registry.toml"
+        (
+            f"{check.package}: wrote {baseline_file} with "
+            f"{_entry_count(len(entries))}; set count = {len(entries)} under "
+            f"[rule.baseline] of {check.rule.id} in rules/registry.toml"
+        )
     ]
 
 
@@ -478,8 +490,10 @@ def check_package(
     baseline = rule.baseline if rule.status is Status.RATCHETED else None
     if write_baseline and baseline is None:
         return False, [
-            f"{package}: failed, {rule.id} is {rule.status}, "
-            f"so {package} has no baseline",
+            (
+                f"{package}: failed, {rule.id} is {rule.status}, "
+                f"so {package} has no baseline"
+            ),
             "  Fix: fix each error instead.",
         ]
     try:
