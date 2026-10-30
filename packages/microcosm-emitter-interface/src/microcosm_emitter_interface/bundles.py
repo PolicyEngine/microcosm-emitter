@@ -25,10 +25,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final, Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, TypedDict
 
 from microcosm_emitter_interface.identifiers import (
     bare_file_name,
@@ -39,6 +38,9 @@ from microcosm_emitter_interface.identifiers import (
 )
 from microcosm_emitter_interface.protocol import PROTOCOL_VERSION
 from microcosm_emitter_interface.submissions import CollectorProvenance
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 DEFAULT_BUNDLE_PREFIX: Final = "staged"
 #: The bundle's own inventory, compared with the repository copy.

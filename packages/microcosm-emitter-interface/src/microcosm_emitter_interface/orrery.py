@@ -7,11 +7,13 @@ equal ``microcosm_emitter.orrery.contracts``.
 
 from __future__ import annotations
 
-import os
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
+
+if TYPE_CHECKING:
+    import os
+    from collections.abc import Mapping
 
 type PublicationFileRole = Literal[
     "graph",
@@ -149,7 +151,7 @@ def publication_id_of(inventory: Any) -> str | None:
 def answered_inventory(answer: Mapping[str, Any] | None) -> PublicationInventory | None:
     """Return the inventory in the module's answer, or None if it holds none."""
     value = None if answer is None else answer.get("inventory")
-    return cast(PublicationInventory, value) if isinstance(value, dict) else None
+    return cast("PublicationInventory", value) if isinstance(value, dict) else None
 
 
 def answered_receipt(
@@ -165,5 +167,5 @@ def answered_receipt(
     """
     value = None if answer is None else answer.get("receipt")
     if isinstance(value, dict) and isinstance(value.get("status"), str):
-        return cast(PublicationReceipt, value)
+        return cast("PublicationReceipt", value)
     return unavailable_receipt(publication_id, error_code=error_code)

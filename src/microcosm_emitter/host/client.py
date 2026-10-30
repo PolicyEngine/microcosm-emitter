@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import socket
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from microcosm_emitter.host.constants import (
     ACK_OK,
@@ -13,8 +13,12 @@ from microcosm_emitter.host.constants import (
     MAX_MESSAGE_BYTES,
     SEND_TIMEOUT,
 )
-from microcosm_emitter.host.contracts import JsonObject
 from microcosm_emitter.host.errors import LocalServiceError
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from microcosm_emitter.host.contracts import JsonObject
 
 
 def _encode_request(payload: JsonObject) -> bytes:

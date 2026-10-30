@@ -3,8 +3,23 @@
 from typing import Final
 
 from microcosm_emitter_interface.telemetry import (
-    DEFAULT_FAILURE_CLASS as DEFAULT_FAILURE_CLASS,
+    DEFAULT_FAILURE_CLASS,
 )
+
+# Every public name, including those re-exported from the interface package,
+# so type checkers of this py.typed package treat them as exported.
+__all__ = [
+    "COMMAND_BLOCK",
+    "COMMAND_CALIBRATION_PROGRESS",
+    "COMMAND_COMPLETE",
+    "COMMAND_EMIT",
+    "COMMAND_FAIL",
+    "COMMAND_PROGRESS",
+    "COMMAND_STAGE",
+    "COMMAND_TRANSITION_CALIBRATION_PROGRESS",
+    "COMMAND_TRANSITION_STAGE",
+    "DEFAULT_FAILURE_CLASS",
+]
 
 COMMAND_EMIT: Final = "emit"
 COMMAND_STAGE: Final = "stage"

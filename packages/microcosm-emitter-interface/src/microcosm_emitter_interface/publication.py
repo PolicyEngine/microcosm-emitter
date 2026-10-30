@@ -24,10 +24,9 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
 from microcosm_emitter_interface.bundles import handover_identifier
 from microcosm_emitter_interface.identifiers import (
@@ -41,6 +40,9 @@ from microcosm_emitter_interface.releases import (
     RELEASE_MANIFEST_NAME,
     is_pointer_file,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 RELEASE_MANIFEST_ROLE: Final = "release_manifest"
 RELEASE_CHANGE: Final = "release_change"

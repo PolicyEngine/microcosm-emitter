@@ -25,11 +25,13 @@ from __future__ import annotations
 
 import fnmatch
 import json
-from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field, replace
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from microcosm_emitter_interface.identifiers import role_identifier, safe_identifier
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Collection, Mapping
 
 RELEASES_RECORD_PATH: Final = "releases.json"
 RELEASES_SCHEMA_VERSION: Final = 1

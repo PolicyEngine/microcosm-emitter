@@ -14,14 +14,12 @@ from __future__ import annotations
 import sys
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from microcosm_emitter.huggingface.service.bundles import stage_bundle
 from microcosm_emitter.huggingface.service.hub import UPLOAD_FAILED, DatasetRepository
-from microcosm_emitter.huggingface.service.queue import ClaimedJob, HandoverQueue
 from microcosm_emitter.huggingface.service.releases import (
     ReleaseOutcome,
     apply_release_change,
@@ -34,6 +32,11 @@ from microcosm_emitter.huggingface.service.requests import (
 )
 from microcosm_emitter.huggingface.service.run_files import commit_run_files
 from microcosm_emitter_interface.publication import RELEASE_CHANGE
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from microcosm_emitter.huggingface.service.queue import ClaimedJob, HandoverQueue
 
 #: How long a repository or job lease lasts without renewal. While a delivery
 #: runs, its leases are renewed every ``LEASE_RENEWAL_SECONDS``, so a long

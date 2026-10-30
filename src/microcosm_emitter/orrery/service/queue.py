@@ -12,7 +12,6 @@ import json
 import re
 import time
 import uuid
-from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
@@ -35,6 +34,7 @@ from microcosm_emitter.orrery.contracts import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
     from urllib.parse import SplitResult
 
     from microcosm_emitter.core.auth import SessionCredential
@@ -251,7 +251,7 @@ class GraphPublicationQueue:
             return ClaimedGraphPublication(
                 publication_id=id_,
                 directory=Path(job.directory),
-                inventory=cast(PublicationInventory, job.inventory),
+                inventory=cast("PublicationInventory", job.inventory),
                 lease_until=job.lease_until,
             )
 
@@ -260,7 +260,9 @@ class GraphPublicationQueue:
         with self._sessions() as session:
             job = session.get(GraphPublicationJob, id_)
             # ORM JSON columns are generic at the persistence boundary.
-            return None if job is None else cast(PublicationReceipt, dict(job.receipt))
+            return (
+                None if job is None else cast("PublicationReceipt", dict(job.receipt))
+            )
 
     def finish(
         self,
@@ -307,7 +309,7 @@ class GraphPublicationQueue:
                 "url": url,
                 "attempts": job.attempts,
                 "inventory_sha256": inventory_digest(
-                    cast(PublicationInventory, job.inventory)
+                    cast("PublicationInventory", job.inventory)
                 ),
             }
             job.receipt = dict(receipt)
