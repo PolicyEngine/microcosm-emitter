@@ -160,9 +160,11 @@ class LookupTest(TrackingIssueTestCase):
         self.assertEqual(
             violations,
             [
-                "[ex.layers.ratcheted] downgrade: issue = 912 names no open issue: "
-                "Issue #912 is closed. Fix: reopen issue #912 while the rule stays "
-                "weakened, or restore the rule and remove [rule.downgrade]."
+                (
+                    "[ex.layers.ratcheted] downgrade: issue = 912 names no open issue: "
+                    "Issue #912 is closed. Fix: reopen issue #912 while the rule stays "
+                    "weakened, or restore the rule and remove [rule.downgrade]."
+                )
             ],
         )
 
@@ -192,9 +194,12 @@ class LookupTest(TrackingIssueTestCase):
                 self.assertEqual(
                     violations,
                     [
-                        "[ex.layers.ratcheted] downgrade: issue = 912 names no open "
-                        f"issue: {problem}. Fix: set issue to the number of an open "
-                        "issue in example/repo that tracks restoring the rule."
+                        (
+                            "[ex.layers.ratcheted] downgrade: issue = 912 names no "
+                            f"open issue: {problem}. Fix: set issue to the number of "
+                            "an open issue in example/repo that tracks restoring the "
+                            "rule."
+                        )
                     ],
                 )
 
@@ -206,11 +211,13 @@ class LookupTest(TrackingIssueTestCase):
         self.assertEqual(
             violations,
             [
-                "[ex.layers.ratcheted] downgrade: couldn't check that issue #912 is "
-                "open: Could not look up #912 in example/repo: gh: Bad credentials "
-                "(HTTP 401). Fix: run the guard again; if it fails again, check "
-                "the token in GH_TOKEN, which needs read access to the issues of "
-                "example/repo."
+                (
+                    "[ex.layers.ratcheted] downgrade: couldn't check that issue #912 "
+                    "is open: Could not look up #912 in example/repo: gh: Bad "
+                    "credentials (HTTP 401). Fix: run the guard again; if it fails "
+                    "again, check the token in GH_TOKEN, which needs read access to "
+                    "the issues of example/repo."
+                )
             ],
         )
 
@@ -285,9 +292,11 @@ class LookupTest(TrackingIssueTestCase):
         self.assertEqual(
             violations,
             [
-                "[registry] downgrade: issue_repository is example/repo, but this "
-                "run is in example/other, whose issues each [rule.downgrade] must "
-                'name. Fix: set issue_repository = "example/other".'
+                (
+                    "[registry] downgrade: issue_repository is example/repo, but this "
+                    "run is in example/other, whose issues each [rule.downgrade] must "
+                    'name. Fix: set issue_repository = "example/other".'
+                )
             ],
         )
         self.assertEqual(self.gh_calls(), [])
@@ -315,10 +324,12 @@ class WithoutATokenTest(TrackingIssueTestCase):
         self.assertEqual(
             violations,
             [
-                "[ex.layers.ratcheted] downgrade: couldn't check that issue #912 is "
-                "open: neither GH_TOKEN nor GITHUB_TOKEN is set. Fix: give the step "
-                "the job's token, with env: GH_TOKEN: ${{ github.token }} and "
-                "permissions: issues: read."
+                (
+                    "[ex.layers.ratcheted] downgrade: couldn't check that issue #912 "
+                    "is open: neither GH_TOKEN nor GITHUB_TOKEN is set. Fix: give the "
+                    "step the job's token, with env: GH_TOKEN: ${{ github.token }} and "
+                    "permissions: issues: read."
+                )
             ],
         )
         self.assertEqual(notes, [])
@@ -331,9 +342,11 @@ class WithoutATokenTest(TrackingIssueTestCase):
         self.assertEqual(
             notes,
             [
-                "rule ex.layers.ratcheted: tracking issue #912 was not checked, "
-                "because neither GH_TOKEN nor GITHUB_TOKEN is set. CI checks it; "
-                'to check it here, set one, for example GH_TOKEN="$(gh auth token)"'
+                (
+                    "rule ex.layers.ratcheted: tracking issue #912 was not checked, "
+                    "because neither GH_TOKEN nor GITHUB_TOKEN is set. CI checks it; "
+                    'to check it here, set one, for example GH_TOKEN="$(gh auth token)"'
+                )
             ],
         )
         self.assertEqual(self.gh_calls(), [])
@@ -367,9 +380,11 @@ class GuardTest(TrackingIssueTestCase):
         self.assertEqual(
             [message for message in repo.messages() if "downgrade" in message],
             [
-                "[ex.layers.ratcheted] downgrade: issue = 912 names no open issue: "
-                "Issue #912 is closed. Fix: reopen issue #912 while the rule stays "
-                "weakened, or restore the rule and remove [rule.downgrade]."
+                (
+                    "[ex.layers.ratcheted] downgrade: issue = 912 names no open issue: "
+                    "Issue #912 is closed. Fix: reopen issue #912 while the rule stays "
+                    "weakened, or restore the rule and remove [rule.downgrade]."
+                )
             ],
         )
 
@@ -407,9 +422,11 @@ class RegistrySchemaTest(TrackingIssueTestCase):
                 self.assertEqual(
                     [str(problem) for problem in problems],
                     [
-                        "[registry] schema: registry.issue_repository must be "
-                        "<owner>/<name>, the GitHub repository that tracks issues. "
-                        'Fix: set issue_repository = "<owner>/<name>".'
+                        (
+                            "[registry] schema: registry.issue_repository must be "
+                            "<owner>/<name>, the GitHub repository that tracks issues. "
+                            'Fix: set issue_repository = "<owner>/<name>".'
+                        )
                     ],
                 )
 

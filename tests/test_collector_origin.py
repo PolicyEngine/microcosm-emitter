@@ -1,6 +1,7 @@
 """Every module sends the builder's Hugging Face token to one trusted origin."""
 
 import os
+import re
 import time
 
 import pytest
@@ -13,6 +14,7 @@ from microcosm_emitter.core.collector_origin import (
 )
 from microcosm_emitter.core.constants import (
     CLOUD_RUN_COLLECTOR_URL,
+    COLLECTOR_SETTING_TYPE_ERROR,
     COLLECTOR_URL_HTTPS_ERROR,
     COLLECTOR_URL_ORIGIN_ERROR,
     CONFLICTING_COLLECTOR_ORIGIN_ERROR,
@@ -250,16 +252,22 @@ def test_every_module_sends_to_the_same_configured_origin(
 
 
 @pytest.mark.parametrize(
-    "settings",
+    ("settings", "error"),
     [
-        {"collector_origin": "https://untrusted.example"},
-        {
-            "collector_origin": CLOUD_RUN_COLLECTOR_URL,
-            "development_collector_url": DEVELOPMENT_COLLECTOR_URL,
-        },
-        {"collector_origin": True},
-        {"collector_origin": [CLOUD_RUN_COLLECTOR_URL]},
-        {"development_collector_url": 1},
+        (
+            {"collector_origin": "https://untrusted.example"},
+            UNTRUSTED_COLLECTOR_ORIGIN_ERROR,
+        ),
+        (
+            {
+                "collector_origin": CLOUD_RUN_COLLECTOR_URL,
+                "development_collector_url": DEVELOPMENT_COLLECTOR_URL,
+            },
+            CONFLICTING_COLLECTOR_ORIGIN_ERROR,
+        ),
+        ({"collector_origin": True}, COLLECTOR_SETTING_TYPE_ERROR),
+        ({"collector_origin": [CLOUD_RUN_COLLECTOR_URL]}, COLLECTOR_SETTING_TYPE_ERROR),
+        ({"development_collector_url": 1}, COLLECTOR_SETTING_TYPE_ERROR),
     ],
     ids=[
         "untrusted origin",
@@ -270,7 +278,7 @@ def test_every_module_sends_to_the_same_configured_origin(
     ],
 )
 def test_collector_submissions_refuse_an_unusable_origin_at_start(
-    tmp_path, capsys, submission_session_origins, settings
+    tmp_path, capsys, submission_session_origins, settings, error
 ) -> None:
     module = submitting_huggingface_module(
         tmp_path, ModuleContext(os.getpid()), **settings
@@ -285,7 +293,7 @@ def test_collector_submissions_refuse_an_unusable_origin_at_start(
     finally:
         module.close(0)
     assert "collector submissions are off" in capsys.readouterr().err
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=re.escape(error)):
         configured_collector_origin(settings)
 
 

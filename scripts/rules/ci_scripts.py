@@ -173,9 +173,11 @@ def compare(registry: Registry, findings: Findings, root: Path) -> list[Violatio
             "multi-line run: block",
             findings.multiline,
             config.multiline_baseline,
-            "move the commands into a tested script under "
-            f"{' or '.join(config.script_directories)} and call it from a "
-            "single-line run:",
+            (
+                "move the commands into a tested script under "
+                f"{' or '.join(config.script_directories)} and call it from a "
+                "single-line run:"
+            ),
         ),
         (
             "untested",

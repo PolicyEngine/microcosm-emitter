@@ -100,7 +100,9 @@ class OrreryModule:
             raise ValueError(error_message)
         return {"receipt": self.queue.receipt(message["publication_id"])}
 
-    def tick(self, now: float) -> None:
+    # The ServiceModule protocol fixes this signature; the host passes the
+    # current time, which this module does not need.
+    def tick(self, now: float) -> None:  # noqa: ARG002
         """Try to deliver one queued graph publication; errors print a warning once.
 
         An exception from the attempt is not raised, since the host stops a
@@ -122,7 +124,9 @@ class OrreryModule:
     def parent_exited(self) -> None:
         """Preserved jobs remain eligible when a later host resumes delivery."""
 
-    def close(self, deadline: float) -> None:
+    # The ServiceModule protocol fixes this signature; the host passes its
+    # shutdown deadline, which closing the client and queue does not need.
+    def close(self, deadline: float) -> None:  # noqa: ARG002
         """Close the delivery's HTTP client and the queue's database connections.
 
         ``deadline`` is not used.

@@ -129,7 +129,7 @@ def test_invalid_requests_are_rejected(running, message):
 
 
 def test_worker_failure_stops_service(running):
-    module, _, errors = running
+    module, _, _errors = running
     module.fail_tick = True
     assert module.closed.wait(2)
 
@@ -280,4 +280,5 @@ def test_query_rejection_does_not_stop_request_processing(running):
         client.request({"reject": True}, module="default")
     assert client.request({}, module="default") == {"accepted": True}
     client.send({"ready": True})
-    assert module.messages == [{"ready": True}] and not errors
+    assert module.messages == [{"ready": True}]
+    assert not errors

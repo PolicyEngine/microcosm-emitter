@@ -98,8 +98,6 @@ ignore = [
     "CPY",
     # Not fixed yet: the pull requests stacked on #55 fix these families,
     # one group each, and remove them here. None stays.
-    # Smaller rules.
-    "A", "ARG", "C4", "E", "FBT", "ISC", "PERF", "PLW", "PT", "PTH", "RET", "RUF", "SIM",
     # Complexity.
     "C90", "PLR",
 ]

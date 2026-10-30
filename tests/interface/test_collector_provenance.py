@@ -1,11 +1,13 @@
 """The optional build description a bundle carries for the collector."""
 
 import hashlib
+import re
 from pathlib import Path
 
 import pytest
 
 from microcosm_emitter_interface.bundles import BundleFile, StageDatasetBundle
+from microcosm_emitter_interface.identifiers import SAFE_IDENTIFIER
 from microcosm_emitter_interface.submissions import (
     EXECUTION_OVERLAY_ROLE,
     ORRERY_EVIDENCE_ROLE,
@@ -58,20 +60,20 @@ def test_a_staged_build_has_no_release() -> None:
 
 
 @pytest.mark.parametrize(
-    "changes",
+    ("changes", "message"),
     [
-        {"country_code": "uk"},
-        {"country_code": "GBR"},
-        {"build_id": "../attempt"},
-        {"licensed_data": "true"},
-        {"licensed_data": 1},
-        {"release": ""},
+        ({"country_code": "uk"}, "country_code must be two upper-case letters."),
+        ({"country_code": "GBR"}, "country_code must be two upper-case letters."),
+        ({"build_id": "../attempt"}, f"build_id must match {SAFE_IDENTIFIER.pattern}."),
+        ({"licensed_data": "true"}, "licensed_data must be True or False."),
+        ({"licensed_data": 1}, "licensed_data must be True or False."),
+        ({"release": ""}, f"release must match {SAFE_IDENTIFIER.pattern}."),
     ],
 )
 def test_provenance_refuses_values_the_collector_would_refuse(
-    changes: dict[str, object],
+    changes: dict[str, object], message: str
 ) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=re.escape(message)):
         provenance(**changes)
 
 
@@ -103,7 +105,9 @@ def test_a_bundle_with_provenance_names_it_in_its_message() -> None:
 
 
 def test_a_bundle_refuses_provenance_of_another_type() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError, match=re.escape("collector must be a CollectorProvenance value.")
+    ):
         StageDatasetBundle(
             repository="policyengine/populace-uk-staging",
             run_id="uk-frs-calibration-attempt-1",

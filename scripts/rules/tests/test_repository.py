@@ -62,9 +62,12 @@ class LoadTest(unittest.TestCase):
         self.assertEqual(
             schema_problems(REGISTRY_WITHOUT_TABLE),
             [
-                "[registry] schema: the registry has no [repository] table. Fix: "
-                "add [repository] with rule_prefix, pr_workflow, script_directories, "
-                "test_directories, packages and file_exception_directories.",
+                (
+                    "[registry] schema: the registry has no [repository] table. Fix: "
+                    "add [repository] with rule_prefix, pr_workflow, "
+                    "script_directories, test_directories, packages and "
+                    "file_exception_directories."
+                ),
             ],
         )
 
@@ -91,10 +94,12 @@ class LoadTest(unittest.TestCase):
         self.assertEqual(
             schema_problems(text),
             [
-                "[registry] schema: unknown key 'scripts_dir' in repository. Fix: "
-                "remove it or use one of ['file_exception_directories', 'packages', "
-                "'pr_workflow', 'rule_prefix', 'script_directories', "
-                "'test_directories'].",
+                (
+                    "[registry] schema: unknown key 'scripts_dir' in repository. Fix: "
+                    "remove it or use one of ['file_exception_directories', "
+                    "'packages', 'pr_workflow', 'rule_prefix', 'script_directories', "
+                    "'test_directories']."
+                ),
             ],
         )
 
@@ -108,9 +113,11 @@ class LoadTest(unittest.TestCase):
                 self.assertEqual(
                     schema_problems(text),
                     [
-                        f"[registry] schema: repository.rule_prefix is {prefix!r}, "
-                        "not one lowercase word. Fix: use the word every rule id "
-                        "starts with, such as 'emitter'.",
+                        (
+                            f"[registry] schema: repository.rule_prefix is {prefix!r}, "
+                            "not one lowercase word. Fix: use the word every rule id "
+                            "starts with, such as 'emitter'."
+                        ),
                     ],
                 )
 
@@ -151,8 +158,10 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(
             validation_messages({"rules/registry.toml": registry}),
             [
-                "[other.quality.types] schema: id does not start with 'ex.', the "
-                "registry's rule_prefix. Fix: rename the rule to start with 'ex.'.",
+                (
+                    "[other.quality.types] schema: id does not start with 'ex.', the "
+                    "registry's rule_prefix. Fix: rename the rule to start with 'ex.'."
+                ),
             ],
         )
 
@@ -174,15 +183,21 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(
             [message for message in messages if "repository." in message],
             [
-                "[registry] schema: repository.pr_workflow "
-                ".github/workflows/pull-request.yaml does not exist. Fix: name the "
-                "workflow that runs on every pull request.",
-                "[registry] schema: repository.script_directories names tools, "
-                "which is not a directory. Fix: list the directories that hold "
-                "the repository's scripts.",
-                "[registry] schema: repository.packages pattern 'packages/*' "
-                "matches no directory with a pyproject.toml. Fix: list the "
-                "package directories, with . for the repository root.",
+                (
+                    "[registry] schema: repository.pr_workflow "
+                    ".github/workflows/pull-request.yaml does not exist. Fix: name the "
+                    "workflow that runs on every pull request."
+                ),
+                (
+                    "[registry] schema: repository.script_directories names tools, "
+                    "which is not a directory. Fix: list the directories that hold "
+                    "the repository's scripts."
+                ),
+                (
+                    "[registry] schema: repository.packages pattern 'packages/*' "
+                    "matches no directory with a pyproject.toml. Fix: list the "
+                    "package directories, with . for the repository root."
+                ),
             ],
         )
 

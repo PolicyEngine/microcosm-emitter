@@ -570,7 +570,8 @@ def test_a_collector_cycle_claims_nothing_once_shutdown_begins(submitting_module
 def test_uploads_have_a_finite_write_timeout():
     from microcosm_emitter.submissions.client import UPLOAD_TIMEOUT
 
-    assert UPLOAD_TIMEOUT.write is not None and UPLOAD_TIMEOUT.write > 0
+    assert UPLOAD_TIMEOUT.write is not None
+    assert UPLOAD_TIMEOUT.write > 0
 
 
 def test_a_collector_cycle_starts_no_submission_after_its_time_budget(
@@ -612,7 +613,8 @@ def test_a_collector_queue_error_leaves_the_bundle_answer_alone(
         request.handover_id(),
     )
     warning = capsys.readouterr().err
-    assert "collector" in warning and "database is locked" not in warning
+    assert "collector" in warning
+    assert "database is locked" not in warning
 
 
 def test_an_unusable_collector_setting_switches_submissions_off(module_factory, capsys):
@@ -750,7 +752,10 @@ def test_a_second_emitter_never_claims_a_collector_row_during_its_upload(
         claimed.append(second.run_cycle())
         time.sleep(0.1)
 
-    assert not any(claimed) and second_client.submitted == [], (
+    assert not any(claimed), (
+        "a second emitter claimed the collector row while its upload was running"
+    )
+    assert second_client.submitted == [], (
         "a second emitter claimed the collector row while its upload was running"
     )
     first.collector.release_uploads()
@@ -1134,7 +1139,8 @@ def test_a_submission_the_collector_refuses_is_reported(submitting_module, capsy
     cycle(controls)
 
     [line] = report_lines(capsys, request.handover_id())
-    assert "failed" in line and "COLLECTOR_REFUSED_422" in line, line
+    assert "failed" in line, line
+    assert "COLLECTOR_REFUSED_422" in line, line
 
 
 def test_a_succeeded_submission_is_not_reported(submitting_module, capsys):
@@ -1206,7 +1212,8 @@ def test_a_submission_not_final_within_a_day_times_out(
     # Never checked again once timed out.
     assert len(controls.collector.status_requests) == checks
     [line] = report_lines(capsys, request.handover_id())
-    assert "timed_out" in line and submission_id in line, line
+    assert "timed_out" in line, line
+    assert submission_id in line, line
 
 
 @pytest.mark.parametrize(
@@ -1253,7 +1260,8 @@ def test_checks_refused_to_another_user_time_out_with_that_refusal(
     ) == ("timed_out", "COLLECTOR_REFUSED_403", collector_status, None)
     assert len(controls.collector.status_requests) == checks
     [line] = report_lines(capsys, request.handover_id())
-    assert "timed_out" in line and "COLLECTOR_REFUSED_403" in line, line
+    assert "timed_out" in line, line
+    assert "COLLECTOR_REFUSED_403" in line, line
 
 
 def test_a_final_status_found_after_a_long_absence_is_still_stored(

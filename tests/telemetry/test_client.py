@@ -40,7 +40,8 @@ def test_stage_requests_do_not_infer_completion_or_progress(emitter):
     ]
     assert all("event_type" not in request for request in emitter._transport.requests)
     assert not hasattr(emitter, "_transition_stage")
-    assert emitter._transport.closed and not emitter.available
+    assert emitter._transport.closed
+    assert not emitter.available
 
 
 def test_failure_serializes_exception_and_leaves_stage_selection_to_service(emitter):
@@ -115,7 +116,8 @@ def test_startup_failure_is_disabled_without_leaking_exception_details(
     assert not emitter.available
     warning = capsys.readouterr().err
     assert "startup_failure" in warning
-    assert "PermissionError" not in warning and "sensitive detail" not in warning
+    assert "PermissionError" not in warning
+    assert "sensitive detail" not in warning
 
 
 def test_send_and_close_failures_never_interrupt_build(emitter, monkeypatch, capsys):
@@ -142,7 +144,8 @@ def test_failure_with_broken_exception_string_still_closes(emitter):
     assert emitter._transport.requests[-1]["command"] == "fail"
     assert emitter._transport.requests[-1]["error_type"] == "BrokenError"
     assert emitter._transport.requests[-1]["message"] is None
-    assert emitter._transport.closed and not emitter.available
+    assert emitter._transport.closed
+    assert not emitter.available
 
 
 def test_serialization_preserves_paths_and_handles_nonfinite_numbers(emitter):
@@ -164,7 +167,8 @@ def test_block_forwards_metadata_without_constructing_outcome(emitter):
             "gate_statuses": None,
         }
     ]
-    assert emitter._transport.closed and not emitter.available
+    assert emitter._transport.closed
+    assert not emitter.available
 
 
 def test_failure_code_is_forwarded_without_classifying_exception(emitter):
@@ -187,7 +191,8 @@ def test_block_transport_failure_still_closes(emitter, monkeypatch):
 
     monkeypatch.setattr(emitter._transport, "send", failed)
     emitter.block(phase="preflight", blocking_gate_ids=["check"])
-    assert emitter._transport.closed and not emitter.available
+    assert emitter._transport.closed
+    assert not emitter.available
 
 
 @pytest.mark.parametrize("outcome", ["complete", "fail", "block"])
@@ -218,7 +223,8 @@ def test_outcome_cleanup_can_be_deferred(outcome, deferred, send_fails, monkeypa
         assert emitter.available is deferred
     finally:
         emitter.close()
-    assert transport.closed and not emitter.available
+    assert transport.closed
+    assert not emitter.available
 
 
 @pytest.mark.parametrize("outcome", ["complete", "fail", "block"])

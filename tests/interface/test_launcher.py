@@ -3,6 +3,7 @@
 import os
 import shutil
 import time
+from pathlib import Path
 
 import psutil
 import pytest
@@ -134,9 +135,9 @@ def test_child_finds_the_build_hugging_face_credential_in_the_same_order(
     address, received_requests = loopback_collector
     for name, value in variables.items():
         monkeypatch.setenv(name, value)
-    token_path = os.environ["HF_TOKEN_PATH"]
-    os.makedirs(os.path.dirname(token_path), exist_ok=True)
-    with open(token_path, "w") as token_file:
+    token_path = Path(os.environ["HF_TOKEN_PATH"])
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    with token_path.open("w") as token_file:
         token_file.write(saved_login)
     client = EmitterClient.start(
         telemetry=TelemetrySettings(
@@ -195,7 +196,8 @@ def test_emitter_that_exits_reports_only_its_exit_code(
     assert failure.value.reason == "child_exit"
     assert failure.value.exit_code == 3
     assert "private" not in str(failure.value)
-    assert failure.value.__cause__ is None and failure.value.__context__ is None
+    assert failure.value.__cause__ is None
+    assert failure.value.__context__ is None
 
 
 def test_close_stops_the_emitter_and_removes_its_runtime_directory(tmp_path):

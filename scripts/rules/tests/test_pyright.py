@@ -189,11 +189,13 @@ class CoverageTest(unittest.TestCase):
             self.assertEqual(
                 check_coverage(repo.root),
                 [
-                    "[ex.quality.every-package-type-checked] pyright-coverage: "
-                    "package projects/added has no Pyright rule, so CI doesn't "
-                    "type-check it. Fix: add it to a Pyright rule's "
-                    "enforcer.projects in rules/registry.toml and to the pyright "
-                    "job's matrix in .github/workflows/pr.yml."
+                    (
+                        "[ex.quality.every-package-type-checked] pyright-coverage: "
+                        "package projects/added has no Pyright rule, so CI doesn't "
+                        "type-check it. Fix: add it to a Pyright rule's "
+                        "enforcer.projects in rules/registry.toml and to the pyright "
+                        "job's matrix in .github/workflows/pr.yml."
+                    )
                 ],
             )
 
@@ -251,11 +253,13 @@ class CoverageLayoutTest(unittest.TestCase):
             self.assertEqual(
                 check_coverage(repo.root),
                 [
-                    "[ex.quality.every-package-type-checked] pyright-coverage: "
-                    "package packages/interface has no Pyright rule, so CI doesn't "
-                    "type-check it. Fix: add it to a Pyright rule's "
-                    "enforcer.projects in rules/registry.toml and to the pyright "
-                    "job's matrix in .github/workflows/pr.yaml."
+                    (
+                        "[ex.quality.every-package-type-checked] pyright-coverage: "
+                        "package packages/interface has no Pyright rule, so CI doesn't "
+                        "type-check it. Fix: add it to a Pyright rule's "
+                        "enforcer.projects in rules/registry.toml and to the pyright "
+                        "job's matrix in .github/workflows/pr.yaml."
+                    )
                 ],
             )
 
@@ -453,9 +457,11 @@ class RunPyrightTest(FakeUvTestCase):
             [
                 [
                     str(self.package_dir.resolve()),
-                    f"tool run --from pyright=={PYRIGHT_VERSION} pyright "
-                    f"--outputjson --pythonpath {interpreter} "
-                    f"--project {self.package_dir.resolve()}",
+                    (
+                        f"tool run --from pyright=={PYRIGHT_VERSION} pyright "
+                        f"--outputjson --pythonpath {interpreter} "
+                        f"--project {self.package_dir.resolve()}"
+                    ),
                     "unset",
                 ]
             ],
@@ -568,8 +574,10 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 0,
                 [
-                    "libs/alpha: passed with no Pyright errors "
-                    "(ex.quality.pyright-library, enforced)",
+                    (
+                        "libs/alpha: passed with no Pyright errors "
+                        "(ex.quality.pyright-library, enforced)"
+                    ),
                     "pyright: passed",
                 ],
             ),
@@ -594,14 +602,20 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 1,
                 [
-                    "libs/alpha: failed with 1 Pyright error, where "
-                    "ex.quality.pyright-library (enforced) allows none",
-                    f"  error: {LIBRARY_FILE}:7:9 - Argument of type "
-                    '"str | None" cannot be assigned to parameter "name" '
-                    "(reportArgumentType)",
+                    (
+                        "libs/alpha: failed with 1 Pyright error, where "
+                        "ex.quality.pyright-library (enforced) allows none"
+                    ),
+                    (
+                        f"  error: {LIBRARY_FILE}:7:9 - Argument of type "
+                        '"str | None" cannot be assigned to parameter "name" '
+                        "(reportArgumentType)"
+                    ),
                     '      Type "None" is not assignable to type "str"',
-                    "  Fix: fix each error. Suppress one only as a last resort, "
-                    "with # pyright: ignore[<rule>] and the reason.",
+                    (
+                        "  Fix: fix each error. Suppress one only as a last resort, "
+                        "with # pyright: ignore[<rule>] and the reason."
+                    ),
                     "pyright: failed",
                 ],
             ),
@@ -613,9 +627,11 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 0,
                 [
-                    "projects/service: passed with 2 Pyright errors, each listed in "
-                    "rules/baselines/pyright-service.txt "
-                    "(ex.quality.pyright-service, ratcheted)",
+                    (
+                        "projects/service: passed with 2 Pyright errors, each listed "
+                        "in rules/baselines/pyright-service.txt "
+                        "(ex.quality.pyright-service, ratcheted)"
+                    ),
                     "pyright: passed",
                 ],
             ),
@@ -636,11 +652,15 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 1,
                 [
-                    "projects/service: failed, its Pyright errors differ from "
-                    "rules/baselines/pyright-service.txt "
-                    "(ex.quality.pyright-service, ratcheted)",
-                    f"  new error: {SERVICE_FILE}:30:9 - "
-                    f'"call" is possibly unbound ({UNBOUND})',
+                    (
+                        "projects/service: failed, its Pyright errors differ from "
+                        "rules/baselines/pyright-service.txt "
+                        "(ex.quality.pyright-service, ratcheted)"
+                    ),
+                    (
+                        f"  new error: {SERVICE_FILE}:30:9 - "
+                        f'"call" is possibly unbound ({UNBOUND})'
+                    ),
                     "  Fix: fix each new error; the baseline only shrinks.",
                     "pyright: failed",
                 ],
@@ -657,14 +677,18 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 1,
                 [
-                    "projects/service: failed, its Pyright errors differ from "
-                    "rules/baselines/pyright-service.txt "
-                    "(ex.quality.pyright-service, ratcheted)",
+                    (
+                        "projects/service: failed, its Pyright errors differ from "
+                        "rules/baselines/pyright-service.txt "
+                        "(ex.quality.pyright-service, ratcheted)"
+                    ),
                     f"  no longer occurs: {ROUTE_UNBOUND_ENTRY}",
-                    "  Fix: remove the entries that no longer occur with "
-                    "python -m scripts.rules pyright projects/service "
-                    "--write-baseline, then set count under [rule.baseline] "
-                    "of ex.quality.pyright-service to the number left.",
+                    (
+                        "  Fix: remove the entries that no longer occur with "
+                        "python -m scripts.rules pyright projects/service "
+                        "--write-baseline, then set count under [rule.baseline] "
+                        "of ex.quality.pyright-service to the number left."
+                    ),
                     "pyright: failed",
                 ],
             ),
@@ -687,14 +711,18 @@ class PyrightCommandTest(FakeUvTestCase):
         self.assertEqual(
             lines[1:],
             [
-                f"  new error: {SERVICE_FILE}:30:9 - "
-                f'"call" is possibly unbound ({UNBOUND})',
+                (
+                    f"  new error: {SERVICE_FILE}:30:9 - "
+                    f'"call" is possibly unbound ({UNBOUND})'
+                ),
                 f"  no longer occurs: {ROUTE_UNBOUND_ENTRY}",
                 "  Fix: fix each new error; the baseline only shrinks.",
-                "  Fix: remove the entries that no longer occur with "
-                "python -m scripts.rules pyright projects/service "
-                "--write-baseline, then set count under [rule.baseline] "
-                "of ex.quality.pyright-service to the number left.",
+                (
+                    "  Fix: remove the entries that no longer occur with "
+                    "python -m scripts.rules pyright projects/service "
+                    "--write-baseline, then set count under [rule.baseline] "
+                    "of ex.quality.pyright-service to the number left."
+                ),
                 "pyright: failed",
             ],
         )
@@ -707,9 +735,11 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 0,
                 [
-                    "projects/service: wrote rules/baselines/pyright-service.txt "
-                    "with 1 entry; set count = 1 under [rule.baseline] of "
-                    "ex.quality.pyright-service in rules/registry.toml",
+                    (
+                        "projects/service: wrote rules/baselines/pyright-service.txt "
+                        "with 1 entry; set count = 1 under [rule.baseline] of "
+                        "ex.quality.pyright-service in rules/registry.toml"
+                    ),
                     "pyright: passed",
                 ],
             ),
@@ -733,10 +763,14 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 1,
                 [
-                    "projects/service: failed, --write-baseline never adds an "
-                    "error to rules/baselines/pyright-service.txt",
-                    f"  new error: {SERVICE_FILE}:30:9 - "
-                    f'"call" is possibly unbound ({UNBOUND})',
+                    (
+                        "projects/service: failed, --write-baseline never adds an "
+                        "error to rules/baselines/pyright-service.txt"
+                    ),
+                    (
+                        f"  new error: {SERVICE_FILE}:30:9 - "
+                        f'"call" is possibly unbound ({UNBOUND})'
+                    ),
                     "  Fix: fix each new error; the baseline only shrinks.",
                     "pyright: failed",
                 ],
@@ -757,9 +791,11 @@ class PyrightCommandTest(FakeUvTestCase):
             (status, lines[0]),
             (
                 0,
-                "projects/service: wrote rules/baselines/pyright-service.txt "
-                "with 2 entries; set count = 2 under [rule.baseline] of "
-                "ex.quality.pyright-service in rules/registry.toml",
+                (
+                    "projects/service: wrote rules/baselines/pyright-service.txt "
+                    "with 2 entries; set count = 2 under [rule.baseline] of "
+                    "ex.quality.pyright-service in rules/registry.toml"
+                ),
             ),
         )
         baseline = self.root / "rules/baselines/pyright-service.txt"
@@ -801,9 +837,11 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 0,
                 [
-                    "projects/service: wrote rules/baselines/pyright-service.txt "
-                    "with 1 entry; set count = 1 under [rule.baseline] of "
-                    "ex.quality.pyright-service in rules/registry.toml",
+                    (
+                        "projects/service: wrote rules/baselines/pyright-service.txt "
+                        "with 1 entry; set count = 1 under [rule.baseline] of "
+                        "ex.quality.pyright-service in rules/registry.toml"
+                    ),
                     "pyright: passed",
                 ],
             ),
@@ -816,8 +854,10 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 1,
                 [
-                    "libs/alpha: failed, ex.quality.pyright-library is enforced, "
-                    "so libs/alpha has no baseline",
+                    (
+                        "libs/alpha: failed, ex.quality.pyright-library is enforced, "
+                        "so libs/alpha has no baseline"
+                    ),
                     "  Fix: fix each error instead.",
                     "pyright: failed",
                 ],
@@ -831,8 +871,10 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 1,
                 [
-                    "libs/unregistered: failed, no Pyright rule lists it in "
-                    "enforcer.projects",
+                    (
+                        "libs/unregistered: failed, no Pyright rule lists it in "
+                        "enforcer.projects"
+                    ),
                     "  Fix: add it to a Pyright rule in rules/registry.toml.",
                     "pyright: failed",
                 ],
@@ -848,9 +890,12 @@ class PyrightCommandTest(FakeUvTestCase):
         self.assertEqual(
             lines,
             [
-                "libs/alpha: failed, Pyright could not check it: there is no "
-                f"locked environment: {self.library}/.venv/bin/python does not "
-                f"exist; run `uv sync --frozen --all-extras` in {self.library} first",
+                (
+                    "libs/alpha: failed, Pyright could not check it: there is no "
+                    f"locked environment: {self.library}/.venv/bin/python does not "
+                    "exist; run `uv sync --frozen --all-extras` in "
+                    f"{self.library} first"
+                ),
                 "pyright: failed",
             ],
         )
@@ -865,9 +910,11 @@ class PyrightCommandTest(FakeUvTestCase):
                 [str(self.library), "sync --frozen --all-extras"],
                 [
                     str(self.library),
-                    f"tool run --from pyright=={PYRIGHT_VERSION} pyright "
-                    f"--outputjson --pythonpath {self.library}/.venv/bin/python "
-                    f"--project {self.library}",
+                    (
+                        f"tool run --from pyright=={PYRIGHT_VERSION} pyright "
+                        f"--outputjson --pythonpath {self.library}/.venv/bin/python "
+                        f"--project {self.library}"
+                    ),
                 ],
             ],
         )
@@ -899,9 +946,11 @@ class PyrightCommandTest(FakeUvTestCase):
             (
                 1,
                 [
-                    "libs/alpha: failed, Pyright could not check it: "
-                    "`uv sync --frozen --all-extras` exited with status 2: "
-                    "error: The lockfile needs to be updated",
+                    (
+                        "libs/alpha: failed, Pyright could not check it: "
+                        "`uv sync --frozen --all-extras` exited with status 2: "
+                        "error: The lockfile needs to be updated"
+                    ),
                     "pyright: failed",
                 ],
             ),
