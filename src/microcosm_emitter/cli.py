@@ -99,8 +99,9 @@ def describe() -> EmitterDescription:
 
 def version_report() -> VersionReport:
     """Return the emitter's versions and the collector origin it sends to by default."""
-    # Imported only when this runs, so `microcosm-emitter host` never loads the
-    # collector code.
+    # Imported when this runs, not with the CLI: `microcosm-emitter host` loads
+    # the collector code only when it loads a module, after reading its
+    # configuration.
     from microcosm_emitter.core.collector_origin import (  # noqa: PLC0415
         resolve_collector_origin,
     )
@@ -117,8 +118,9 @@ def _positive_integer(value: str) -> int:
 
 
 def _collector_origin(development_collector_url: str | None) -> str:
-    # Imported only when this runs, so `microcosm-emitter host` never loads the
-    # collector code.
+    # Imported when this runs, not with the CLI: `microcosm-emitter host` loads
+    # the collector code only when it loads a module, after reading its
+    # configuration.
     from microcosm_emitter.core.collector_origin import (  # noqa: PLC0415
         resolve_collector_origin,
     )
@@ -150,8 +152,10 @@ def telemetry_token(arguments: argparse.Namespace) -> int:
     standard error, without the token, the Hugging Face credential or the
     collector's answer body; ``main`` turns any other error into exit 7.
     """
-    # Imported only when the command runs, so `microcosm-emitter host` never loads
-    # it, and looked up then, so the tests' patches of core.auth apply.
+    # Imported when the command runs, not with the CLI: `microcosm-emitter host`
+    # loads the authentication code only when it loads a module, after reading
+    # its configuration. Looked up then, so the tests' patches of core.auth
+    # apply.
     from microcosm_emitter.core.auth import (  # noqa: PLC0415
         ExchangeFailure,
         UnreadableLoginError,
