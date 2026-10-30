@@ -53,6 +53,9 @@ if TYPE_CHECKING:
     import email.message
     from collections.abc import Callable, Mapping
 
+# Each print in this module, marked `# noqa: T201`, writes one of its
+# messages to standard error on purpose; none is leftover debugging output.
+
 #: Visible ASCII (letters, digits and punctuation), the only characters of a
 #: Hugging Face credential or a collector token. Any other value is refused
 #: before it is sent: a bearer token (RFC 6750) has no spaces, tabs, line
@@ -547,8 +550,6 @@ def shared_session(
     try:
         session = CollectorSession(origin, destination=destination)
     except GivenCollectorTokenError as error:
-        # A message on standard error, on purpose. Unlike sys.stderr.write, print
-        # does not raise when sys.stderr is None.
         print(  # noqa: T201
             GIVEN_TOKEN_START_ERROR_MESSAGE.format(reason=error),
             file=sys.stderr,

@@ -41,6 +41,9 @@ if TYPE_CHECKING:
 
     from microcosm_emitter.huggingface.service.queue import ClaimedJob, HandoverQueue
 
+# Each print in this module, marked `# noqa: T201`, writes one of its
+# messages to standard error on purpose; none is leftover debugging output.
+
 #: How long a repository or job lease lasts without renewal. While a delivery
 #: runs, its leases are renewed every ``LEASE_RENEWAL_SECONDS``, so a long
 #: upload keeps them; an emitter that was killed stops renewing, and another
@@ -215,8 +218,6 @@ class HuggingFaceDelivery:
             if key in self._warned:
                 return
             self._warned.add(key)
-        # A message on standard error, on purpose. Unlike sys.stderr.write, print
-        # does not raise when sys.stderr is None.
         print(message, file=sys.stderr, flush=True)  # noqa: T201
 
     def run_cycle(self) -> int:

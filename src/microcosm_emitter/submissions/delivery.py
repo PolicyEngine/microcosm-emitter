@@ -50,6 +50,9 @@ if TYPE_CHECKING:
 
     from microcosm_emitter.huggingface.service.queue import ClaimedJob, HandoverQueue
 
+# Each print in this module, marked `# noqa: T201`, writes one of its
+# messages to standard error on purpose; none is leftover debugging output.
+
 COLLECTOR_SUBMISSIONS_ENABLED_BY_DEFAULT: Final = False
 DESTINATION_COLLECTOR: Final = "collector"
 COLLECTOR_SUBMISSION: Final = "collector_submission"
@@ -102,8 +105,6 @@ SUBMISSION_OUTCOME_MESSAGE: Final = (
 
 def print_to_standard_error(message: str) -> None:
     """Print ``message`` to standard error and flush it."""
-    # A message on standard error, on purpose. Unlike sys.stderr.write, print
-    # does not raise when sys.stderr is None.
     print(message, file=sys.stderr, flush=True)  # noqa: T201
 
 
