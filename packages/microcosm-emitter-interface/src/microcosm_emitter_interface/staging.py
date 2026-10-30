@@ -36,10 +36,10 @@ class HuggingFaceSettings:
     """Configuration for the emitter's Hugging Face module.
 
     The module keeps its queue in its own SQLite file, the hand-over database.
-    ``handover_database_path`` names it; by default it sits next to the spool
-    database (``events.sqlite3`` → ``events.handovers.sqlite3``). It can never
-    be the spool database itself, which released emitters share and which
-    must stay at a migration revision they accept.
+    ``handover_database_path`` names it; by default it sits next to the event
+    queue file (``events.sqlite3`` → ``events.handovers.sqlite3``). It can
+    never be the event queue file itself, which released emitters share and
+    which must stay at a migration revision they accept.
     """
 
     handover_database_path: Path | None = None

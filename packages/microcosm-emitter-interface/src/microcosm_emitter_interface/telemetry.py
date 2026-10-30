@@ -101,7 +101,15 @@ class StageEvent:
 
 @dataclass(frozen=True)
 class StageTransition:
-    """Finish the current stage, if any, and start ``stage_id``."""
+    """A sequential stage update for ``stage_id``, with its ``status``.
+
+    The emitter maps ``running`` and ``started`` to a start, ``completed`` and
+    ``passed`` to completed, ``failed`` to failed, and any other status to
+    progress. An update for a stage other than the current one finishes the
+    current one first. A start makes ``stage_id`` the current stage, or, when
+    it already is, is recorded as progress; completed or failed ends it when
+    it is the current stage. No other update makes a stage current.
+    """
 
     stage_id: str
     status: str = "running"
@@ -312,10 +320,16 @@ class TelemetryRecorder:
         message: str | None = None,
         **details: Any,
     ) -> bool:
-        """Finish the current stage, if any, and start ``stage_id``.
+        """Send a sequential stage update for ``stage_id``.
 
-        Return True once the emitter committed the event. The keyword
-        arguments beyond ``status`` and ``message`` become its details.
+        An update for a stage other than the current one finishes the current
+        one first. A ``status`` of ``running`` (the default) or ``started``
+        makes ``stage_id`` the current stage, and is recorded as progress when
+        it already is; ``completed``, ``passed`` or ``failed`` ends it when it
+        is the current stage; any other status is recorded as progress, and
+        none of these makes a stage current. Return True once the emitter
+        committed the update. The keyword arguments beyond ``status`` and
+        ``message`` become its details.
         """
         return self._client.emit_telemetry(
             StageTransition(stage_id, status, message, details)
@@ -340,13 +354,21 @@ class TelemetryRecorder:
         )
 
     def calibration_progress(self, event: Mapping[str, Any]) -> bool:
-        """Send one calibration epoch's event; True once committed."""
+        """Send one calibration epoch's event.
+
+        The emitter records ``event`` only when its ``kind`` is
+        ``calibration_epoch``, and ignores any other. Return True once the
+        emitter accepted the request, also when it ignored the event.
+        """
         return self._client.emit_telemetry(CalibrationProgress(event))
 
     def transition_calibration_progress(self, event: Mapping[str, Any]) -> bool:
-        """Send one calibration epoch's event, first moving to the calibrating stage.
+        """Send one calibration epoch's event as a stage transition.
 
-        Return True once the emitter committed it.
+        For an event whose ``kind`` is ``calibration_epoch``, the emitter first
+        moves the run to the calibrating stage, unless it is already there, then
+        records the event; it ignores any other event. Return True once the
+        emitter accepted the request, also when it ignored the event.
         """
         return self._client.emit_telemetry(CalibrationProgress(event, transition=True))
 
