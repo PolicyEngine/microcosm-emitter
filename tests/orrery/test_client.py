@@ -276,7 +276,8 @@ def test_graph_file_work_does_not_block_telemetry_or_control(
     def delayed_inventory(*args, **kwargs):
         entered.set()
         if not release.wait(5):
-            raise TimeoutError("test did not release graph file work")
+            error_message = "test did not release graph file work"
+            raise TimeoutError(error_message)
         return original_inventory(*args, **kwargs)
 
     monkeypatch.setattr(

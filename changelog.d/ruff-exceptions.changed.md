@@ -1,0 +1,1 @@
+Exceptions are raised as Ruff's `EM`, `RSE` and `TRY` rules require: messages are assigned before the raise, checks that raise inside a `try` block are moved into helper functions, and Ruff no longer ignores these families. Behaviour is unchanged.

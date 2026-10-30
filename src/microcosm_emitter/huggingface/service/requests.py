@@ -73,14 +73,16 @@ def require_supported_version(message: Mapping[str, Any]) -> None:
         or not isinstance(version, int)
         or version not in SUPPORTED_PROTOCOL_VERSIONS
     ):
-        raise RequestRefusedError("UNSUPPORTED_PROTOCOL_VERSION")
+        error_message = "UNSUPPORTED_PROTOCOL_VERSION"
+        raise RequestRefusedError(error_message)
 
 
 def _valid(check, *arguments, **keywords):
     try:
         return check(*arguments, **keywords)
     except ValueError:
-        raise RequestRefusedError("INVALID_REQUEST") from None
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message) from None
 
 
 def run_reference(message: Mapping[str, Any]) -> tuple[str, str]:
@@ -93,20 +95,26 @@ def run_reference(message: Mapping[str, Any]) -> tuple[str, str]:
 
 def _read_local_file(value: object) -> bytes:
     if not isinstance(value, str) or not value:
-        raise RequestRefusedError("INVALID_REQUEST")
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message)
     path = Path(value)
     if not path.is_absolute():
-        raise RequestRefusedError("INVALID_REQUEST")
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message)
     try:
         if not path.is_file():
-            raise RequestRefusedError("LOCAL_FILE_MISSING")
+            error_message = "LOCAL_FILE_MISSING"
+            raise RequestRefusedError(error_message)
         if path.stat().st_size > MAX_RUN_FILE_BYTES:
-            raise RequestRefusedError("FILE_TOO_LARGE")
+            error_message = "FILE_TOO_LARGE"
+            raise RequestRefusedError(error_message)
         content = path.read_bytes()
     except OSError:
-        raise RequestRefusedError("LOCAL_FILE_MISSING") from None
+        error_message = "LOCAL_FILE_MISSING"
+        raise RequestRefusedError(error_message) from None
     if len(content) > MAX_RUN_FILE_BYTES:
-        raise RequestRefusedError("FILE_TOO_LARGE")
+        error_message = "FILE_TOO_LARGE"
+        raise RequestRefusedError(error_message)
     return content
 
 
@@ -122,14 +130,17 @@ def parse_stage_run_files(message: Mapping[str, Any]) -> RunFilesHandOver:
         or not math.isfinite(interval)
         or interval < 0
     ):
-        raise RequestRefusedError("INVALID_REQUEST")
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message)
     entries = message.get("files")
     if not isinstance(entries, list):
-        raise RequestRefusedError("INVALID_REQUEST")
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message)
     targets: list[tuple[str, object]] = []
     for entry in entries:
         if not isinstance(entry, Mapping):
-            raise RequestRefusedError("INVALID_REQUEST")
+            error_message = "INVALID_REQUEST"
+            raise RequestRefusedError(error_message)
         relative = _valid(
             relative_file_path, entry.get("relative_path"), label="relative_path"
         )
@@ -138,20 +149,23 @@ def parse_stage_run_files(message: Mapping[str, Any]) -> RunFilesHandOver:
     if pointer is not None:
         targets.append((LATEST_STAGING_POINTER_PATH, pointer))
     if len({path_in_repo for path_in_repo, _ in targets}) != len(targets):
-        raise RequestRefusedError("INVALID_REQUEST")
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message)
     run_index_entry = message.get("run_index_entry")
     if run_index_entry is not None and (
         not isinstance(run_index_entry, Mapping)
         or run_index_entry.get("run_id") != run_id
     ):
-        raise RequestRefusedError("INVALID_REQUEST")
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message)
     files = []
     total = 0
     for path_in_repo, local_path in targets:
         content = _read_local_file(local_path)
         total += len(content)
         if total > MAX_HAND_OVER_BYTES:
-            raise RequestRefusedError("FILE_TOO_LARGE")
+            error_message = "FILE_TOO_LARGE"
+            raise RequestRefusedError(error_message)
         files.append((path_in_repo, content))
     return RunFilesHandOver(
         repository=repository,
@@ -187,11 +201,14 @@ def copy_small_files(files: Sequence[BundleFile]) -> dict[str, bytes]:
         try:
             content = Path(item.local_path).read_bytes()
         except OSError:
-            raise RequestRefusedError("LOCAL_FILE_MISSING") from None
+            error_message = "LOCAL_FILE_MISSING"
+            raise RequestRefusedError(error_message) from None
         if len(content) != item.bytes:
-            raise RequestRefusedError("FILE_SIZE_DIFFERS")
+            error_message = "FILE_SIZE_DIFFERS"
+            raise RequestRefusedError(error_message)
         if hashlib.sha256(content).hexdigest() != item.sha256:
-            raise RequestRefusedError("FILE_DIGEST_DIFFERS")
+            error_message = "FILE_DIGEST_DIFFERS"
+            raise RequestRefusedError(error_message)
         copied[item.name] = content
         total += item.bytes
     return copied
@@ -207,7 +224,8 @@ def _collector_provenance(value: Any) -> CollectorProvenance | None:
     if value is None:
         return None
     if not isinstance(value, Mapping) or set(value) != COLLECTOR_PROVENANCE_KEYS:
-        raise ValueError("collector must name exactly the provenance fields.")
+        error_message = "collector must name exactly the provenance fields."
+        raise ValueError(error_message)
     return CollectorProvenance(**value)
 
 
@@ -223,7 +241,8 @@ def parse_stage_dataset_bundle(message: Mapping[str, Any]) -> BundleHandOver:
     if not isinstance(entries, list) or any(
         not isinstance(entry, Mapping) for entry in entries
     ):
-        raise RequestRefusedError("INVALID_REQUEST")
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message)
     try:
         request = StageDatasetBundle(
             repository=message.get("repository"),
@@ -243,18 +262,23 @@ def parse_stage_dataset_bundle(message: Mapping[str, Any]) -> BundleHandOver:
             ),
         )
     except (ValueError, TypeError):
-        raise RequestRefusedError("INVALID_REQUEST") from None
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message) from None
     for entry, item in zip(entries, request.files, strict=True):
         path = Path(str(entry.get("local_path")))
         if not path.is_absolute():
-            raise RequestRefusedError("INVALID_REQUEST")
+            error_message = "INVALID_REQUEST"
+            raise RequestRefusedError(error_message)
         try:
             if not path.is_file():
-                raise RequestRefusedError("LOCAL_FILE_MISSING")
+                error_message = "LOCAL_FILE_MISSING"
+                raise RequestRefusedError(error_message)
             if path.stat().st_size != item.bytes:
-                raise RequestRefusedError("FILE_SIZE_DIFFERS")
+                error_message = "FILE_SIZE_DIFFERS"
+                raise RequestRefusedError(error_message)
         except OSError:
-            raise RequestRefusedError("LOCAL_FILE_MISSING") from None
+            error_message = "LOCAL_FILE_MISSING"
+            raise RequestRefusedError(error_message) from None
     copied = copy_small_files(request.files)
     canonical = dict(message)
     return BundleHandOver(
@@ -278,6 +302,16 @@ class ReleaseHandOver:
         return self.change.repository
 
 
+def _file_entries(message: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    entries = message.get("files")
+    if not isinstance(entries, list) or any(
+        not isinstance(entry, Mapping) for entry in entries
+    ):
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message)
+    return entries
+
+
 def release_change_from_message(message: Mapping[str, Any]) -> ReleaseChange:
     """The typed change a message describes; ``RequestRefusedError`` if invalid.
 
@@ -288,11 +322,7 @@ def release_change_from_message(message: Mapping[str, Any]) -> ReleaseChange:
     command = message.get("command")
     try:
         if command == "publish_release":
-            entries = message.get("files")
-            if not isinstance(entries, list) or any(
-                not isinstance(entry, Mapping) for entry in entries
-            ):
-                raise RequestRefusedError("INVALID_REQUEST")
+            entries = _file_entries(message)
             return PublishRelease(
                 repository=message.get("repository"),
                 release=message.get("release"),
@@ -322,8 +352,10 @@ def release_change_from_message(message: Mapping[str, Any]) -> ReleaseChange:
     except RequestRefusedError:
         raise
     except (ValueError, TypeError):
-        raise RequestRefusedError("INVALID_REQUEST") from None
-    raise RequestRefusedError("INVALID_REQUEST")
+        error_message = "INVALID_REQUEST"
+        raise RequestRefusedError(error_message) from None
+    error_message = "INVALID_REQUEST"
+    raise RequestRefusedError(error_message)
 
 
 def parse_release_change(message: Mapping[str, Any]) -> ReleaseHandOver:
@@ -336,14 +368,18 @@ def parse_release_change(message: Mapping[str, Any]) -> ReleaseHandOver:
     if isinstance(change, PublishRelease):
         for item in change.files:
             if not item.local_path.is_absolute():
-                raise RequestRefusedError("INVALID_REQUEST")
+                error_message = "INVALID_REQUEST"
+                raise RequestRefusedError(error_message)
             try:
                 if not item.local_path.is_file():
-                    raise RequestRefusedError("LOCAL_FILE_MISSING")
+                    error_message = "LOCAL_FILE_MISSING"
+                    raise RequestRefusedError(error_message)
                 if item.local_path.stat().st_size != item.bytes:
-                    raise RequestRefusedError("FILE_SIZE_DIFFERS")
+                    error_message = "FILE_SIZE_DIFFERS"
+                    raise RequestRefusedError(error_message)
             except OSError:
-                raise RequestRefusedError("LOCAL_FILE_MISSING") from None
+                error_message = "LOCAL_FILE_MISSING"
+                raise RequestRefusedError(error_message) from None
     canonical = change.message()
     return ReleaseHandOver(
         handover_id=handover_identifier(RELEASE_CHANGE, canonical),

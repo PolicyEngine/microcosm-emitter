@@ -169,7 +169,8 @@ def test_lost_ack_retries_same_event_after_restart_without_duplicates(
         response = real_post(url, *args, **kwargs)
         if url.endswith("/events"):
             assert response[0] == 202
-            raise OSError("simulated lost acknowledgement")
+            error_message = "simulated lost acknowledgement"
+            raise OSError(error_message)
         return response
 
     monkeypatch.setattr(delivery_module, "_http_post", lose_ack)

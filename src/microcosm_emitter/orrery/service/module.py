@@ -72,7 +72,8 @@ class OrreryModule:
         if command == "retry":
             self.queue.retry(message["publication_id"])
         elif command != "receipt":
-            raise ValueError("unsupported graph publication command")
+            error_message = "unsupported graph publication command"
+            raise ValueError(error_message)
         return {"receipt": self.queue.receipt(message["publication_id"])}
 
     def tick(self, now: float) -> None:

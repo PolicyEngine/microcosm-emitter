@@ -98,8 +98,6 @@ ignore = [
     "CPY",
     # Not fixed yet: the pull requests stacked on #55 fix these families,
     # one group each, and remove them here. None stays.
-    # Exception messages and raising.
-    "EM", "RSE", "TRY",
     # Docstrings.
     "D",
     # Typing-only imports, annotations and in-function imports.

@@ -27,12 +27,14 @@ class RecordingModule:
 
     def handle_message(self, message):
         if message.get("reject"):
-            raise ValueError("rejected")
+            error_message = "rejected"
+            raise ValueError(error_message)
         self.messages.append(dict(message))
 
     def tick(self, now):
         if self.fail_tick:
-            raise RuntimeError("periodic failure")
+            error_message = "periodic failure"
+            raise RuntimeError(error_message)
 
     def parent_exited(self):
         self.exited = True
@@ -70,11 +72,11 @@ def running(socket_path):
         last_error = None
         while time.monotonic() < deadline:
             if errors:
-                raise AssertionError(f"Service setup failed: {errors[0]}") from errors[
-                    0
-                ]
+                error_message = f"Service setup failed: {errors[0]}"
+                raise AssertionError(error_message) from errors[0]
             if not thread.is_alive():
-                raise AssertionError("Service exited before answering a readiness ping")
+                error_message = "Service exited before answering a readiness ping"
+                raise AssertionError(error_message)
             try:
                 client.ping()
             except LocalServiceError as error:
@@ -83,9 +85,8 @@ def running(socket_path):
             else:
                 break
         else:
-            raise AssertionError(
-                "Service did not answer a readiness ping"
-            ) from last_error
+            error_message = "Service did not answer a readiness ping"
+            raise AssertionError(error_message) from last_error
         yield module, client, errors
     finally:
         runtime.stop()
@@ -177,7 +178,8 @@ def delayed_listener(monkeypatch):
     def listen(server, backlog):
         bound.set()
         if not allow_listen.wait(3):
-            raise TimeoutError("test did not release the listening socket")
+            error_message = "test did not release the listening socket"
+            raise TimeoutError(error_message)
         original_listen(server, backlog)
 
     def ping(client, **kwargs):
@@ -221,7 +223,8 @@ def test_fixture_cleans_up_when_initialization_fails(request, monkeypatch):
 
     def initialize(module):
         modules.append(module)
-        raise RuntimeError("synthetic initialization failure")
+        error_message = "synthetic initialization failure"
+        raise RuntimeError(error_message)
 
     monkeypatch.setattr(RecordingModule, "initialize", initialize)
     with pytest.raises(AssertionError, match="synthetic initialization failure"):
@@ -267,7 +270,8 @@ def test_query_rejection_does_not_stop_request_processing(running):
 
     def query(message):
         if message.get("reject"):
-            raise ValueError("synthetic query failure")
+            error_message = "synthetic query failure"
+            raise ValueError(error_message)
         return {"accepted": True}
 
     module.query = query

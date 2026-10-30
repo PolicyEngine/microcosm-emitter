@@ -50,10 +50,13 @@ class CollectorProvenance:
         if not isinstance(self.country_code, str) or not _COUNTRY_CODE.fullmatch(
             self.country_code
         ):
-            raise ValueError("country_code must be two upper-case letters.")
+            error_message = "country_code must be two upper-case letters."
+            raise ValueError(error_message)
         safe_identifier(self.build_id, label="build_id")
         if not isinstance(self.licensed_data, bool):
-            raise ValueError("licensed_data must be True or False.")
+            error_message = "licensed_data must be True or False."
+            # The interface README promises ValueError for every invalid field.
+            raise ValueError(error_message)  # noqa: TRY004
         if self.release is not None:
             safe_identifier(self.release, label="release")
 

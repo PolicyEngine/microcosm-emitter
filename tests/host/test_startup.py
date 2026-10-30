@@ -41,7 +41,8 @@ def startup(tmp_path, monkeypatch):
             timeouts.append(self.timeout if timeout is None else timeout)
             advance(state.ping_delay)
             if state.now < state.ready_at:
-                raise LocalServiceError("not ready")
+                error_message = "not ready"
+                raise LocalServiceError(error_message)
 
     def create_directory(**kwargs):
         directory.mkdir()
@@ -280,10 +281,14 @@ def test_startup_diagnostic_omits_all_exception_names_and_payloads(custom):
 def test_startup_diagnostic_clones_only_reason_and_exit_code():
     from microcosm_emitter.host.errors import ServiceStartupError, safe_startup_error
 
-    try:
-        raise ServiceStartupError("child_exit", exit_code=-9) from PermissionError(
+    def fail_with_a_private_cause() -> None:
+        error_message = "child_exit"
+        raise ServiceStartupError(error_message, exit_code=-9) from PermissionError(
             "Bearer hf_synthetic_private_payload"
         )
+
+    try:
+        fail_with_a_private_cause()
     except ServiceStartupError as original:
         failure = safe_startup_error(original)
         assert failure is not original

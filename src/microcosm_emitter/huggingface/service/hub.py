@@ -112,7 +112,8 @@ class DatasetRepository:
 
     def __init__(self, repo_id: str, api: Any) -> None:
         if not isinstance(repo_id, str) or not repo_id.strip():
-            raise ValueError("A Hugging Face hand-over requires a repository.")
+            error_message = "A Hugging Face hand-over requires a repository."
+            raise ValueError(error_message)
         self.repo_id = repo_id.strip()
         self.api = api
 
@@ -124,7 +125,8 @@ class DatasetRepository:
             info.get("sha") if isinstance(info, Mapping) else getattr(info, "sha", None)
         )
         if not sha:
-            raise RuntimeError("The Hub reported no head revision.")
+            error_message = "The Hub reported no head revision."
+            raise RuntimeError(error_message)
         return str(sha)
 
     def commit(
@@ -150,7 +152,8 @@ class DatasetRepository:
             info.get("oid") if isinstance(info, Mapping) else getattr(info, "oid", None)
         )
         if not isinstance(oid, str) or not oid.strip():
-            raise RuntimeError("The Hub commit reported no revision.")
+            error_message = "The Hub commit reported no revision."
+            raise RuntimeError(error_message)
         return oid.strip()
 
     def download(self, path_in_repo: str, *, revision: str | None = None) -> bytes:

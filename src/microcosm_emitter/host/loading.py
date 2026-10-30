@@ -16,9 +16,9 @@ def load_module(
 ) -> ServiceModule:
     matches = list(entry_points(group=MODULE_GROUP, name=name))
     if not matches:
-        raise ModuleNotInstalledError(f"No installed module is named {name!r}.")
+        error_message = f"No installed module is named {name!r}."
+        raise ModuleNotInstalledError(error_message)
     if len(matches) != 1:
-        raise LocalServiceError(
-            f"Expected exactly one installed module named {name!r}."
-        )
+        error_message = f"Expected exactly one installed module named {name!r}."
+        raise LocalServiceError(error_message)
     return matches[0].load()(configuration, context)

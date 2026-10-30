@@ -19,7 +19,8 @@ class MultiElementArray:
     """Behaves like a NumPy array or tensor with more than one element."""
 
     def item(self):
-        raise ValueError("can only convert an array of size 1 to a Python scalar")
+        error_message = "can only convert an array of size 1 to a Python scalar"
+        raise ValueError(error_message)
 
 
 def self_referencing_mapping() -> dict[str, Any]:
@@ -39,7 +40,8 @@ class UnresolvablePath:
     """A path-like argument whose conversion fails."""
 
     def __fspath__(self):
-        raise OSError("synthetic unresolvable path")
+        error_message = "synthetic unresolvable path"
+        raise OSError(error_message)
 
 
 class RecordingTransport:
@@ -134,7 +136,8 @@ def test_an_emitter_that_raises_an_unexpected_error_is_a_failure_not_a_raise():
     client, transport = running_client()
 
     def unexpected(*args, **kwargs):
-        raise RecursionError("synthetic")
+        error_message = "synthetic"
+        raise RecursionError(error_message)
 
     transport.send = unexpected
     transport.query = unexpected

@@ -96,15 +96,16 @@ def publication_inventory(
         if role not in GRAPH_PUBLICATION_ROLES or not re.fullmatch(
             GRAPH_PUBLICATION_ROLES[role], name
         ):
-            raise ValueError("Ineligible graph publication filename or role.")
+            error_message = "Ineligible graph publication filename or role."
+            raise ValueError(error_message)
         path = Path(directory) / name
         if path.is_symlink() or not path.is_file():
-            raise ValueError(
-                "Graph publication files must be regular, preserved files."
-            )
+            error_message = "Graph publication files must be regular, preserved files."
+            raise ValueError(error_message)
         size = path.stat().st_size
         if not 0 < size <= MAX_GRAPH_FILE_BYTES:
-            raise ValueError("Graph publication file exceeds its size limit.")
+            error_message = "Graph publication file exceeds its size limit."
+            raise ValueError(error_message)
         files.append(
             {
                 "name": name,
@@ -119,10 +120,12 @@ def publication_inventory(
         or sum(f["bytes"] for f in files) > MAX_GRAPH_TOTAL_BYTES
         or sum(f["role"] == "graph" for f in files) != 1
     ):
-        raise ValueError("Invalid graph publication inventory.")
+        error_message = "Invalid graph publication inventory."
+        raise ValueError(error_message)
     id_ = publication_id or uuid.uuid4().hex
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", id_):
-        raise ValueError("Invalid graph publication ID.")
+        error_message = "Invalid graph publication ID."
+        raise ValueError(error_message)
     return {"version": 1, "publication_id": id_, "files": files}
 
 
@@ -155,7 +158,8 @@ class GraphPublicationQueue:
             publication_id=inventory["publication_id"],
         )
         if expected != inventory:
-            raise ValueError("Graph publication digest mismatch.")
+            error_message = "Graph publication digest mismatch."
+            raise ValueError(error_message)
         id_ = inventory["publication_id"]
         with self._sessions.begin() as session:
             existing = session.get(GraphPublicationJob, id_)
@@ -163,9 +167,10 @@ class GraphPublicationQueue:
                 if existing.inventory != inventory or existing.directory != str(
                     directory
                 ):
-                    raise ValueError(
+                    error_message = (
                         "Graph publication identity conflicts with a queued job."
                     )
+                    raise ValueError(error_message)
                 return
             session.add(
                 GraphPublicationJob(
@@ -322,6 +327,57 @@ class GraphPublicationQueue:
             session.execute(statement.values(next_attempt_at=0))
 
 
+def _check_unchanged(
+    current: PublicationInventory, inventory: PublicationInventory
+) -> None:
+    if current != inventory:
+        error_message = "preserved_bytes_changed"
+        raise ValueError(error_message)
+
+
+def _requested_uploads(body: Mapping) -> list:
+    uploads = body.get("uploads")
+    if not isinstance(uploads, list):
+        error_message = "invalid_upload_response"
+        # The caller records every malformed response with one error code.
+        raise TypeError(error_message)
+    return uploads
+
+
+def _upload_name(upload: Mapping, files: Mapping[str, object]) -> str:
+    name = upload.get("name")
+    if name not in files:
+        error_message = "invalid_upload_response"
+        raise ValueError(error_message)
+    return name
+
+
+def _check_upload_url(target: str) -> None:
+    url = urlsplit(target)
+    if (
+        url.scheme != "https"
+        or not (
+            (url.hostname == "vercel.com" and url.path == "/api/blob/")
+            or url.hostname == "blob.vercel-storage.com"
+            or (url.hostname or "").endswith(".blob.vercel-storage.com")
+        )
+        or url.username
+        or url.password
+    ):
+        error_message = "invalid_upload_url"
+        raise ValueError(error_message)
+
+
+def _check_publication_answer(
+    answer: Mapping, publication_id: str, inventory: PublicationInventory
+) -> None:
+    if answer.get("publication_id") != publication_id or answer.get(
+        "inventory_sha256"
+    ) != inventory_digest(inventory):
+        error_message = "invalid_publication_response"
+        raise ValueError(error_message)
+
+
 class GraphPublicationDelivery:
     """Upload exact files with scoped signed URLs, then seal the publication."""
 
@@ -339,9 +395,10 @@ class GraphPublicationDelivery:
             parsed.scheme == "http"
             and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
         ):
-            raise ValueError(
+            error_message = (
                 "Graph publication origin must be HTTPS or local development."
             )
+            raise ValueError(error_message)
         if (
             parsed.username
             or parsed.password
@@ -349,7 +406,8 @@ class GraphPublicationDelivery:
             or parsed.fragment
             or parsed.path not in {"", "/"}
         ):
-            raise ValueError("Graph publication destination must be an origin.")
+            error_message = "Graph publication destination must be an origin."
+            raise ValueError(error_message)
         self.queue, self.credential, self.origin = queue, credential, origin.rstrip("/")
         self.client = client or httpx.Client(timeout=60, follow_redirects=False)
         self.invalidate_credential = invalidate_credential
@@ -385,36 +443,20 @@ class GraphPublicationDelivery:
                 {f["name"]: f["role"] for f in inventory["files"]},
                 publication_id=id_,
             )
-            if current != inventory:
-                raise ValueError("preserved_bytes_changed")
+            _check_unchanged(current, inventory)
             headers = {"Authorization": f"Bearer {token}"}
             response = self.client.post(
                 self.origin + "/api/uploads/", json=inventory, headers=headers
             )
             response.raise_for_status()
             body = response.json()
-            uploads = body.get("uploads")
-            if not isinstance(uploads, list):
-                raise ValueError("invalid_upload_response")
+            uploads = _requested_uploads(body)
             files = {f["name"]: f for f in inventory["files"]}
             for upload in uploads:
-                name = upload.get("name")
-                if name not in files:
-                    raise ValueError("invalid_upload_response")
+                name = _upload_name(upload, files)
                 if upload.get("already_uploaded"):
                     continue
-                url = urlsplit(upload["url"])
-                if (
-                    url.scheme != "https"
-                    or not (
-                        (url.hostname == "vercel.com" and url.path == "/api/blob/")
-                        or url.hostname == "blob.vercel-storage.com"
-                        or (url.hostname or "").endswith(".blob.vercel-storage.com")
-                    )
-                    or url.username
-                    or url.password
-                ):
-                    raise ValueError("invalid_upload_url")
+                _check_upload_url(upload["url"])
                 with (directory / name).open("rb") as stream:
                     result = self.client.put(
                         upload["url"],
@@ -429,15 +471,10 @@ class GraphPublicationDelivery:
                 self.origin + "/api/publications/", json=inventory, headers=headers
             )
             response.raise_for_status()
-            result = response.json()
-            if result.get("publication_id") != id_ or result.get(
-                "inventory_sha256"
-            ) != inventory_digest(inventory):
-                raise ValueError("invalid_publication_response")
+            _check_publication_answer(response.json(), id_, inventory)
             self.queue.finish(
                 id_, url=f"{self.origin}/runs/{id_}/", expected_lease=lease
             )
-            return True
         except httpx.HTTPStatusError as exception:
             error = f"publication_http_{exception.response.status_code}"
             if exception.response.status_code == 401 and self.invalidate_credential:
@@ -446,5 +483,7 @@ class GraphPublicationDelivery:
             error = "publication_network_error"
         except (OSError, ValueError, KeyError, TypeError):
             error = "publication_invalid_evidence_or_response"
+        else:
+            return True
         self.queue.finish(id_, error_code=error, expected_lease=lease)
         return False

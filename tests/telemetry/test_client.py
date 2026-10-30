@@ -103,7 +103,8 @@ def test_startup_failure_is_disabled_without_leaking_exception_details(
     monkeypatch, capsys, tmp_path
 ):
     def fail(*args, **kwargs):
-        raise PermissionError("sensitive detail")
+        error_message = "sensitive detail"
+        raise PermissionError(error_message)
 
     monkeypatch.setattr(client, "start_service", fail)
     emitter = LocalTelemetryEmitter.start(
@@ -119,7 +120,8 @@ def test_startup_failure_is_disabled_without_leaking_exception_details(
 
 def test_send_and_close_failures_never_interrupt_build(emitter, monkeypatch, capsys):
     def fail(*args):
-        raise OSError("private")
+        error_message = "private"
+        raise OSError(error_message)
 
     monkeypatch.setattr(emitter._transport, "send", fail)
     monkeypatch.setattr(emitter._transport, "close", fail)
@@ -133,7 +135,8 @@ def test_send_and_close_failures_never_interrupt_build(emitter, monkeypatch, cap
 def test_failure_with_broken_exception_string_still_closes(emitter):
     class BrokenError(Exception):
         def __str__(self):
-            raise RuntimeError("broken exception formatting")
+            error_message = "broken exception formatting"
+            raise RuntimeError(error_message)
 
     emitter.fail(BrokenError())
     assert emitter._transport.requests[-1]["command"] == "fail"
@@ -179,7 +182,8 @@ def test_failure_code_is_forwarded_without_classifying_exception(emitter):
 
 def test_block_transport_failure_still_closes(emitter, monkeypatch):
     def failed(request):
-        raise OSError("synthetic private error")
+        error_message = "synthetic private error"
+        raise OSError(error_message)
 
     monkeypatch.setattr(emitter._transport, "send", failed)
     emitter.block(phase="preflight", blocking_gate_ids=["check"])
@@ -199,7 +203,8 @@ def test_outcome_cleanup_can_be_deferred(outcome, deferred, send_fails, monkeypa
     if send_fails:
 
         def failed(request):
-            raise OSError("synthetic send failure")
+            error_message = "synthetic send failure"
+            raise OSError(error_message)
 
         monkeypatch.setattr(transport, "send", failed)
     try:
@@ -225,7 +230,8 @@ def test_cleanup_failure_is_contained_for_every_outcome(outcome, monkeypatch):
     )
 
     def failed():
-        raise OSError("synthetic cleanup failure")
+        error_message = "synthetic cleanup failure"
+        raise OSError(error_message)
 
     monkeypatch.setattr(transport, "close", failed)
     if outcome == "fail":

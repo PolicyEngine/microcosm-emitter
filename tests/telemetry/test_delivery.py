@@ -71,7 +71,8 @@ DEVELOPMENT_COLLECTOR_URL = "http://127.0.0.1:8080"
 
 def _no_hugging_face_credential(monkeypatch) -> None:
     def refuse() -> str:
-        raise AssertionError("read the Hugging Face credential")
+        error_message = "read the Hugging Face credential"
+        raise AssertionError(error_message)
 
     monkeypatch.setattr(collector_module, "huggingface_token", refuse)
     monkeypatch.setattr(auth_module, "huggingface_token", refuse)
@@ -133,7 +134,8 @@ def test_development_collector_must_be_on_loopback() -> None:
         except ValueError as error:
             assert "loopback" in str(error)
         else:
-            raise AssertionError("non-loopback development collector was accepted")
+            error_message = "non-loopback development collector was accepted"
+            raise AssertionError(error_message)
 
 
 def test_production_collector_cannot_be_replaced_by_environment(
@@ -567,7 +569,8 @@ def test_an_unreadable_saved_login_keeps_runs_pending_until_it_can_be_read(
         raise unreadable_login
 
     def refuse_request(*arguments, **options):
-        raise AssertionError("sent a request without a credential")
+        error_message = "sent a request without a credential"
+        raise AssertionError(error_message)
 
     monkeypatch.setattr(auth_module, "get_token", read_saved_login)
     monkeypatch.setattr(auth_module, "_http_post", refuse_request)
@@ -934,7 +937,8 @@ def test_transient_collector_rejection_remains_retryable(
             attempts.append(current_endpoint)
             if len(attempts) == 1:
                 if status is None:
-                    raise OSError("synthetic transient network failure")
+                    error_message = "synthetic transient network failure"
+                    raise OSError(error_message)
                 return status, {}
         return (201, {}) if current_endpoint == "registration" else (202, {})
 

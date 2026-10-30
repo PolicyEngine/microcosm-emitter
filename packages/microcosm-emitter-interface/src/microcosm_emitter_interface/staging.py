@@ -51,10 +51,11 @@ class HuggingFaceSettings:
             else default_handover_database_path(spool_path)
         )
         if handover_database.resolve() == Path(spool_path).resolve():
-            raise ValueError(
+            error_message = (
                 "The hand-over database must be a different file from the "
                 "spool database."
             )
+            raise ValueError(error_message)
         return {"handover_database_path": str(handover_database)}
 
 
@@ -103,9 +104,12 @@ class StageRunFiles:
         repository_prefix(self.prefix)
         object.__setattr__(self, "files", tuple(self.files))
         if any(not isinstance(item, RunFile) for item in self.files):
-            raise ValueError("files must be RunFile values.")
+            error_message = "files must be RunFile values."
+            raise ValueError(error_message)
         if not isinstance(self.flush, bool):
-            raise ValueError("flush must be a boolean.")
+            error_message = "flush must be a boolean."
+            # The interface README promises ValueError for every invalid field.
+            raise ValueError(error_message)  # noqa: TRY004
         interval = self.commit_interval_seconds
         if (
             isinstance(interval, bool)
@@ -113,13 +117,15 @@ class StageRunFiles:
             or not math.isfinite(interval)
             or interval < 0
         ):
-            raise ValueError("commit_interval_seconds must be finite and >= 0.")
+            error_message = "commit_interval_seconds must be finite and >= 0."
+            raise ValueError(error_message)
         object.__setattr__(self, "commit_interval_seconds", float(interval))
         if self.run_index_entry is not None and (
             not isinstance(self.run_index_entry, Mapping)
             or self.run_index_entry.get("run_id") != self.run_id
         ):
-            raise ValueError("run_index_entry must describe this run.")
+            error_message = "run_index_entry must describe this run."
+            raise ValueError(error_message)
 
     def message(self) -> dict[str, Any]:
         return {

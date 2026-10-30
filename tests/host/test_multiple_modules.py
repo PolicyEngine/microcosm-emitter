@@ -26,7 +26,8 @@ class Module:
     def tick(self, now):
         self.entered.set()
         if self.fail:
-            raise ValueError("synthetic failure")
+            error_message = "synthetic failure"
+            raise ValueError(error_message)
         self.release.wait(2)
 
     def parent_exited(self):
@@ -131,7 +132,8 @@ class RequestModule(Module):
                 self.callback_entered.set()
                 assert self.callback_release.wait(5)
             if value == "reject":
-                raise ValueError("synthetic query rejection")
+                error_message = "synthetic query rejection"
+                raise ValueError(error_message)
             return {"result": value}
         finally:
             self.active = False

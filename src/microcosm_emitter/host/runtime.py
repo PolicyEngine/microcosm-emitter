@@ -28,6 +28,31 @@ from microcosm_emitter.host.request_dispatch import (
 )
 
 
+def _read_request(connection: socket.socket) -> Mapping[str, Any]:
+    data = bytearray()
+    while DELIMITER not in data:
+        chunk = connection.recv(min(READ_BYTES, MAX_MESSAGE_BYTES + 1 - len(data)))
+        if not chunk:
+            error_message = "incomplete request"
+            raise ValueError(error_message)
+        data.extend(chunk)
+        if len(data) > MAX_MESSAGE_BYTES:
+            error_message = "request too large"
+            raise ValueError(error_message)
+    request = json.loads(bytes(data).split(DELIMITER, 1)[0])
+    if not isinstance(request, Mapping):
+        error_message = "request must be an object"
+        raise TypeError(error_message)
+    return request
+
+
+def _encode_reply(value: object, too_large_message: str) -> bytes:
+    response = json.dumps(value, allow_nan=False).encode() + DELIMITER
+    if len(response) > MAX_MESSAGE_BYTES:
+        raise ValueError(too_large_message)
+    return response
+
+
 class ServiceRuntime:
     def __init__(
         self,
@@ -44,10 +69,12 @@ class ServiceRuntime:
         # Returned to ``hello`` requests; the host does not interpret it.
         self.description = None if description is None else dict(description)
         if (module is None) == (modules is None):
-            raise ValueError("Select one module or an explicit module mapping.")
+            error_message = "Select one module or an explicit module mapping."
+            raise ValueError(error_message)
         self.modules = dict(modules) if modules is not None else {"default": module}
         if not self.modules:
-            raise ValueError("At least one module is required.")
+            error_message = "At least one module is required."
+            raise ValueError(error_message)
         self.module = module
         self.is_parent_alive = is_parent_alive
         self.tick_seconds = tick_seconds
@@ -127,81 +154,70 @@ class ServiceRuntime:
             if bound:
                 self.socket_path.unlink(missing_ok=True)
         if self._worker_error is not None:
-            raise LocalServiceError(
+            error_message = (
                 f"Service worker failed ({type(self._worker_error).__name__})."
-            ) from self._worker_error
+            )
+            raise LocalServiceError(error_message) from self._worker_error
 
     def _respond(self, connection: socket.socket) -> bytes | None:
         try:
-            data = bytearray()
-            while DELIMITER not in data:
-                chunk = connection.recv(
-                    min(READ_BYTES, MAX_MESSAGE_BYTES + 1 - len(data))
-                )
-                if not chunk:
-                    raise ValueError("incomplete request")
-                data.extend(chunk)
-                if len(data) > MAX_MESSAGE_BYTES:
-                    raise ValueError("request too large")
-            request = json.loads(bytes(data).split(DELIMITER, 1)[0])
-            if not isinstance(request, Mapping):
-                raise ValueError("request must be an object")
-            action = request.get("action")
-            if action in {"message", "query"}:
-                message = request.get("message")
-                if not isinstance(message, Mapping):
-                    raise ValueError("message must be an object")
-                name = request.get("module")
-                if name is None and len(self.modules) == 1:
-                    name = next(iter(self.modules))
-                if name not in self.modules or name in self._failed:
-                    raise ValueError("module is unavailable")
-                assert self._requests is not None, (
-                    "Requests start before socket intake."
-                )
-                if not self._requests.submit(
-                    name,
-                    ModuleRequest(
-                        connection,
-                        lambda: self._handle_request(name, action, message),
-                    ),
-                ):
-                    raise ValueError("module request queue is unavailable")
-                return None  # The module worker now owns this connection.
-            elif action == "hello" and self.description is not None:
-                response = (
-                    json.dumps(self.description, allow_nan=False).encode() + DELIMITER
-                )
-                if len(response) > MAX_MESSAGE_BYTES:
-                    raise ValueError("description too large")
-                return response
-            elif action == "close":
-                self.stop()
-            elif action != "ping":
-                raise ValueError("unsupported action")
+            return self._answer(connection)
         except Exception:
             # Module errors reject this request, never acknowledge lost data.
             return ACK_ERROR
+
+    def _answer(self, connection: socket.socket) -> bytes | None:
+        request = _read_request(connection)
+        action = request.get("action")
+        if action in {"message", "query"}:
+            message = request.get("message")
+            if not isinstance(message, Mapping):
+                error_message = "message must be an object"
+                raise ValueError(error_message)
+            name = request.get("module")
+            if name is None and len(self.modules) == 1:
+                name = next(iter(self.modules))
+            if name not in self.modules or name in self._failed:
+                error_message = "module is unavailable"
+                raise ValueError(error_message)
+            assert self._requests is not None, "Requests start before socket intake."
+            if not self._requests.submit(
+                name,
+                ModuleRequest(
+                    connection,
+                    lambda: self._handle_request(name, action, message),
+                ),
+            ):
+                error_message = "module request queue is unavailable"
+                raise ValueError(error_message)
+            return None  # The module worker now owns this connection.
+        if action == "hello" and self.description is not None:
+            return _encode_reply(self.description, "description too large")
+        if action == "close":
+            self.stop()
+        elif action != "ping":
+            error_message = "unsupported action"
+            raise ValueError(error_message)
         return ACK_OK
 
     def _handle_request(self, name: str, action: str, message: JsonObject) -> bytes:
         try:
-            if name in self._failed:
-                raise ValueError("module is unavailable")
-            module = self.modules[name]
-            if action == "query":
-                handler = getattr(module, "query", None)
-                if not callable(handler):
-                    raise ValueError("module does not support queries")
-                response = (
-                    json.dumps(handler(message), allow_nan=False).encode() + DELIMITER
-                )
-                if len(response) > MAX_MESSAGE_BYTES:
-                    raise ValueError("response too large")
-                return response
-            module.handle_message(message)
+            return self._run_request(name, action, message)
         except Exception:
             return ACK_ERROR
+
+    def _run_request(self, name: str, action: str, message: JsonObject) -> bytes:
+        if name in self._failed:
+            error_message = "module is unavailable"
+            raise ValueError(error_message)
+        module = self.modules[name]
+        if action == "query":
+            handler = getattr(module, "query", None)
+            if not callable(handler):
+                error_message = "module does not support queries"
+                raise ValueError(error_message)
+            return _encode_reply(handler(message), "response too large")
+        module.handle_message(message)
         return ACK_OK
 
     def _work(self, name: str, module: ServiceModule) -> None:

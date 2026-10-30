@@ -40,20 +40,23 @@ def operator_login(monkeypatch):
 
 
 def unreadable_saved_login() -> str:
-    raise PermissionError("the saved token file is not readable")
+    error_message = "the saved token file is not readable"
+    raise PermissionError(error_message)
 
 
 def failed_oidc_exchange() -> str:
     """get_token() with HF_OIDC_RESOURCE set, when the Hub answers 503."""
     request = httpx.Request("POST", "https://huggingface.co/oauth/token")
+    error_message = "503 Server Error: Service Unavailable"
     raise HfHubHTTPError(
-        "503 Server Error: Service Unavailable",
+        error_message,
         response=httpx.Response(503, request=request),
     )
 
 
 def unexpected_error(*arguments, **options):
-    raise RuntimeError(f"an error quoting {SYNTHETIC_HUGGING_FACE_TOKEN}")
+    error_message = f"an error quoting {SYNTHETIC_HUGGING_FACE_TOKEN}"
+    raise RuntimeError(error_message)
 
 
 def telemetry_token(collector_url: str, lifetime_seconds: int) -> int:

@@ -77,7 +77,8 @@ class EventSpool:
                 if existing.registration.get("producer_id") != registration.get(
                     "producer_id"
                 ):
-                    raise ValueError(f"run_id {run_id!r} already has another producer")
+                    error_message = f"run_id {run_id!r} already has another producer"
+                    raise ValueError(error_message)
                 existing.registration = dict(registration)
                 existing.updated_at = utc_now()
                 return

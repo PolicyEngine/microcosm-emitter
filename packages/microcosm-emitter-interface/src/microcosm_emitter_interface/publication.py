@@ -61,15 +61,18 @@ class ReleaseFile:
         bare_file_name(self.name, label="release file name")
         role_identifier(self.role)
         if is_pointer_file(self.name):
-            raise ValueError("A release file may not be a latest*.json pointer.")
+            error_message = "A release file may not be a latest*.json pointer."
+            raise ValueError(error_message)
         if not isinstance(self.sha256, str) or not _SHA256.fullmatch(self.sha256):
-            raise ValueError("sha256 must be a lowercase hexadecimal digest.")
+            error_message = "sha256 must be a lowercase hexadecimal digest."
+            raise ValueError(error_message)
         if (
             isinstance(self.bytes, bool)
             or not isinstance(self.bytes, int)
             or self.bytes < 0
         ):
-            raise ValueError("bytes must be a nonnegative integer.")
+            error_message = "bytes must be a nonnegative integer."
+            raise ValueError(error_message)
 
 
 def new_request_id() -> str:
@@ -109,21 +112,27 @@ class PublishRelease:
         _check_reference(self.repository, self.release, self.build, self.request_id)
         role_identifier(self.release_role, label="release_role")
         if not isinstance(self.make_current, bool):
-            raise ValueError("make_current must be a boolean.")
+            error_message = "make_current must be a boolean."
+            # The interface README promises ValueError for every invalid field.
+            raise ValueError(error_message)  # noqa: TRY004
         object.__setattr__(self, "files", tuple(self.files))
         if any(not isinstance(item, ReleaseFile) for item in self.files):
-            raise ValueError("files must be ReleaseFile values.")
+            error_message = "files must be ReleaseFile values."
+            raise ValueError(error_message)
         names = [item.name for item in self.files]
         if len(set(names)) != len(names):
-            raise ValueError("A build names each file once.")
+            error_message = "A build names each file once."
+            raise ValueError(error_message)
         manifests = [item for item in self.files if item.name == RELEASE_MANIFEST_NAME]
         if len(manifests) != 1 or manifests[0].role != RELEASE_MANIFEST_ROLE:
-            raise ValueError(
+            error_message = (
                 f"A build has one {RELEASE_MANIFEST_NAME} with the role "
                 f"{RELEASE_MANIFEST_ROLE}."
             )
+            raise ValueError(error_message)
         if [item.role for item in self.files].count(RELEASE_MANIFEST_ROLE) != 1:
-            raise ValueError(f"Only {RELEASE_MANIFEST_NAME} has its role.")
+            error_message = f"Only {RELEASE_MANIFEST_NAME} has its role."
+            raise ValueError(error_message)
 
     def message(self) -> dict[str, Any]:
         return {

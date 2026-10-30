@@ -234,7 +234,8 @@ def telemetry_message(command: TelemetryCommand) -> dict[str, Any]:
         case BuildCompleted():
             message = {"command": "complete"}
         case _:
-            raise TypeError(f"Unsupported telemetry command {type(command).__name__}.")
+            error_message = f"Unsupported telemetry command {type(command).__name__}."
+            raise TypeError(error_message)
     return wire_value(message)
 
 

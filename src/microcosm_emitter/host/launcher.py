@@ -63,6 +63,70 @@ def start_service(
     return start_services({module: configuration}, startup_timeout=startup_timeout)
 
 
+def _configuration_payload(modules: JsonObject, startup_timeout: float) -> bytes:
+    """Return the configuration to send to the host, or refuse an invalid one."""
+    if (
+        not isinstance(startup_timeout, (int, float))
+        or not math.isfinite(startup_timeout)
+        or startup_timeout < 0
+    ):
+        error_message = "invalid_configuration"
+        raise ServiceStartupError(error_message)
+    if (
+        not isinstance(modules, dict)
+        or not modules
+        or any(
+            not isinstance(name, str) or not isinstance(settings, dict)
+            for name, settings in modules.items()
+        )
+    ):
+        error_message = "invalid_configuration"
+        raise ServiceStartupError(error_message)
+    payload = json.dumps(modules, allow_nan=False).encode()
+    if len(payload) > MAX_MESSAGE_BYTES:
+        error_message = "invalid_configuration"
+        raise ServiceStartupError(error_message)
+    return payload
+
+
+def _send_configuration(writer: socket.socket, payload: bytes, deadline: float) -> None:
+    """Write the configuration to the host's standard input before the deadline."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        error_message = "configuration_timeout"
+        raise ServiceStartupError(error_message)
+    writer.settimeout(remaining)
+    writer.sendall(payload)
+    writer.shutdown(socket.SHUT_WR)
+    if time.monotonic() >= deadline:
+        error_message = "configuration_timeout"
+        raise ServiceStartupError(error_message)
+
+
+def _wait_for_readiness(
+    process: subprocess.Popen, client: SocketClient, deadline: float
+) -> None:
+    """Return once the host answers a ping before the deadline."""
+    while time.monotonic() < deadline:
+        exit_code = process.poll()
+        if exit_code is not None:
+            error_message = "child_exit"
+            raise ServiceStartupError(error_message, exit_code=exit_code)
+        try:
+            client.ping(timeout=min(client.timeout, deadline - time.monotonic()))
+        except LocalServiceError:
+            pass
+        else:
+            if time.monotonic() < deadline:
+                return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(STARTUP_POLL, remaining))
+    error_message = "readiness_timeout"
+    raise ServiceStartupError(error_message)
+
+
 def start_services(
     modules: JsonObject, *, startup_timeout: float = STARTUP_TIMEOUT
 ) -> ServiceHandle:
@@ -71,24 +135,7 @@ def start_services(
     process = None
     phase: StartupFailureReason = "invalid_configuration"
     try:
-        if (
-            not isinstance(startup_timeout, (int, float))
-            or not math.isfinite(startup_timeout)
-            or startup_timeout < 0
-        ):
-            raise ServiceStartupError("invalid_configuration")
-        if (
-            not isinstance(modules, dict)
-            or not modules
-            or any(
-                not isinstance(name, str) or not isinstance(settings, dict)
-                for name, settings in modules.items()
-            )
-        ):
-            raise ServiceStartupError("invalid_configuration")
-        payload = json.dumps(modules, allow_nan=False).encode()
-        if len(payload) > MAX_MESSAGE_BYTES:
-            raise ServiceStartupError("invalid_configuration")
+        payload = _configuration_payload(modules, startup_timeout)
         deadline = time.monotonic() + startup_timeout
         phase = "startup_failure"
         # Short paths are necessary for macOS's Unix-socket path limit.
@@ -116,32 +163,11 @@ def start_services(
             )
             # Startup metadata must not appear in process-list arguments.
             phase = "configuration_timeout"
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise ServiceStartupError("configuration_timeout")
-            writer.settimeout(remaining)
-            writer.sendall(payload)
-            writer.shutdown(socket.SHUT_WR)
-            if time.monotonic() >= deadline:
-                raise ServiceStartupError("configuration_timeout")
+            _send_configuration(writer, payload, deadline)
         phase = "startup_failure"
         client = SocketClient(path)
-        while time.monotonic() < deadline:
-            exit_code = process.poll()
-            if exit_code is not None:
-                raise ServiceStartupError("child_exit", exit_code=exit_code)
-            try:
-                client.ping(timeout=min(client.timeout, deadline - time.monotonic()))
-            except LocalServiceError:
-                pass
-            else:
-                if time.monotonic() < deadline:
-                    return ServiceHandle(process, client, directory)
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            time.sleep(min(STARTUP_POLL, remaining))
-        raise ServiceStartupError("readiness_timeout")
+        _wait_for_readiness(process, client, deadline)
+        return ServiceHandle(process, client, directory)
     except Exception as error:
         # Only transfer timeouts are classified as such; an unrelated writer
         # failure is a startup failure rather than evidence of deadline expiry.

@@ -588,7 +588,8 @@ def test_a_collector_queue_error_leaves_the_bundle_answer_alone(
     controls = submitting_module
 
     def locked_database(*arguments, **options):
-        raise RuntimeError("database is locked")
+        error_message = "database is locked"
+        raise RuntimeError(error_message)
 
     controls.module.collector_delivery.enqueue_for_bundle = locked_database
     request = bundle(controls)
@@ -627,7 +628,8 @@ def test_an_unexpected_error_in_a_submission_releases_its_row(
     controls.module.delivery.run_cycle()
 
     def unexpected(planned):
-        raise RuntimeError("synthetic")
+        error_message = "synthetic"
+        raise RuntimeError(error_message)
 
     controls.module.collector_delivery.client.submit = unexpected
     controls.module.collector_delivery.run_cycle()
@@ -1244,7 +1246,8 @@ class ModuleTransport:
         self.module = module
 
     def send(self, module, message, *, timeout=None):
-        raise AssertionError("collector receipts are queries")
+        error_message = "collector receipts are queries"
+        raise AssertionError(error_message)
 
     def query(self, module, message, *, timeout=None):
         assert module == "huggingface"

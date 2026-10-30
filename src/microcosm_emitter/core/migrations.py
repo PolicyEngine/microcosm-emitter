@@ -74,10 +74,11 @@ def upgrade_database(engine: Engine, history: MigrationHistory) -> None:
             names = set(inspect(connection).get_table_names())
             revision = MigrationContext.configure(connection).get_current_revision()
             if names and revision is None:
-                raise RuntimeError(
+                error_message = (
                     f"Refusing an unversioned {history.label} database; "
                     "no changes made."
                 )
+                raise RuntimeError(error_message)
             with alembic_config(connection=connection, history=history) as config:
                 scripts = ScriptDirectory.from_config(config)
                 if revision is not None:

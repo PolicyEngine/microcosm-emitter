@@ -17,6 +17,36 @@ from microcosm_emitter.host.contracts import JsonObject
 from microcosm_emitter.host.errors import LocalServiceError
 
 
+def _encode_request(payload: JsonObject) -> bytes:
+    data = (
+        json.dumps(payload, separators=(",", ":"), allow_nan=False).encode() + DELIMITER
+    )
+    if len(data) > MAX_MESSAGE_BYTES:
+        error_message = "local message exceeds size limit"
+        raise ValueError(error_message)
+    return data
+
+
+def _check_response_size(response: bytearray) -> None:
+    if len(response) > MAX_MESSAGE_BYTES:
+        error_message = "local response exceeds size limit"
+        raise ValueError(error_message)
+
+
+def _decode_response(response: bytearray) -> JsonObject | None:
+    if bytes(response) == ACK_OK:
+        return None
+    if not response.endswith(DELIMITER):
+        error_message = "incomplete response"
+        raise ValueError(error_message)
+    result = json.loads(bytes(response).removesuffix(DELIMITER))
+    if not isinstance(result, dict):
+        error_message = "service rejected the request"
+        # The caller reports the exception's type name, so it stays ValueError.
+        raise ValueError(error_message)  # noqa: TRY004
+    return result
+
+
 class SocketClient:
     def __init__(self, socket_path: Path, *, timeout: float = SEND_TIMEOUT):
         self.socket_path = socket_path
@@ -31,12 +61,7 @@ class SocketClient:
         deadline: float | None = None,
     ) -> JsonObject | None:
         try:
-            data = (
-                json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
-                + DELIMITER
-            )
-            if len(data) > MAX_MESSAGE_BYTES:
-                raise ValueError("local message exceeds size limit")
+            data = _encode_request(payload)
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
 
                 def bound_operation():
@@ -44,7 +69,7 @@ class SocketClient:
                     if deadline is not None:
                         remaining = min(remaining, deadline - time.monotonic())
                         if remaining <= 0:
-                            raise TimeoutError()
+                            raise TimeoutError
                     peer.settimeout(remaining)
 
                 bound_operation()
@@ -58,16 +83,8 @@ class SocketClient:
                     if not part:
                         break
                     response.extend(part)
-                    if len(response) > MAX_MESSAGE_BYTES:
-                        raise ValueError("local response exceeds size limit")
-                if bytes(response) == ACK_OK:
-                    return None
-                if not response.endswith(DELIMITER):
-                    raise ValueError("incomplete response")
-                result = json.loads(bytes(response).removesuffix(DELIMITER))
-                if not isinstance(result, dict):
-                    raise ValueError("service rejected the request")
-                return result
+                    _check_response_size(response)
+                return _decode_response(response)
         except (OSError, ValueError, TypeError) as error:
             raise LocalServiceError(type(error).__name__) from error
 
@@ -88,17 +105,20 @@ class SocketClient:
     ) -> JsonObject:
         """Return one bounded service result after its request has completed."""
         if self.closed:
-            raise LocalServiceError("client is closed")
+            error_message = "client is closed"
+            raise LocalServiceError(error_message)
         response = self._request(
             {"action": "query", "module": module, "message": message}, timeout=timeout
         )
         if response is None:
-            raise LocalServiceError("service did not return a result")
+            error_message = "service did not return a result"
+            raise LocalServiceError(error_message)
         return response
 
     def send(self, message: JsonObject) -> None:
         if self.closed:
-            raise LocalServiceError("client is closed")
+            error_message = "client is closed"
+            raise LocalServiceError(error_message)
         self._request({"action": "message", "message": message})
 
     def close(self) -> None:
@@ -118,7 +138,8 @@ class ModuleClient:
 
     def send(self, message: JsonObject) -> None:
         if self.client.closed:
-            raise LocalServiceError("client is closed")
+            error_message = "client is closed"
+            raise LocalServiceError(error_message)
         self.client._request(
             {"action": "message", "module": self.name, "message": message}
         )

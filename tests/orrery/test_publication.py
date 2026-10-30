@@ -374,7 +374,10 @@ def test_orrery_module_survives_a_local_queue_error(capsys):
         def flush_once(self):
             attempts.append(None)
             if len(attempts) == 1:
-                raise OperationalError("UPDATE", {}, Exception("database is locked"))
+                error_message = "UPDATE"
+                raise OperationalError(
+                    error_message, {}, Exception("database is locked")
+                )
             return False
 
     module = OrreryModule({}, None)
@@ -403,7 +406,8 @@ def test_status_file_reloads_newer_receipt_after_an_older_commit(tmp_path):
     def pause_after_commit(session):
         entered.set()
         if not release.wait(5):
-            raise TimeoutError("test did not release older status writer")
+            error_message = "test did not release older status writer"
+            raise TimeoutError(error_message)
 
     event.listen(queue._sessions, "after_commit", pause_after_commit)
 
@@ -531,7 +535,8 @@ def test_status_file_lock_covers_read_through_replace_across_processes(
     def paused_write(path, receipt):
         entered.set()
         if not release.wait(5):
-            raise TimeoutError("test did not release status copy")
+            error_message = "test did not release status copy"
+            raise TimeoutError(error_message)
         original_write(path, receipt)
 
     monkeypatch.setattr(queue_module, "_write_status", paused_write)

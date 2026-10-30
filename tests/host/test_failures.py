@@ -32,7 +32,8 @@ def test_startup_failure_reaps_child_even_when_directory_already_removed(
 
     def exited():
         directory.rmdir()
-        raise LocalServiceError("not ready")
+        error_message = "not ready"
+        raise LocalServiceError(error_message)
 
     process.poll.side_effect = [None, 1, 1]
     monkeypatch.setattr(launcher.tempfile, "mkdtemp", lambda **kwargs: str(directory))

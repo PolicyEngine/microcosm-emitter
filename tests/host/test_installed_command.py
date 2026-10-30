@@ -60,14 +60,16 @@ def wait_until_ready(process: subprocess.Popen, socket_path: Path) -> None:
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         if process.poll() is not None:
-            raise AssertionError(f"host exited early with {process.returncode}")
+            error_message = f"host exited early with {process.returncode}"
+            raise AssertionError(error_message)
         try:
             if socket_request(socket_path, {"action": "ping"}) == b"ok\n":
                 return
         except OSError:
             pass
         time.sleep(0.05)
-    raise AssertionError("host did not become ready")
+    error_message = "host did not become ready"
+    raise AssertionError(error_message)
 
 
 def start_command(
@@ -422,7 +424,8 @@ def wait_for_runtime(socket_path: Path) -> None:
                 return
         except OSError:
             time.sleep(0.01)
-    raise AssertionError("runtime did not become ready")
+    error_message = "runtime did not become ready"
+    raise AssertionError(error_message)
 
 
 class IdleModule:

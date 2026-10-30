@@ -15,7 +15,8 @@ def run_migrations() -> None:
 
     connection = context.config.attributes.get("connection")
     if not isinstance(connection, Connection):
-        raise RuntimeError(_MISSING_CONNECTION_ERROR)
+        # Alembic ran without the emitter's connection: a missing setting.
+        raise RuntimeError(_MISSING_CONNECTION_ERROR)  # noqa: TRY004
     context.configure(
         connection=connection,
         target_metadata=SpoolModel.metadata,
