@@ -97,5 +97,7 @@ class DeliveryWorker:
                     return
                 try:
                     self.cycle(self.stop_requested)
-                except Exception:
+                # A failed cycle is reported through on_error; its work stays
+                # queued, and the next cycle tries again.
+                except Exception:  # noqa: BLE001
                     self.on_error()

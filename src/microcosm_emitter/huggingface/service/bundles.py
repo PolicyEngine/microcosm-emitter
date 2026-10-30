@@ -104,12 +104,16 @@ def stage_bundle(
     for attempt in range(MAX_PARENT_CONFLICT_ATTEMPTS):
         try:
             exists = repository.file_exists(remote_inventory)
-        except Exception:
+        # stage_bundle never raises for the Hub: any failure reading it leaves
+        # the bundle pending for a retry.
+        except Exception:  # noqa: BLE001
             return BundleOutcome("pending", REPOSITORY_UNAVAILABLE, retry=True)
         if exists:
             try:
                 remote = json.loads(repository.download(remote_inventory))
-            except Exception:
+            # stage_bundle never raises for the Hub: any failure reading it
+            # leaves the bundle pending for a retry.
+            except Exception:  # noqa: BLE001
                 return BundleOutcome("pending", REPOSITORY_UNAVAILABLE, retry=True)
             remote_files = remote.get("files") if isinstance(remote, Mapping) else None
             if not _same_digests(remote_files, outputs):
@@ -119,7 +123,9 @@ def stage_bundle(
             # collector's provenance names it. Without it, ask again later.
             try:
                 revision = repository.last_commit(remote_inventory)
-            except Exception:
+            # stage_bundle never raises for the Hub: any failure reading the
+            # commit counts as no revision, which leaves the bundle pending.
+            except Exception:  # noqa: BLE001
                 revision = None
             if not revision:
                 return BundleOutcome("pending", REPOSITORY_UNAVAILABLE, retry=True)
@@ -137,7 +143,10 @@ def stage_bundle(
                 message=message,
                 parent_commit=parent,
             )
-        except Exception as error:
+        # stage_bundle never raises for the Hub: a failed commit is tried again
+        # after a parent conflict, and otherwise leaves the bundle pending for
+        # a retry.
+        except Exception as error:  # noqa: BLE001
             if is_parent_conflict(error) and attempt + 1 < MAX_PARENT_CONFLICT_ATTEMPTS:
                 continue
             return BundleOutcome("pending", UPLOAD_FAILED, retry=True)

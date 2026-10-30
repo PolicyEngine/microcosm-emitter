@@ -298,7 +298,8 @@ def test_graph_file_work_does_not_block_telemetry_or_control(
         def serve():
             try:
                 runtime.run()
-            except Exception as error:
+            # Keeps any exception this thread's call raises, for the test to check.
+            except Exception as error:  # noqa: BLE001
                 errors.append(error)
 
         thread = threading.Thread(target=serve)

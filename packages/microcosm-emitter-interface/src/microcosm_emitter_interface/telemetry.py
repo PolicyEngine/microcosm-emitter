@@ -391,7 +391,9 @@ class TelemetryRecorder:
         """
         try:
             text = str(error)
-        except Exception:
+        # An exception's __str__ can raise anything; the failure is then sent
+        # without text.
+        except Exception:  # noqa: BLE001
             text = None
         return self._client.emit_telemetry(
             BuildFailure(

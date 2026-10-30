@@ -410,7 +410,9 @@ def apply_release_change(
             )
         except ReleaseRecordError as error:
             return _refused_for(error.violations)
-        except Exception:
+        # Any other failure reading the Hub leaves the change pending for a
+        # retry.
+        except Exception:  # noqa: BLE001
             return _pending(REPOSITORY_UNAVAILABLE)
         record = before or ReleasesRecord.empty()
         if isinstance(change, PublishRelease) and any(
@@ -421,7 +423,8 @@ def apply_release_change(
             on_record, record_committed_at = _newest_requests_on_record(
                 repository, head, files
             )
-        except Exception:
+        # Any failure reading the Hub leaves the change pending for a retry.
+        except Exception:  # noqa: BLE001
             return _pending(REPOSITORY_UNAVAILABLE)
         newest_requests = _newest_per_release(on_record, newest_local_requests or {})
         newest_for_release = newest_requests.get(release)
@@ -477,7 +480,9 @@ def apply_release_change(
                 ),
                 *check_repository(after, [*files, *added_paths], read_file),
             ]
-        except Exception:
+        # Any failure while the checks read files leaves the change pending for
+        # a retry.
+        except Exception:  # noqa: BLE001
             return _pending(REPOSITORY_UNAVAILABLE)
         if violations:
             return _refused_for(violations)
@@ -497,7 +502,9 @@ def apply_release_change(
         )
         try:
             commit = repository.commit(operations, message=message, parent_commit=head)
-        except Exception as error:
+        # A failed commit is tried again after a parent conflict, and otherwise
+        # leaves the change pending for a retry.
+        except Exception as error:  # noqa: BLE001
             if is_parent_conflict(error):
                 continue
             return _pending(UPLOAD_FAILED)
@@ -540,7 +547,9 @@ def _already_published(
             local_manifest.read_bytes()
         )
         commit = repository.last_commit(manifest_path) if same else None
-    except Exception:
+    # Any failure reading either manifest or the commit leaves the change
+    # pending for a retry.
+    except Exception:  # noqa: BLE001
         return _pending(REPOSITORY_UNAVAILABLE)
     if not same:
         return _refused("BUILD_FOLDER_EXISTS", exists_message)

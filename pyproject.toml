@@ -98,8 +98,6 @@ ignore = [
     "CPY",
     # Not fixed yet: the pull requests stacked on #55 fix these families,
     # one group each, and remove them here. None stays.
-    # Broad excepts, security findings, prints and private access.
-    "BLE", "S", "SLF", "T20",
     # Smaller rules.
     "A", "ARG", "C4", "E", "FBT", "ISC", "PERF", "PLW", "PT", "PTH", "RET", "RUF", "SIM",
     # Complexity.
@@ -133,9 +131,13 @@ ignore = [
 # The tools/ scripts CI runs have hyphenated file names, print their results
 # and run other programs.
 "tools/**" = ["N999", "S603", "T201"]
-# The installed-artifact checks assert, as tests do, and import inside each
-# check to test what that import loads.
-"tools/{check-installed,installed-smoke,installed-interface-smoke}.py" = ["PLC0415", "S101"]
+# The installed-artifact checks assert, as tests do, import inside each check
+# to test what that import loads, and read the clients' private members to
+# check the processes they started.
+"tools/{check-installed,installed-smoke,installed-interface-smoke}.py" = ["PLC0415", "S101", "SLF001"]
+# Modules that run as command-line programs print their output, as in the
+# Public API.
+"src/microcosm_emitter/{cli,host/__main__}.py" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["microcosm_emitter", "microcosm_emitter_interface"]

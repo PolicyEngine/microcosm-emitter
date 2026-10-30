@@ -36,12 +36,14 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error("The preserved inventory has a different publication ID.")
             receipt = client.enqueue(args.directory, inventory)
             if receipt["status"] == "failed":
-                print(json.dumps(receipt, sort_keys=True))
+                # The command's output: the receipt as JSON on standard output.
+                print(json.dumps(receipt, sort_keys=True))  # noqa: T201
                 return 1
             receipt = client.retry(args.publication_id, wait_seconds=30)
         else:
             receipt = client.retry(args.publication_id, wait_seconds=30)
-        print(json.dumps(receipt, sort_keys=True))
+        # The command's output: the receipt as JSON on standard output.
+        print(json.dumps(receipt, sort_keys=True))  # noqa: T201
         return 0 if receipt["status"] == "published" else 1
     finally:
         client.close()

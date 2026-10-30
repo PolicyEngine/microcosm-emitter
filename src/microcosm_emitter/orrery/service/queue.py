@@ -245,9 +245,9 @@ class GraphPublicationQueue:
             if claimed_id is None:
                 return None
             job = session.get(GraphPublicationJob, id_)
-            assert job is not None, (
-                "A claimed publication must exist in its transaction."
-            )
+            if job is None:
+                error_message = "A claimed publication must exist in its transaction."
+                raise AssertionError(error_message)
             return ClaimedGraphPublication(
                 publication_id=id_,
                 directory=Path(job.directory),
