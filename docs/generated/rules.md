@@ -24,7 +24,7 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 - `emitter.process.feature-branches-and-pull-requests`: Push feature branches and open pull requests; never push to main directly, merge automatically or monitor queued checks.
 - `emitter.protocol.no-hosted-events-api`: Preserve the existing collector protocol, and do not add a general hosted events API.
 - `emitter.quality.toolchain`: Use uv, Python 3.13 or later, pytest and Ruff.
-- `emitter.tests.real-migrations-synthetic-credentials`: Tests use temporary databases created through real migrations, synthetic credentials and loopback network services, and contact no hosted collector through any client, including the HTTP clients of the submissions client and the Orrery queue, which conftest.py does not intercept.
+- `emitter.tests.real-migrations-synthetic-credentials`: Tests use temporary databases created through real migrations, synthetic credentials and loopback network services, and contact no hosted collector through any client, including the HTTP clients of the submissions client and the Orrery queue, which tests/conftest.py does not intercept.
 
 ### Advisory (checked but not blocking)
 
@@ -217,8 +217,8 @@ flowchart LR
 
 | Rule | Statement | Tier | Status | Blocking | Enforced by | CI | Proof |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `emitter.tests.no-ambient-credentials-or-hosted-collector` | Tests never use ambient Hugging Face credentials, and never send a telemetry or authentication request to a hosted collector: an autouse fixture in conftest.py removes the Hugging Face credential variables, gives each test a temporary Hugging Face home, and fails a test whose telemetry or authentication request names a host other than loopback. | mechanical | enforced | yes | CI job `tests` | `ci.yml:tests` | — |
-| `emitter.tests.real-migrations-synthetic-credentials` | Tests use temporary databases created through real migrations, synthetic credentials and loopback network services, and contact no hosted collector through any client, including the HTTP clients of the submissions client and the Orrery queue, which conftest.py does not intercept. | mechanical | doc-only | no | nothing | — | — |
+| `emitter.tests.no-ambient-credentials-or-hosted-collector` | Tests never use ambient Hugging Face credentials, and never send a telemetry or authentication request to a hosted collector: an autouse fixture in tests/conftest.py removes the Hugging Face credential variables, gives each test a temporary Hugging Face home, and fails a test whose telemetry or authentication request names a host other than loopback. | mechanical | enforced | yes | CI job `tests` | `ci.yml:tests` | — |
+| `emitter.tests.real-migrations-synthetic-credentials` | Tests use temporary databases created through real migrations, synthetic credentials and loopback network services, and contact no hosted collector through any client, including the HTTP clients of the submissions client and the Orrery queue, which tests/conftest.py does not intercept. | mechanical | doc-only | no | nothing | — | — |
 
 ```mermaid
 flowchart LR

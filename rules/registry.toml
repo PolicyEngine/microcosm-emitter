@@ -527,13 +527,13 @@ invocation = 'pytest -m "not collector"'
 
 # --- Test isolation ------------------------------------------------------------
 
-# conftest.py's autouse fixture applies to every test the tests job runs.
+# tests/conftest.py's autouse fixture applies to every test the tests job runs.
 [[rule]]
 id = "emitter.tests.no-ambient-credentials-or-hosted-collector"
 category = "tests"
-statement = "Tests never use ambient Hugging Face credentials, and never send a telemetry or authentication request to a hosted collector: an autouse fixture in conftest.py removes the Hugging Face credential variables, gives each test a temporary Hugging Face home, and fails a test whose telemetry or authentication request names a host other than loopback."
+statement = "Tests never use ambient Hugging Face credentials, and never send a telemetry or authentication request to a hosted collector: an autouse fixture in tests/conftest.py removes the Hugging Face credential variables, gives each test a temporary Hugging Face home, and fails a test whose telemetry or authentication request names a host other than loopback."
 rationale = "README.md#development"
-scope = ["conftest.py"]
+scope = ["tests/conftest.py"]
 tier = "mechanical"
 status = "enforced"
 autofix = false
@@ -547,7 +547,7 @@ invocation = 'pytest -m "not collector"'
 [[rule]]
 id = "emitter.tests.real-migrations-synthetic-credentials"
 category = "tests"
-statement = "Tests use temporary databases created through real migrations, synthetic credentials and loopback network services, and contact no hosted collector through any client, including the HTTP clients of the submissions client and the Orrery queue, which conftest.py does not intercept."
+statement = "Tests use temporary databases created through real migrations, synthetic credentials and loopback network services, and contact no hosted collector through any client, including the HTTP clients of the submissions client and the Orrery queue, which tests/conftest.py does not intercept."
 rationale = "README.md#development"
 scope = ["tests/**/*.py"]
 tier = "mechanical"

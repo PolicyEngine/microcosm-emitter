@@ -25,6 +25,7 @@ from microcosm_emitter.compatibility import (
     EmitterDescription,
     VersionReport,
 )
+from microcosm_emitter.core.constants import TELEMETRY_SCOPE
 
 if TYPE_CHECKING:
     from microcosm_emitter.core.auth import ExchangeFailureResult
@@ -98,7 +99,11 @@ def describe() -> EmitterDescription:
 
 def version_report() -> VersionReport:
     """Return the emitter's versions and the collector origin it sends to by default."""
-    from microcosm_emitter.core.collector_origin import resolve_collector_origin
+    # Imported only when this runs, so `microcosm-emitter host` never loads the
+    # collector code.
+    from microcosm_emitter.core.collector_origin import (  # noqa: PLC0415
+        resolve_collector_origin,
+    )
 
     return {**describe(), "collector_origin": resolve_collector_origin()}
 
@@ -112,7 +117,11 @@ def _positive_integer(value: str) -> int:
 
 
 def _collector_origin(development_collector_url: str | None) -> str:
-    from microcosm_emitter.core.collector_origin import resolve_collector_origin
+    # Imported only when this runs, so `microcosm-emitter host` never loads the
+    # collector code.
+    from microcosm_emitter.core.collector_origin import (  # noqa: PLC0415
+        resolve_collector_origin,
+    )
 
     try:
         return resolve_collector_origin(
@@ -141,13 +150,14 @@ def telemetry_token(arguments: argparse.Namespace) -> int:
     standard error, without the token, the Hugging Face credential or the
     collector's answer body; ``main`` turns any other error into exit 7.
     """
-    from microcosm_emitter.core.auth import (
+    # Imported only when the command runs, so `microcosm-emitter host` never loads
+    # it, and looked up then, so the tests' patches of core.auth apply.
+    from microcosm_emitter.core.auth import (  # noqa: PLC0415
         ExchangeFailure,
         UnreadableLoginError,
         exchange_huggingface_credential,
         huggingface_token,
     )
-    from microcosm_emitter.core.constants import TELEMETRY_SCOPE
 
     origin = arguments.collector_origin or _collector_origin(None)
     try:
