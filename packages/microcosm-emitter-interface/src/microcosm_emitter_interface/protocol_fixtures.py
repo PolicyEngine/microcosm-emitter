@@ -32,11 +32,13 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from importlib.resources import files
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from importlib.resources.abc import Traversable
     from pathlib import Path
+
+    from microcosm_emitter_interface.serialization import JsonValue
 
 FIXTURE_ROOT = "fixtures"
 DIRECTORY_PLACEHOLDER = "{directory}"
@@ -139,7 +141,7 @@ def materialize(
     if parent_pid is not None:
         replacements[PARENT_PID_PLACEHOLDER] = str(parent_pid)
 
-    def replace(value: Any) -> Any:
+    def replace(value: JsonValue) -> JsonValue:
         if isinstance(value, str):
             for placeholder, replacement in replacements.items():
                 value = value.replace(placeholder, replacement)
@@ -150,4 +152,4 @@ def materialize(
             return [replace(item) for item in value]
         return value
 
-    return replace(fixture.body)
+    return cast("dict[str, Any]", replace(fixture.body))

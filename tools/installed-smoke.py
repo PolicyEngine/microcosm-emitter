@@ -6,7 +6,7 @@ from importlib.util import find_spec
 from pathlib import Path
 
 
-def host_smoke():
+def host_smoke() -> None:
     """Check the host's imports and the installed distribution's metadata.
 
     Microcosm must not be installed; SQLAlchemy, Alembic and huggingface_hub must
@@ -35,7 +35,7 @@ def host_smoke():
     assert "microcosm_emitter.orrery.service" not in sys.modules
 
 
-def telemetry_smoke():
+def telemetry_smoke() -> None:
     """Run a telemetry emitter, then check the event queue database it leaves.
 
     Importing the telemetry client must not import SQLAlchemy or huggingface_hub.
@@ -81,7 +81,7 @@ def telemetry_smoke():
         spool.close()
 
 
-def graph_only_smoke():
+def graph_only_smoke() -> None:
     """Publish a graph through a service that runs only the Orrery module.
 
     The inventory must have no run ID, the publication must be pending, the
@@ -118,7 +118,7 @@ def graph_only_smoke():
         queue.close()
 
 
-def combined_smoke():
+def combined_smoke() -> None:
     """Run the telemetry and Orrery modules in one service sharing one database.
 
     After a stage, a blocked status and a graph publication, the service process
@@ -178,7 +178,7 @@ def combined_smoke():
         spool.close()
 
 
-def coded_failure_smoke():
+def coded_failure_smoke() -> None:
     """Record a failure with an error code, then check the events it leaves.
 
     The service process must exit with 0, and the last two events, the failed

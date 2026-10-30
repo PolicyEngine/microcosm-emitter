@@ -11,7 +11,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from microcosm_emitter.compatibility import SUPPORTED_PROTOCOL_VERSIONS
 from microcosm_emitter_interface.bundles import (
@@ -34,6 +34,9 @@ from microcosm_emitter_interface.publication import (
     WithdrawBuild,
 )
 from microcosm_emitter_interface.submissions import CollectorProvenance
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 #: Transport bounds for one staging run file and one hand-over. Microcosm's
 #: staging contract keeps its own, smaller limits.
@@ -90,7 +93,7 @@ def require_supported_version(message: Mapping[str, Any]) -> None:
         raise RequestRefusedError(refusal_code)
 
 
-def _valid(check, *arguments, **keywords):
+def _valid(check: Callable[..., str], *arguments: object, **keywords: str) -> str:
     try:
         return check(*arguments, **keywords)
     except ValueError:
@@ -243,7 +246,7 @@ COLLECTOR_PROVENANCE_KEYS = frozenset(
 )
 
 
-def _collector_provenance(value: Any) -> CollectorProvenance | None:
+def _collector_provenance(value: object) -> CollectorProvenance | None:
     """Return the optional build description for the collector, checked like the rest.
 
     ``None`` stays ``None``. Anything other than a mapping with exactly the

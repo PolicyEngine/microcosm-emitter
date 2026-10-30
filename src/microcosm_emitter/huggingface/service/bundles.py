@@ -45,7 +45,7 @@ class BundleOutcome:
     committed: bool = False
 
 
-def _same_digests(remote: Any, local: Mapping[str, str]) -> bool:
+def _same_digests(remote: object, local: Mapping[str, str]) -> bool:
     """Microcosm ``_same_digests``: compare the outputs' digests only."""
     if not isinstance(remote, Mapping) or set(remote) != set(local):
         return False

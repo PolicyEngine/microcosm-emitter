@@ -3,10 +3,14 @@
 import math
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+
+# A JSON value: null, a boolean, a number, a string, an array or an object.
+type JsonValue = (
+    None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]
+)
 
 
-def wire_value(value: Any) -> Any:
+def wire_value(value: object) -> JsonValue:
     """Preserve values where possible, including scientific-library scalars.
 
     The same conversion as ``microcosm_emitter.telemetry.serialization``, so

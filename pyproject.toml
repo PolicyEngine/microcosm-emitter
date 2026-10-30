@@ -98,8 +98,6 @@ ignore = [
     "CPY",
     # Not fixed yet: the pull requests stacked on #55 fix these families,
     # one group each, and remove them here. None stays.
-    # Typing-only imports, annotations and in-function imports.
-    "ANN", "PLC", "TC",
     # Broad excepts, security findings, prints and private access.
     "BLE", "S", "SLF", "T20",
     # Smaller rules.

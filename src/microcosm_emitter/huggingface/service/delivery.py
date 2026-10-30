@@ -36,6 +36,8 @@ from microcosm_emitter_interface.publication import RELEASE_CHANGE
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from huggingface_hub import HfApi
+
     from microcosm_emitter.huggingface.service.queue import ClaimedJob, HandoverQueue
 
 #: How long a repository or job lease lasts without renewal. While a delivery
@@ -295,7 +297,7 @@ class HuggingFaceDelivery:
     def _deliver_repository(
         self,
         repository: str,
-        api: Any | None,
+        api: HfApi | None,
         *,
         job_kinds: frozenset[str],
         run_files: bool,

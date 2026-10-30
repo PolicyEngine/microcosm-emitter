@@ -139,7 +139,7 @@ def retry_message(publication_id: str) -> dict[str, Any]:
     return {"command": "retry", "publication_id": publication_id}
 
 
-def publication_id_of(inventory: Any) -> str | None:
+def publication_id_of(inventory: object) -> str | None:
     """Return the inventory's ``publication_id``, or None if it has no string one."""
     try:
         value = inventory["publication_id"]

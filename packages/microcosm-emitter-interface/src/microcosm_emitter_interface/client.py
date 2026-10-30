@@ -640,7 +640,7 @@ def _receipt_error_code(failure: RequestFailureReason | None) -> str:
     return "local_service_unavailable"
 
 
-def _wait_seconds(value: Any) -> float:
+def _wait_seconds(value: object) -> float:
     """Return ``value`` as seconds to wait, or 0.0 if it is not a positive number."""
     try:
         seconds = float(value)

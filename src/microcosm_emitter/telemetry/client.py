@@ -181,7 +181,7 @@ class LocalTelemetryEmitter:
         *,
         status: TelemetryStatus = STATUS_STARTED,
         message: str | None = None,
-        **details: Any,
+        **details: object,
     ) -> None:
         """Send one stage event; the service does not finish the previous stage."""
         self._request(StageEvent(stage_id, status, message, details))
@@ -192,7 +192,7 @@ class LocalTelemetryEmitter:
         *,
         status: str = "running",
         message: str | None = None,
-        **details: Any,
+        **details: object,
     ) -> None:
         """Send a sequential stage update for ``stage_id``.
 
@@ -208,7 +208,7 @@ class LocalTelemetryEmitter:
         done: int,
         total: int,
         unit: str | None = None,
-        **details: Any,
+        **details: object,
     ) -> None:
         """Send progress for ``stage_id``: ``done`` of ``total``, in ``unit``."""
         self._request(StageProgress(stage_id, done, total, unit, details))

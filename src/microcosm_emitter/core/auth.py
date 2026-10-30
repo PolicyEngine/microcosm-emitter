@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
 from http.client import HTTPException
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple
+from typing import IO, TYPE_CHECKING, Any, Literal, NamedTuple
 from urllib.parse import urlsplit
 
 from huggingface_hub import get_token
@@ -50,6 +50,7 @@ from microcosm_emitter.core.constants import (
 )
 
 if TYPE_CHECKING:
+    import email.message
     from collections.abc import Callable, Mapping
 
 #: Visible ASCII (letters, digits and punctuation), the only characters of a
@@ -70,7 +71,15 @@ NETWORK_FAILURES = (OSError, TimeoutError, HTTPException)
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Keep bearer credentials on the explicitly configured origin."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: email.message.Message,
+        newurl: str,
+    ) -> urllib.request.Request | None:
         return None
 
 
@@ -439,11 +448,11 @@ class CollectorSession:
         self,
         origin: str,
         *,
-        post=None,
-        credential=None,
-        scope=None,
+        post: Callable[..., tuple[int, dict[str, Any]]] | None = None,
+        credential: Callable[[], str | None] | None = None,
+        scope: str | None = None,
         destination: str | None = None,
-    ):
+    ) -> None:
         """Hold the session's settings and read any given token from ``os.environ``.
 
         ``post`` defaults to ``_http_post`` and ``credential`` to
