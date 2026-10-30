@@ -126,7 +126,11 @@ def _http_post(
 ) -> tuple[int, dict[str, Any]]:
     if not _SENDABLE_CREDENTIAL.fullmatch(bearer_token):
         raise ValueError(UNSENDABLE_CREDENTIAL_ERROR)
-    request = urllib.request.Request(
+    # Every caller in this package passes a collector origin that
+    # resolve_collector_origin (core/collector_origin.py) accepted, HTTPS or
+    # loopback HTTP, plus a path from core.constants; _NoRedirectHandler
+    # follows no redirect.
+    request = urllib.request.Request(  # noqa: S310
         url,
         data=json.dumps(payload, separators=(",", ":")).encode(),
         headers={
@@ -543,7 +547,9 @@ def shared_session(
     try:
         session = CollectorSession(origin, destination=destination)
     except GivenCollectorTokenError as error:
-        print(
+        # A message on standard error, on purpose. Unlike sys.stderr.write, print
+        # does not raise when sys.stderr is None.
+        print(  # noqa: T201
             GIVEN_TOKEN_START_ERROR_MESSAGE.format(reason=error),
             file=sys.stderr,
             flush=True,

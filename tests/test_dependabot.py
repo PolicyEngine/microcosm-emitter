@@ -32,8 +32,12 @@ def checkout(tmp_path):
 
 
 def workflow(name):
-    # BaseLoader keeps YAML's 'on' key a string, matching GitHub's parser.
-    return yaml.load((WORKFLOWS_DIRECTORY / name).read_text(), Loader=yaml.BaseLoader)
+    # BaseLoader keeps YAML's 'on' key a string, matching GitHub's parser, and
+    # builds only strings, lists and mappings.
+    return yaml.load(
+        (WORKFLOWS_DIRECTORY / name).read_text(),
+        Loader=yaml.BaseLoader,  # noqa: S506
+    )
 
 
 def test_dependabot_proposes_uv_lock_updates_weekly():

@@ -102,7 +102,9 @@ SUBMISSION_OUTCOME_MESSAGE: Final = (
 
 def print_to_standard_error(message: str) -> None:
     """Print ``message`` to standard error and flush it."""
-    print(message, file=sys.stderr, flush=True)
+    # A message on standard error, on purpose. Unlike sys.stderr.write, print
+    # does not raise when sys.stderr is None.
+    print(message, file=sys.stderr, flush=True)  # noqa: T201
 
 
 def status_check_delay(checks_made: int) -> float:
@@ -236,16 +238,18 @@ class CollectorSubmissionDelivery:
             ).start()
             try:
                 result = self._attempt(job)
-            except Exception:
-                # Record the attempt, so the row is retried after the usual
-                # backoff instead of staying leased for the whole lease.
+            # Any failure is recorded as an attempt, so the row is retried after
+            # the usual backoff instead of staying leased for the whole lease.
+            except Exception:  # noqa: BLE001
                 earlier = (self.receipt(job.handover_id) or {}).get("submissions")
                 result = AttemptResult(
                     "pending", LOCAL_ERROR, list(earlier or []), retry=True
                 )
             finally:
                 held.stop()
-            assert held.job is not None, "The held lease names the claimed job."
+            if held.job is None:
+                error_message = "The held lease names the claimed job."
+                raise AssertionError(error_message)
             # The renewed lease: only the holder of the current lease records.
             self._finish(held.job, result)
             attempted += 1

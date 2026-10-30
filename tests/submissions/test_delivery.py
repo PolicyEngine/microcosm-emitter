@@ -457,7 +457,8 @@ def test_the_shutdown_commit_runs_during_a_held_collector_upload(
     def run_runtime():
         try:
             runtime.run()
-        except BaseException as error:
+        # Keeps any exception this thread's call raises, for the test to check.
+        except BaseException as error:  # noqa: BLE001
             runtime_errors.append(error)
 
     runtime_thread = threading.Thread(target=run_runtime, daemon=True)
