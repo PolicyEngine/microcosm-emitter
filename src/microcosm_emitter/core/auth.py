@@ -76,12 +76,14 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 
     def redirect_request(
         self,
-        req: urllib.request.Request,
-        fp: IO[bytes],
-        code: int,
-        msg: str,
-        headers: email.message.Message,
-        newurl: str,
+        # urllib calls this override of HTTPRedirectHandler.redirect_request with
+        # these six arguments; it refuses every redirect, so it reads none of them.
+        req: urllib.request.Request,  # noqa: ARG002
+        fp: IO[bytes],  # noqa: ARG002
+        code: int,  # noqa: ARG002
+        msg: str,  # noqa: ARG002
+        headers: email.message.Message,  # noqa: ARG002
+        newurl: str,  # noqa: ARG002
     ) -> urllib.request.Request | None:
         return None
 
@@ -438,9 +440,10 @@ class CollectorSession:
     ``destination``, such as the Orrery module's publication origin, the
     session withholds it on purpose (``withheld_from_destination``, which
     Orrery's jobs record as ``credential_withheld_from_destination``);
-    ``destination`` matters only for a given token. It cannot be renewed: from ``TOKEN_REFRESH_MARGIN_SECONDS``
-    before it expires, or after ``invalidate()`` (a 401), the session answers
-    ``token_expired`` or ``token_rejected``. A given token obtained from
+    ``destination`` matters only for a given token. It cannot be renewed:
+    from ``TOKEN_REFRESH_MARGIN_SECONDS`` before it expires, or after
+    ``invalidate()`` (a 401), the session answers ``token_expired`` or
+    ``token_rejected``. A given token obtained from
     another origin than ``origin`` raises ``GivenCollectorTokenError``: its
     origin is only compared, and never chooses where anything is sent.
 

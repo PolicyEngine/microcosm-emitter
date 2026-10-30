@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 import uuid
@@ -54,11 +55,9 @@ class EventSpool:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.parent.chmod(0o700)
         if not self.path.exists():
-            try:
+            # A concurrent build may have created the shared database first.
+            with contextlib.suppress(FileExistsError):
                 self.path.touch(mode=0o600, exist_ok=False)
-            except FileExistsError:
-                # A concurrent build created the shared database first.
-                pass
         self.path.chmod(0o600)
         self._engine = create_spool_engine(self.path)
         try:

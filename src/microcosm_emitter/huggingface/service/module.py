@@ -260,7 +260,9 @@ class HuggingFaceModule:
         )
         return CollectorSubmissionDelivery(queue, client, clock=self.clock)
 
-    def handle_message(self, message: JsonObject) -> None:
+    # The ServiceModule protocol fixes this signature; the host calls it with
+    # each message, which this module refuses without reading.
+    def handle_message(self, message: JsonObject) -> None:  # noqa: ARG002
         """Raise ``ValueError``: Hugging Face hand-overs are queries with receipts."""
         error_message = "Hugging Face hand-overs are queries with receipts."
         raise ValueError(error_message)
@@ -527,7 +529,9 @@ class HuggingFaceModule:
             "error_code": None,
         }
 
-    def tick(self, now: float) -> None:
+    # The ServiceModule protocol fixes this signature; the host passes the
+    # current time, which this module does not need.
+    def tick(self, now: float) -> None:  # noqa: ARG002
         """Run one delivery cycle on the host's thread; an error prints a warning.
 
         With background workers it commits run files only; without them it runs
@@ -587,7 +591,7 @@ class HuggingFaceModule:
         try:
             self._drain(deadline)
             hugging_face_stopped = all(
-                [worker.wait(deadline) for worker in hugging_face_workers]
+                worker.wait(deadline) for worker in hugging_face_workers
             )
             if hugging_face_workers and hugging_face_stopped:
                 self._drain(deadline)

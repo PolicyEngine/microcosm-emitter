@@ -15,13 +15,13 @@ from microcosm_emitter.telemetry.service.spool import EventSpool
 
 
 def registration(producer="producer-a"):
-    return dict(
-        run_id="fixture-run",
-        producer_id=producer,
-        country_code="UK",
-        pipeline="test",
-        run_kind="build",
-    )
+    return {
+        "run_id": "fixture-run",
+        "producer_id": producer,
+        "country_code": "UK",
+        "pipeline": "test",
+        "run_kind": "build",
+    }
 
 
 def test_migrations_match_models_and_reopening_preserves_sequences(tmp_path):

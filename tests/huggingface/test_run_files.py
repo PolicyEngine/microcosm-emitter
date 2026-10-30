@@ -83,7 +83,9 @@ def test_hand_overs_within_one_cycle_reach_the_hub_as_one_commit(
 def test_staging_v2_bundle_keeps_its_paths_and_bytes(hugging_face_module):
     controls = hugging_face_module
     files = {
-        "run_manifest.json": b'{\n  "schema_name": "microcosm.staging.run-manifest"\n}\n',
+        "run_manifest.json": (
+            b'{\n  "schema_name": "microcosm.staging.run-manifest"\n}\n'
+        ),
         "progress.json": b'{\n  "schema_name": "microcosm.staging.progress"\n}\n',
         "events.ndjson": b'{"sequence":1}\n{"sequence":2}\n',
         "calibration_progress.json": b'{\n  "events": []\n}\n',
@@ -108,7 +110,8 @@ def test_staging_v2_bundle_keeps_its_paths_and_bytes(hugging_face_module):
     )["receipt"]
     assert receipt["pending_files"] == 0
     assert receipt["files_committed"] == len(files)
-    assert receipt["commits"] == 1 and receipt["last_commit"] == commit.oid
+    assert receipt["commits"] == 1
+    assert receipt["last_commit"] == commit.oid
 
 
 def test_unchanged_files_are_not_committed_again(hugging_face_module):
@@ -291,7 +294,8 @@ def test_a_failed_commit_keeps_the_files_queued_and_retries_after_backoff(
     assert len(commits(controls)) == 1
     receipt = controls.module.queue.run_receipt(STAGING_REPOSITORY, "run-1")
     assert receipt["last_error_code"] is None
-    assert receipt["commit_attempts"] == 2 and receipt["commits"] == 1
+    assert receipt["commit_attempts"] == 2
+    assert receipt["commits"] == 1
 
 
 def test_worker_errors_never_stop_the_module(hugging_face_module, capsys):

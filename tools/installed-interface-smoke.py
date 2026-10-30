@@ -70,14 +70,16 @@ def main(emitter_command: str) -> None:
                 flush=True,
             )
         )
-        assert staged["status"] == "recorded" and staged["pending_files"] == 1
+        assert staged["status"] == "recorded"
+        assert staged["pending_files"] == 1
         # The installed module keeps hand-overs in their own database, created
         # from the migrations shipped in the wheel, next to the spool database.
         assert (Path.cwd() / "interface.handovers.sqlite3").is_file()
     finally:
         process = client._process
         client.close()
-    assert process is not None and process.process.wait(timeout=20) == 0
+    assert process is not None
+    assert process.process.wait(timeout=20) == 0
 
 
 if __name__ == "__main__":

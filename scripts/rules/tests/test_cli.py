@@ -160,8 +160,10 @@ class CiScriptsCommandTest(unittest.TestCase):
                     1,
                     [
                         "note: shellcheck is not installed",
-                        "  - [registry] ci-scripts: untested script x.sh. "
-                        "Fix: test it.",
+                        (
+                            "  - [registry] ci-scripts: untested script x.sh. "
+                            "Fix: test it."
+                        ),
                         "rules: failed",
                     ],
                 ),
@@ -199,8 +201,10 @@ class CiScriptsCommandTest(unittest.TestCase):
                 (
                     1,
                     [
-                        "  - [registry] schema: registry.repo must be a non-empty "
-                        "string. Fix: set repo.",
+                        (
+                            "  - [registry] schema: registry.repo must be a non-empty "
+                            "string. Fix: set repo."
+                        ),
                         "rules: failed",
                     ],
                 ),

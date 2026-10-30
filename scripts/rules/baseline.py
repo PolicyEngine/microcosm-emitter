@@ -189,8 +189,10 @@ def _check_new_rule(rule: Rule | None) -> tuple[list[Violation], list[str]]:
     starts = f"starts ratcheted with {rule.baseline.count} tolerated violations"
     if rule.downgrade:
         return [], [
-            f"rule {rule.id} {starts}: {rule.downgrade.reason} "
-            f"(issue #{rule.downgrade.issue})"
+            (
+                f"rule {rule.id} {starts}: {rule.downgrade.reason} "
+                f"(issue #{rule.downgrade.issue})"
+            )
         ]
     return [
         Violation(

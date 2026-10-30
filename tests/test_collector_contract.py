@@ -25,9 +25,12 @@ def live_collector():
             "Requires disposable TEST_DATABASE_URL and pinned collector installation"
         )
     url = make_url(database_url)
-    assert (
-        url.host in {"127.0.0.1", "localhost"} and url.database == "telemetry_test"
-    ), "Only the disposable loopback test database is allowed"
+    assert url.host in {"127.0.0.1", "localhost"}, (
+        "Only the disposable loopback test database is allowed"
+    )
+    assert url.database == "telemetry_test", (
+        "Only the disposable loopback test database is allowed"
+    )
     import httpx
     import uvicorn
     from telemetry_collector.app import CollectorSettings, create_app
@@ -146,7 +149,8 @@ def test_rejected_identity_never_registers_or_uploads_run(
     assert reader.get(f"/v1/runs/{run_id}").status_code == 404
     spool = EventSpool(tmp_path / "events.sqlite3")
     try:
-        assert spool.has_pending() and not spool.has_deliverable()
+        assert spool.has_pending()
+        assert not spool.has_deliverable()
     finally:
         spool.close()
 
@@ -253,7 +257,7 @@ def test_blocked_run_projects_check_metadata_without_failure(
 
 
 @pytest.mark.parametrize(
-    "failure_class,error_code,error",
+    ("failure_class", "error_code", "error"),
     [
         ("error", "BUILD_FAILED", RuntimeError("Bearer hf_private_error")),
         (

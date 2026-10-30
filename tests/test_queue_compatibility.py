@@ -43,7 +43,8 @@ def test_current_microcosm_queue_is_preserved(tmp_path, monkeypatch):
     spool = EventSpool(path)
     try:
         pending = spool.pending_runs()
-        assert len(pending) == 1 and pending[0]["producer_id"] == "pending-producer"
+        assert len(pending) == 1
+        assert pending[0]["producer_id"] == "pending-producer"
         run_id = "microcosm-1099-fixture"
         events = spool.batch(run_id, "pending-producer") + spool.batch(
             run_id, "local-producer"
@@ -53,11 +54,13 @@ def test_current_microcosm_queue_is_preserved(tmp_path, monkeypatch):
             event["sequence"] for event in spool.batch(run_id, "pending-producer")
         ] == [2]
         event = spool.append(pending[0], {"event_type": "run", "status": "completed"})
-        assert event["sequence"] == 3 and event["event_id"] not in before
+        assert event["sequence"] == 3
+        assert event["event_id"] not in before
         spool.acknowledge(
             [entry["event_id"] for entry in spool.batch(run_id, "pending-producer")]
         )
-        assert not spool.has_deliverable() and spool.has_pending()
+        assert not spool.has_deliverable()
+        assert spool.has_pending()
     finally:
         spool.close()
 

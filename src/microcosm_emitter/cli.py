@@ -49,19 +49,25 @@ EXIT_UNEXPECTED_FAILURE: Final = 7
 TELEMETRY_TOKEN_FAILURES: Final[dict[ExchangeFailureResult, tuple[int, str]]] = {
     "missing": (
         EXIT_MISSING_CREDENTIAL,
-        "No Hugging Face credential was found: set HF_TOKEN or HUGGINGFACE_TOKEN, "
-        "or run `hf auth login`.",
+        (
+            "No Hugging Face credential was found: set HF_TOKEN or HUGGINGFACE_TOKEN, "
+            "or run `hf auth login`."
+        ),
     ),
     "unsendable": (
         EXIT_REJECTED_CREDENTIAL,
-        "The Hugging Face credential was not sent: it contains characters that "
-        "cannot be sent as a bearer token, such as a space or a line break. Check "
-        "HF_TOKEN, HUGGINGFACE_TOKEN or the login saved by `hf auth login`.",
+        (
+            "The Hugging Face credential was not sent: it contains characters that "
+            "cannot be sent as a bearer token, such as a space or a line break. Check "
+            "HF_TOKEN, HUGGINGFACE_TOKEN or the login saved by `hf auth login`."
+        ),
     ),
     "rejected": (
         EXIT_REJECTED_CREDENTIAL,
-        "The collector refused the Hugging Face credential ({answer}): it issues "
-        "tokens only to members of the PolicyEngine organization.",
+        (
+            "The collector refused the Hugging Face credential ({answer}): it issues "
+            "tokens only to members of the PolicyEngine organization."
+        ),
     ),
     "unavailable": (
         EXIT_COLLECTOR_UNAVAILABLE,
@@ -69,8 +75,10 @@ TELEMETRY_TOKEN_FAILURES: Final[dict[ExchangeFailureResult, tuple[int, str]]] = 
     ),
     "lifetime_unsupported": (
         EXIT_LIFETIME_UNSUPPORTED,
-        "The collector refused the request ({answer}): it does not accept "
-        "`lifetime_seconds`, so it cannot issue a token for another machine yet.",
+        (
+            "The collector refused the request ({answer}): it does not accept "
+            "`lifetime_seconds`, so it cannot issue a token for another machine yet."
+        ),
     ),
 }
 #: `huggingface_hub` could not read the login `hf auth login` saved, such as a

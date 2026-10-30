@@ -1,11 +1,13 @@
 """Typed staging-run-file hand-overs, through a real socket to the module."""
 
+import re
 from pathlib import Path
 
 import pytest
 from fake_hugging_face import STAGING_REPOSITORY
 
 from microcosm_emitter_interface.client import EmitterClient
+from microcosm_emitter_interface.identifiers import SAFE_IDENTIFIER
 from microcosm_emitter_interface.staging import (
     HuggingFaceSettings,
     RunFile,
@@ -15,30 +17,53 @@ from microcosm_emitter_interface.transport import SocketTransport
 
 
 @pytest.mark.parametrize(
-    "build_request",
+    ("build_request", "message"),
     [
-        lambda local: StageRunFiles(
-            repository=STAGING_REPOSITORY,
-            run_id="run-1",
-            files=(RunFile("../escape.json", local),),
+        (
+            lambda local: StageRunFiles(
+                repository=STAGING_REPOSITORY,
+                run_id="run-1",
+                files=(RunFile("../escape.json", local),),
+            ),
+            "relative_path must stay inside its folder.",
         ),
-        lambda local: StageRunFiles(
-            repository=STAGING_REPOSITORY,
-            run_id="run-1",
-            files=(RunFile("/absolute.json", local),),
+        (
+            lambda local: StageRunFiles(
+                repository=STAGING_REPOSITORY,
+                run_id="run-1",
+                files=(RunFile("/absolute.json", local),),
+            ),
+            "relative_path must stay inside its folder.",
         ),
-        lambda local: StageRunFiles(
-            repository=STAGING_REPOSITORY, run_id="run-1", prefix="releases"
+        (
+            lambda local: StageRunFiles(
+                repository=STAGING_REPOSITORY, run_id="run-1", prefix="releases"
+            ),
+            "prefix may not start with 'releases'.",
         ),
-        lambda local: StageRunFiles(repository=STAGING_REPOSITORY, run_id="../run"),
-        lambda local: StageRunFiles(repository="no-owner", run_id="run-1"),
-        lambda local: StageRunFiles(
-            repository=STAGING_REPOSITORY, run_id="run-1", commit_interval_seconds=-1
+        (
+            lambda local: StageRunFiles(repository=STAGING_REPOSITORY, run_id="../run"),
+            f"run_id must match {SAFE_IDENTIFIER.pattern}.",
         ),
-        lambda local: StageRunFiles(
-            repository=STAGING_REPOSITORY,
-            run_id="run-1",
-            run_index_entry={"run_id": "another-run"},
+        (
+            lambda local: StageRunFiles(repository="no-owner", run_id="run-1"),
+            "repository must be a Hugging Face owner/name identifier.",
+        ),
+        (
+            lambda local: StageRunFiles(
+                repository=STAGING_REPOSITORY,
+                run_id="run-1",
+                commit_interval_seconds=-1,
+            ),
+            "commit_interval_seconds must be finite and >= 0.",
+        ),
+        (
+            lambda local: StageRunFiles(
+                repository=STAGING_REPOSITORY,
+                run_id="run-1",
+                run_index_entry={"run_id": "another-run"},
+            ),
+            "run_index_entry must describe this run.",
         ),
     ],
     ids=[
@@ -52,9 +77,9 @@ from microcosm_emitter_interface.transport import SocketTransport
     ],
 )
 def test_requests_that_could_leave_the_run_folder_cannot_be_built(
-    tmp_path, build_request
+    tmp_path, build_request, message
 ):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=re.escape(message)):
         build_request(tmp_path / "progress.json")
 
 
@@ -172,4 +197,5 @@ def test_hand_over_reaches_the_hub_in_one_commit_and_reads_back(
         "runs/run-1/run_manifest.json": b'{"run_id":"run-1"}',
     }
     receipt = client.run_files_receipt(STAGING_REPOSITORY, "run-1")
-    assert receipt["commits"] == 1 and receipt["last_commit"] == commit.oid
+    assert receipt["commits"] == 1
+    assert receipt["last_commit"] == commit.oid
