@@ -347,7 +347,9 @@ class HuggingFaceDelivery:
                     return 0
                 held.hold_job(job)
                 return int(self._deliver_job(hub, held))
-            if not self._run_files_to_commit(repository, run_files, at_shutdown):
+            if not self._run_files_to_commit(
+                repository, run_files=run_files, at_shutdown=at_shutdown
+            ):
                 return 0
             return int(self._deliver_run_files(hub))
         finally:
@@ -357,10 +359,9 @@ class HuggingFaceDelivery:
     def _run_files_to_commit(
         self,
         repository: str,
-        # Both calls in this class pass these two flags positionally; making them
-        # keyword-only would change the method's call signature.
-        run_files: bool,  # noqa: FBT001
-        at_shutdown: bool,  # noqa: FBT001
+        *,
+        run_files: bool,
+        at_shutdown: bool,
     ) -> bool:
         return run_files and (
             at_shutdown or self.queue.run_files_due(repository, self.clock())
@@ -528,7 +529,9 @@ class HuggingFaceDelivery:
                 held.job, status="pending", error_code=CREDENTIAL_MISSING, retry=True
             )
             return
-        if not self._run_files_to_commit(repository, run_files, at_shutdown):
+        if not self._run_files_to_commit(
+            repository, run_files=run_files, at_shutdown=at_shutdown
+        ):
             return
         entries = self.queue.pending_run_files(repository)
         index_entries = self.queue.pending_run_index_entries(repository)
