@@ -131,7 +131,7 @@ class ReleasesRecord:
         return record
 
     @classmethod
-    def _from_document(cls, document: Any) -> ReleasesRecord:
+    def _from_document(cls, document: object) -> ReleasesRecord:
         def invalid(message: str) -> ReleaseRecordError:
             return _refuse("INVALID_RECORD", message)
 

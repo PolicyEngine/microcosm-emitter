@@ -12,7 +12,7 @@ class ParentProcess:
     count as the parent.
     """
 
-    def __init__(self, pid: int, created_at: float):
+    def __init__(self, pid: int, created_at: float) -> None:
         """Hold the process ID and the creation time, in seconds since the epoch."""
         self.pid = pid
         self.created_at = created_at

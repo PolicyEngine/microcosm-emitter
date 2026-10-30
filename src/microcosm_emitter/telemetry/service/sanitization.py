@@ -6,7 +6,7 @@ import json
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from microcosm_emitter.telemetry.protocol import (
     MAX_TELEMETRY_COLLECTION_ITEMS,
@@ -14,6 +14,9 @@ from microcosm_emitter.telemetry.protocol import (
     MAX_TELEMETRY_DETAILS_DEPTH,
     MAX_TELEMETRY_TEXT_CHARS,
 )
+
+if TYPE_CHECKING:
+    from microcosm_emitter_interface.serialization import JsonValue
 
 _SENSITIVE_KEY_PARTS: Final = (
     "authorization",
@@ -36,7 +39,7 @@ def sanitize_text(value: str, *, limit: int = MAX_TELEMETRY_TEXT_CHARS) -> str:
     return _SECRET_TEXT.sub(_REDACTED_VALUE, value)[:limit]
 
 
-def sanitize_json(value: Any, *, depth: int = 0) -> Any:
+def sanitize_json(value: object, *, depth: int = 0) -> JsonValue:
     """Return bounded JSON-compatible telemetry without model objects."""
     if depth >= MAX_TELEMETRY_DETAILS_DEPTH:
         return _MAXIMUM_DEPTH_VALUE

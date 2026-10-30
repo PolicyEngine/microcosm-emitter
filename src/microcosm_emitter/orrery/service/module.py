@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 class OrreryModule:
     """Queue graph publications on request and deliver them on each tick."""
 
-    def __init__(self, configuration: JsonObject, context: ModuleContext):
+    def __init__(self, configuration: JsonObject, context: ModuleContext) -> None:
         """Hold the configuration and context; ``initialize`` opens the queue."""
         self.configuration, self.context = configuration, context
         self.queue: GraphPublicationQueue | None = None
