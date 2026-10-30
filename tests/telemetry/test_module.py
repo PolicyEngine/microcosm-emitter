@@ -483,6 +483,8 @@ def test_block_commit_failure_preserves_stage_and_sequence(module):
         {"blocking_gate_ids": [""]},
         {"blocking_gate_ids": ["x" * 201]},
         {"blocking_gate_ids": [1]},
+        {"blocking_gate_ids": "check"},
+        {"blocking_gate_ids": None},
         {"blocking_gate_ids": [], "blocking_failure_count": None},
         {"gate_statuses": {f"check-{number}": "x" * 2000 for number in range(10)}},
     ],

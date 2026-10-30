@@ -1,5 +1,6 @@
 """Startup shares one deadline and reports only safe failure metadata."""
 
+import json
 import traceback
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -262,6 +263,40 @@ def test_child_startup_stderr_redacts_exception_payload_and_spoofed_type(
     assert not directory.exists()
 
 
+@pytest.mark.parametrize(
+    "settings", [[], "settings", None], ids=["list", "text", "null"]
+)
+def test_module_settings_that_are_not_an_object_fail_with_the_fixed_reason(
+    monkeypatch, tmp_path, capsys, settings
+):
+    import io
+
+    from microcosm_emitter.host import __main__ as entry
+
+    directory = tmp_path / "runtime"
+    directory.mkdir()
+    payload = json.dumps({"telemetry": settings}).encode()
+    monkeypatch.setattr(entry.sys, "stdin", SimpleNamespace(buffer=io.BytesIO(payload)))
+    load_module = Mock()
+    monkeypatch.setattr(entry, "load_module", load_module)
+
+    exit_code = entry.main(
+        [
+            "--socket",
+            str(directory / "socket"),
+            "--parent-pid",
+            "123",
+            "--parent-created-at",
+            "1",
+        ]
+    )
+
+    assert exit_code == 1
+    assert capsys.readouterr().err == "Service startup failed (startup_failure).\n"
+    load_module.assert_not_called()
+    assert not directory.exists()
+
+
 @pytest.mark.parametrize("custom", [False, True])
 def test_startup_diagnostic_omits_all_exception_names_and_payloads(custom):
     from microcosm_emitter.host.errors import safe_startup_error
@@ -282,8 +317,8 @@ def test_startup_diagnostic_clones_only_reason_and_exit_code():
     from microcosm_emitter.host.errors import ServiceStartupError, safe_startup_error
 
     def fail_with_a_private_cause() -> None:
-        error_message = "child_exit"
-        raise ServiceStartupError(error_message, exit_code=-9) from PermissionError(
+        startup_reason = "child_exit"
+        raise ServiceStartupError(startup_reason, exit_code=-9) from PermissionError(
             "Bearer hf_synthetic_private_payload"
         )
 

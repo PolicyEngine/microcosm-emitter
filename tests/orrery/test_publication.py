@@ -241,6 +241,37 @@ def test_telemetry_pruning_cannot_remove_graph_jobs(tmp_path):
     )
 
 
+@pytest.mark.parametrize(
+    "uploads",
+    [{"graph.orrery.json": {}}, "graph.orrery.json", None],
+    ids=["object", "text", "null"],
+)
+def test_an_upload_answer_without_a_list_is_recorded_as_an_invalid_response(
+    tmp_path, uploads
+):
+    directory, inventory = source(tmp_path)
+    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
+    queue.enqueue(directory, inventory)
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json={"uploads": uploads})
+
+    delivery = GraphPublicationDelivery(
+        queue,
+        credential=lambda: ("ok", "session"),
+        origin="https://runs.example",
+        client=httpx.Client(transport=httpx.MockTransport(respond)),
+    )
+
+    assert not delivery.flush_once()
+    receipt = queue.receipt(inventory["publication_id"])
+    assert receipt["status"] == "pending"
+    assert receipt["error_code"] == "publication_invalid_evidence_or_response"
+    assert [request.url.path for request in requests] == ["/api/uploads/"]
+
+
 def test_rejected_graph_session_is_refreshed_without_discarding_the_job(tmp_path):
     directory, inventory = source(tmp_path)
     queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
