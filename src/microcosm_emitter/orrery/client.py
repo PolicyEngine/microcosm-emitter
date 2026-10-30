@@ -10,12 +10,9 @@ unavailable receipt with the error code ``invalid_arguments``.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Mapping
-from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from microcosm_emitter.host.constants import STARTUP_TIMEOUT
-from microcosm_emitter.host.contracts import JsonObject
 from microcosm_emitter.host.errors import (
     LocalServiceError,
     ServiceStartupError,
@@ -23,11 +20,6 @@ from microcosm_emitter.host.errors import (
 )
 from microcosm_emitter.host.launcher import ServiceHandle, start_service
 from microcosm_emitter.orrery.constants import GRAPH_REQUEST_TIMEOUT_SECONDS
-from microcosm_emitter.orrery.contracts import (
-    PublicationFileRole,
-    PublicationInventory,
-    PublicationReceipt,
-)
 from microcosm_emitter_interface.orrery import (
     answered_inventory,
     answered_receipt,
@@ -39,8 +31,31 @@ from microcosm_emitter_interface.orrery import (
     unavailable_receipt,
 )
 from microcosm_emitter_interface.spool import (
-    default_spool_path as default_spool_path,
+    default_spool_path,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+    from pathlib import Path
+
+    from microcosm_emitter.host.contracts import JsonObject
+    from microcosm_emitter.orrery.contracts import (
+        PublicationFileRole,
+        PublicationInventory,
+        PublicationReceipt,
+    )
+
+# Every public name, including those re-exported from the interface package,
+# so type checkers of this py.typed package treat them as exported.
+__all__ = [
+    "INVALID_ARGUMENTS",
+    "UNAVAILABLE",
+    "GraphPublicationClient",
+    "GraphTransport",
+    "default_spool_path",
+    "publication_inventory",
+    "publish_graph",
+]
 
 INVALID_ARGUMENTS = "invalid_arguments"
 UNAVAILABLE = "local_service_unavailable"

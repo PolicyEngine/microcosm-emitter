@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from microcosm_emitter.huggingface.service.hub import (
     MAX_PARENT_CONFLICT_ATTEMPTS,
@@ -22,7 +21,11 @@ from microcosm_emitter.huggingface.service.hub import (
     is_absent,
     is_parent_conflict,
 )
-from microcosm_emitter.huggingface.service.queue import PendingRunFile
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from microcosm_emitter.huggingface.service.queue import PendingRunFile
 
 #: Staging contract version 1's index of runs, at the repository root.
 RUNS_INDEX_PATH = "runs.json"

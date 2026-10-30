@@ -10,9 +10,8 @@ and the build continues.
 from __future__ import annotations
 
 import sys
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from microcosm_emitter.host.constants import STARTUP_TIMEOUT
 from microcosm_emitter.host.errors import ServiceStartupError, safe_startup_error
@@ -39,10 +38,21 @@ from microcosm_emitter_interface.telemetry import (
     StageProgress,
     StageTransition,
     TelemetryCommand,
+    TelemetryRun,
     TelemetrySettings,
     telemetry_message,
 )
-from microcosm_emitter_interface.telemetry import TelemetryRun as TelemetryRun
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+# Every public name, including those re-exported from the interface package,
+# so type checkers of this py.typed package treat them as exported.
+__all__ = [
+    "LocalTelemetryEmitter",
+    "TelemetryRun",
+    "Transport",
+]
 
 
 class Transport(Protocol):

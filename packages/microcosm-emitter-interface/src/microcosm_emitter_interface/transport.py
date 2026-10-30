@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 import socket
 import time
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from microcosm_emitter_interface.protocol import (
     ACK_OK,
@@ -15,6 +14,9 @@ from microcosm_emitter_interface.protocol import (
     DELIMITER,
     MAX_MESSAGE_BYTES,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 class LocalEmitterError(RuntimeError):

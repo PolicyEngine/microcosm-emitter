@@ -32,10 +32,10 @@ from microcosm_emitter.huggingface.service.hub import (
     UPLOAD_FAILED,
 )
 from microcosm_emitter.huggingface.service.queue import sha256_file
-from microcosm_emitter.submissions.planning import PlannedSubmission
 
 if TYPE_CHECKING:
     from microcosm_emitter.core.auth import SessionCredential
+    from microcosm_emitter.submissions.planning import PlannedSubmission
 
 SUBMIT_SCOPE: Final = "artifacts:submit"
 SUBMISSIONS_PATH: Final = "/v1/submissions"

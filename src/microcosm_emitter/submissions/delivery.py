@@ -27,13 +27,11 @@ from __future__ import annotations
 
 import sys
 import time
-from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from microcosm_emitter.core.collector_origin import same_collector_origins
 from microcosm_emitter.huggingface.service.delivery import HeldLeases, never_stop
-from microcosm_emitter.huggingface.service.queue import ClaimedJob, HandoverQueue
 from microcosm_emitter.submissions.client import (
     AWAITING_FINAL_STATUS,
     FINAL_STATUSES,
@@ -46,6 +44,11 @@ from microcosm_emitter.submissions.planning import (
     bundle_folder,
     planned_submissions,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from microcosm_emitter.huggingface.service.queue import ClaimedJob, HandoverQueue
 
 COLLECTOR_SUBMISSIONS_ENABLED_BY_DEFAULT: Final = False
 DESTINATION_COLLECTOR: Final = "collector"

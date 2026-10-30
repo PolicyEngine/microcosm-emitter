@@ -14,7 +14,6 @@ before the jobs moved here is still importable from it.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +26,8 @@ from microcosm_emitter.core.handover_models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping
+
     from sqlalchemy.orm import Session, sessionmaker
 
 MAX_RETRY_SECONDS = 300.0

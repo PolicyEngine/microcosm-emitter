@@ -6,14 +6,17 @@ output; ``given_token_variables`` builds them with a synthetic token.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from microcosm_emitter.core.constants import (
     COLLECTOR_TOKEN_EXPIRES_AT_VARIABLE,
     COLLECTOR_TOKEN_ORIGIN_VARIABLE,
     COLLECTOR_TOKEN_VARIABLE,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 GIVEN_COLLECTOR_TOKEN = "synthetic-telemetry-token"
 GIVEN_TOKEN_VARIABLES = (

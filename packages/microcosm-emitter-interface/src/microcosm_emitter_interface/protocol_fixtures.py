@@ -32,9 +32,11 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from importlib.resources import files
-from importlib.resources.abc import Traversable
-from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from importlib.resources.abc import Traversable
+    from pathlib import Path
 
 FIXTURE_ROOT = "fixtures"
 DIRECTORY_PLACEHOLDER = "{directory}"
