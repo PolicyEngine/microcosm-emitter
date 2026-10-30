@@ -9,14 +9,15 @@ this package, timestamps, sanitizes, persists and delivers the events.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from microcosm_emitter_interface.serialization import wire_value
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+    from pathlib import Path
+
     from microcosm_emitter_interface.client import EmitterClient
 
 type TelemetryEventType = Literal[

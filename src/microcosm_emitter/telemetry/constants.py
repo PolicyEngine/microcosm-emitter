@@ -3,8 +3,19 @@
 from typing import Final
 
 from microcosm_emitter_interface.telemetry import (
-    DEFAULT_HEARTBEAT_SECONDS as DEFAULT_HEARTBEAT_SECONDS,
+    DEFAULT_HEARTBEAT_SECONDS,
 )
+
+# Every public name, including those re-exported from the interface package,
+# so type checkers of this py.typed package treat them as exported.
+__all__ = [
+    "DEFAULT_HEARTBEAT_SECONDS",
+    "LOCAL_ONLY_REJECTED_EVENTS",
+    "QUEUE_WARNING",
+    "REJECTED_EVENTS_MESSAGE",
+    "SERVICE_START_WARNING",
+    "TELEMETRY_MODULE",
+]
 
 TELEMETRY_MODULE: Final = "telemetry"
 SERVICE_START_WARNING: Final = "Local telemetry emitter service failed to start ({error_type}); the build will continue."

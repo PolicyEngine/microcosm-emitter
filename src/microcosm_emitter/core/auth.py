@@ -15,12 +15,11 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
 from http.client import HTTPException
-from typing import Any, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 from urllib.parse import urlsplit
 
 from huggingface_hub import get_token
@@ -48,6 +47,9 @@ from microcosm_emitter.core.constants import (
     TOKEN_REFRESH_MARGIN_SECONDS,
     UNSENDABLE_CREDENTIAL_ERROR,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
 
 #: Visible ASCII (letters, digits and punctuation), the only characters of a
 #: Hugging Face credential or a collector token. Any other value is refused

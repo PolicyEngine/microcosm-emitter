@@ -7,8 +7,7 @@ changes constants rather than modules.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from microcosm_emitter.core.auth import _collector_origin, _development_collector_url
 from microcosm_emitter.core.constants import (
@@ -19,6 +18,9 @@ from microcosm_emitter.core.constants import (
     TRUSTED_COLLECTOR_ORIGINS,
     UNTRUSTED_COLLECTOR_ORIGIN_ERROR,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 COLLECTOR_ORIGIN_SETTING = "collector_origin"
 DEVELOPMENT_COLLECTOR_URL_SETTING = "development_collector_url"

@@ -7,9 +7,45 @@ from typing import Final
 
 # The interface package defines these for both kinds of client.
 from microcosm_emitter_interface.telemetry import (
-    TelemetryEventType as TelemetryEventType,
+    TelemetryEventType,
+    TelemetryStatus,
 )
-from microcosm_emitter_interface.telemetry import TelemetryStatus as TelemetryStatus
+
+# Every public name, including those re-exported from the interface package,
+# so type checkers of this py.typed package treat them as exported.
+__all__ = [
+    "BUILD_BLOCKED_MESSAGE",
+    "BUILD_COMPLETED_MESSAGE",
+    "BUILD_STARTED_MESSAGE",
+    "CALIBRATION_EVENT_KIND",
+    "EVENT_TYPE_CALIBRATION",
+    "EVENT_TYPE_HEARTBEAT",
+    "EVENT_TYPE_PROGRESS",
+    "EVENT_TYPE_RUN",
+    "EVENT_TYPE_STAGE",
+    "MAX_TELEMETRY_CHECK_ID_CHARS",
+    "MAX_TELEMETRY_COLLECTION_ITEMS",
+    "MAX_TELEMETRY_DETAILS_BYTES",
+    "MAX_TELEMETRY_DETAILS_DEPTH",
+    "MAX_TELEMETRY_MESSAGE_CHARS",
+    "MAX_TELEMETRY_TEXT_CHARS",
+    "SEQUENTIAL_STATUS_MAP",
+    "STAGE_BLOCKED",
+    "STAGE_CALIBRATING",
+    "STAGE_COMPLETE",
+    "STAGE_CREATED",
+    "STAGE_FAILED",
+    "STATUS_BLOCKED",
+    "STATUS_COMPLETED",
+    "STATUS_FAILED",
+    "STATUS_PROGRESS",
+    "STATUS_STARTED",
+    "TELEMETRY_IDENTIFIER_PATTERN",
+    "TELEMETRY_SCHEMA_VERSION",
+    "UNEXPECTED_PROCESS_EXIT_MESSAGE",
+    "TelemetryEventType",
+    "TelemetryStatus",
+]
 
 TELEMETRY_SCHEMA_VERSION: Final = 1
 TELEMETRY_IDENTIFIER_PATTERN: Final = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$"

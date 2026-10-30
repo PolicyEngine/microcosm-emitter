@@ -24,13 +24,11 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session
 
 from microcosm_emitter.core.database import (
     create_spool_engine,
@@ -53,6 +51,11 @@ from microcosm_emitter.huggingface.service.queue_jobs import (
     retry_delay,
     sha256_bytes,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Mapping, Sequence
+
+    from sqlalchemy.orm import Session
 
 # The job definitions moved to queue_jobs.py; importers keep reading them here.
 __all__ = [
