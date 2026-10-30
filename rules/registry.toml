@@ -656,7 +656,7 @@ invocation = "tools/check-quality.sh"
 [[rule]]
 id = "emitter.quality.installed-checks-ruff-exemptions"
 category = "quality"
-statement = "The installed-artifact checks (tools/check-installed.py, tools/installed-smoke.py and tools/installed-interface-smoke.py) assert, as tests do (S101), import inside each check to test what that import loads (PLC0415), and read the clients' private members to check the processes they started (SLF001)."
+statement = "The installed-artifact checks (tools/check-installed.py, tools/installed-smoke.py and tools/installed-interface-smoke.py) assert, as tests do (S101), and import inside each check to test what that import loads (PLC0415)."
 rationale = "docs/engineering/skills/rules-registry.md#file-level-exceptions"
 scope = ["tools/check-installed.py", "tools/installed-smoke.py", "tools/installed-interface-smoke.py"]
 tier = "mechanical"
@@ -666,7 +666,26 @@ autofix = false
 kind = "ruff"
 mode = "per-file-ignore"
 pattern = "tools/{check-installed,installed-smoke,installed-interface-smoke}.py"
-codes = ["PLC0415", "S101", "SLF001"]
+codes = ["PLC0415", "S101"]
+[[rule.ci]]
+workflow = ".github/workflows/ci.yml"
+job = "quality"
+invocation = "tools/check-quality.sh"
+
+[[rule]]
+id = "emitter.quality.installed-smoke-ruff-exemptions"
+category = "quality"
+statement = "The two installed smoke checks, tools/installed-smoke.py and tools/installed-interface-smoke.py, read the clients' private members to check the processes they started (SLF001), as tests do."
+rationale = "docs/engineering/skills/rules-registry.md#file-level-exceptions"
+scope = ["tools/installed-smoke.py", "tools/installed-interface-smoke.py"]
+tier = "mechanical"
+status = "enforced"
+autofix = false
+[rule.enforcer]
+kind = "ruff"
+mode = "per-file-ignore"
+pattern = "tools/{installed-smoke,installed-interface-smoke}.py"
+codes = ["SLF001"]
 [[rule.ci]]
 workflow = ".github/workflows/ci.yml"
 job = "quality"

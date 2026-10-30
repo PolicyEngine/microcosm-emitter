@@ -18,6 +18,9 @@ from microcosm_emitter.orrery.service.queue import (
 if TYPE_CHECKING:
     from microcosm_emitter.orrery.contracts import PublicationInventory
 
+# Each print in this module, marked `# noqa: T201`, writes one of its
+# messages to standard error on purpose; none is leftover debugging output.
+
 
 class OrreryModule:
     """Queue graph publications on request and deliver them on each tick."""
@@ -113,8 +116,6 @@ class OrreryModule:
         # must not end delivery of every other job.
         except Exception:  # noqa: BLE001
             if not self._warned:
-                # A message on standard error, on purpose. Unlike sys.stderr.write,
-                # print does not raise when sys.stderr is None.
                 print(GRAPH_WORKER_ERROR_MESSAGE, file=sys.stderr, flush=True)  # noqa: T201
                 self._warned = True
 

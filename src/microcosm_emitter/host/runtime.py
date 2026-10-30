@@ -244,6 +244,13 @@ class ServiceRuntime:
         module.handle_message(message)
         return ACK_OK
 
+    def _started_requests(self) -> ModuleRequestDispatcher:
+        """Return the request dispatcher, which ``run`` starts before any worker."""
+        if self._requests is None:
+            error_message = "Requests start before workers."
+            raise AssertionError(error_message)
+        return self._requests
+
     def _work(self, name: str, module: ServiceModule) -> None:
         try:
             while not self._stop.wait(self.tick_seconds):
@@ -259,15 +266,13 @@ class ServiceRuntime:
             try:
                 # Periodic uploads stay independent of request work, but lifecycle
                 # callbacks must never close resources still in use by a request.
-                # An assert, since an explicit raise inside this try is flagged by
-                # TRY301; its AssertionError is handled below like any failure.
-                assert self._requests is not None, "Requests start before workers."  # noqa: S101
+                requests = self._started_requests()
                 if self._stop.is_set():
-                    self._requests.stop()
-                    self._requests.wait_all()
+                    requests.stop()
+                    requests.wait_all()
                 else:
-                    self._requests.stop_module(name)
-                    self._requests.wait(name)
+                    requests.stop_module(name)
+                    requests.wait(name)
                 if self._parent_exited and name not in self._failed:
                     module.parent_exited()
                 module.close(
