@@ -12,6 +12,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -450,8 +451,6 @@ class CollectorSession:
         ``GivenCollectorTokenError`` when the given-token variables cannot be used
         or name another collector than ``origin``.
         """
-        import threading
-
         self.origin = origin
         self.scope = scope
         self._destination = origin if destination is None else destination.rstrip("/")

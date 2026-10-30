@@ -48,8 +48,8 @@ To add or change a rule, read `docs/engineering/skills/rules-registry.md`.
 
 ### Test isolation
 
-- `emitter.tests.no-ambient-credentials-or-hosted-collector`: Tests never use ambient Hugging Face credentials, and never send a telemetry or authentication request to a hosted collector: an autouse fixture in conftest.py removes the Hugging Face credential variables, gives each test a temporary Hugging Face home, and fails a test whose telemetry or authentication request names a host other than loopback. (blocking: CI job `tests`)
-- `emitter.tests.real-migrations-synthetic-credentials`: Tests use temporary databases created through real migrations, synthetic credentials and loopback network services, and contact no hosted collector through any client, including the HTTP clients of the submissions client and the Orrery queue, which conftest.py does not intercept. (doc-only, not checked: follow it yourself)
+- `emitter.tests.no-ambient-credentials-or-hosted-collector`: Tests never use ambient Hugging Face credentials, and never send a telemetry or authentication request to a hosted collector: an autouse fixture in tests/conftest.py removes the Hugging Face credential variables, gives each test a temporary Hugging Face home, and fails a test whose telemetry or authentication request names a host other than loopback. (blocking: CI job `tests`)
+- `emitter.tests.real-migrations-synthetic-credentials`: Tests use temporary databases created through real migrations, synthetic credentials and loopback network services, and contact no hosted collector through any client, including the HTTP clients of the submissions client and the Orrery queue, which tests/conftest.py does not intercept. (doc-only, not checked: follow it yourself)
 
 ### Code quality
 
