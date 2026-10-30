@@ -87,7 +87,7 @@ if TYPE_CHECKING:
 
     from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 
-# Each print in this module, marked `# noqa: T201`, writes one of its
+# Each print in this module that suppresses Ruff's T201 writes one of its
 # messages to standard error on purpose; none is leftover debugging output.
 
 STARTUP_WARNING = (
