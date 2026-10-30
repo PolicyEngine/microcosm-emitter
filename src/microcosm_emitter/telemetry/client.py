@@ -204,14 +204,18 @@ class LocalTelemetryEmitter:
         self._request(StageProgress(stage_id, done, total, unit, details))
 
     def calibration_progress(self, event: Mapping[str, Any]) -> None:
-        """Send one calibration progress ``event``."""
+        """Send one calibration progress ``event``.
+
+        The service records it only when its ``kind`` is ``calibration_epoch``.
+        """
         self._request(CalibrationProgress(event))
 
     def transition_calibration_progress(self, event: Mapping[str, Any]) -> None:
         """Send one calibration progress ``event`` as a stage transition.
 
-        The service first moves the run to the calibrating stage, unless it is
-        already there.
+        For an event whose ``kind`` is ``calibration_epoch``, the service first
+        moves the run to the calibrating stage, unless it is already there; it
+        ignores any other event.
         """
         self._request(CalibrationProgress(event, transition=True))
 

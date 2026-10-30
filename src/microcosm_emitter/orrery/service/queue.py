@@ -407,8 +407,9 @@ class GraphPublicationDelivery:
     ) -> None:
         """Check ``origin`` and hold the queue, credential source and HTTP client.
 
-        ``origin`` must be an HTTPS origin, or an HTTP one on a loopback host,
-        with no user, query, fragment or path other than ``/``; anything else
+        ``origin`` must be an HTTPS origin, or an HTTP one whose host is
+        ``localhost``, ``127.0.0.1`` or ``::1``, with no user, query, fragment
+        or path other than ``/``; anything else
         raises ``ValueError``. Without ``client``, a new ``httpx.Client`` that
         does not follow redirects is made.
         """

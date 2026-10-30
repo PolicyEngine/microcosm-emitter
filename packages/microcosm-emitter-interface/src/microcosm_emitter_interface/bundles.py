@@ -136,7 +136,8 @@ class StageDatasetBundle:
 
         The repository, run ID and prefix must follow the identifier rules, the
         files must be ``BundleFile`` values that pass ``check_bundle_files``, a
-        given ``commit_message`` must be nonempty, and a given ``collector``
+        given ``commit_message`` must be a string that is not empty or only
+        whitespace, and a given ``collector``
         must be a ``CollectorProvenance``.
         """
         repository_identifier(self.repository)

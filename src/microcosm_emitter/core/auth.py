@@ -465,8 +465,10 @@ class CollectorSession:
     def invalidate(self) -> None:
         """Drop the exchanged token, so that ``credential()`` exchanges again.
 
-        A given token cannot be renewed, so ``credential()`` answers
-        ``token_rejected`` for it from then on.
+        A given token cannot be renewed, so from then on ``credential()``
+        answers ``token_rejected`` for it, after its earlier checks: ``missing``
+        for a scope other than telemetry, and ``withheld_from_destination``
+        for a destination other than the collector origin.
         """
         with self._lock:
             self._session_token = None
