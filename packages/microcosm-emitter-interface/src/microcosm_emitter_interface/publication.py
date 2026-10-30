@@ -113,7 +113,7 @@ class PublishRelease:
         role_identifier(self.release_role, label="release_role")
         if not isinstance(self.make_current, bool):
             error_message = "make_current must be a boolean."
-            # The interface README promises ValueError for every invalid field.
+            # The published constructors raise ValueError for every invalid value.
             raise ValueError(error_message)  # noqa: TRY004
         object.__setattr__(self, "files", tuple(self.files))
         if any(not isinstance(item, ReleaseFile) for item in self.files):

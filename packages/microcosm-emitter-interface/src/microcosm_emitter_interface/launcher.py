@@ -90,8 +90,8 @@ def resolve_command(command: str | os.PathLike[str] | None = None) -> str:
     )
     resolved = shutil.which(candidate)
     if resolved is None:
-        error_message = "command_not_found"
-        raise EmitterStartupError(error_message)
+        startup_reason = "command_not_found"
+        raise EmitterStartupError(startup_reason)
     return resolved
 
 
@@ -131,8 +131,8 @@ def _configuration_payload(
         or not math.isfinite(startup_timeout)
         or startup_timeout < 0
     ):
-        error_message = "invalid_configuration"
-        raise EmitterStartupError(error_message)
+        startup_reason = "invalid_configuration"
+        raise EmitterStartupError(startup_reason)
     if (
         not isinstance(modules, Mapping)
         or not modules
@@ -141,15 +141,15 @@ def _configuration_payload(
             for name, settings in modules.items()
         )
     ):
-        error_message = "invalid_configuration"
-        raise EmitterStartupError(error_message)
+        startup_reason = "invalid_configuration"
+        raise EmitterStartupError(startup_reason)
     payload = json.dumps(
         {name: dict(settings) for name, settings in modules.items()},
         allow_nan=False,
     ).encode()
     if len(payload) > MAX_MESSAGE_BYTES:
-        error_message = "invalid_configuration"
-        raise EmitterStartupError(error_message)
+        startup_reason = "invalid_configuration"
+        raise EmitterStartupError(startup_reason)
     return payload
 
 
@@ -157,14 +157,14 @@ def _send_configuration(writer: socket.socket, payload: bytes, deadline: float) 
     """Write the configuration to the emitter's standard input before the deadline."""
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        error_message = "configuration_timeout"
-        raise EmitterStartupError(error_message)
+        startup_reason = "configuration_timeout"
+        raise EmitterStartupError(startup_reason)
     writer.settimeout(remaining)
     writer.sendall(payload)
     writer.shutdown(socket.SHUT_WR)
     if time.monotonic() >= deadline:
-        error_message = "configuration_timeout"
-        raise EmitterStartupError(error_message)
+        startup_reason = "configuration_timeout"
+        raise EmitterStartupError(startup_reason)
 
 
 def _wait_for_readiness(
@@ -174,12 +174,12 @@ def _wait_for_readiness(
     while True:
         exit_code = process.poll()
         if exit_code is not None:
-            error_message = "child_exit"
-            raise EmitterStartupError(error_message, exit_code=exit_code)
+            startup_reason = "child_exit"
+            raise EmitterStartupError(startup_reason, exit_code=exit_code)
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            error_message = "readiness_timeout"
-            raise EmitterStartupError(error_message)
+            startup_reason = "readiness_timeout"
+            raise EmitterStartupError(startup_reason)
         try:
             transport.ping(timeout=min(transport.timeout, remaining))
         except LocalEmitterError:
@@ -260,14 +260,14 @@ def _accepted_description(
 ) -> dict[str, Any]:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        error_message = "readiness_timeout"
-        raise EmitterStartupError(error_message)
+        startup_reason = "readiness_timeout"
+        raise EmitterStartupError(startup_reason)
     try:
         description = transport.hello(timeout=remaining)
     except LocalEmitterError:
         # An emitter without a ``hello`` answer predates this protocol.
-        error_message = "unsupported_protocol_version"
-        raise EmitterStartupError(error_message) from None
+        startup_reason = "unsupported_protocol_version"
+        raise EmitterStartupError(startup_reason) from None
     versions = description.get("protocol_versions")
     modules = description.get("modules")
     # Every call reads the module names as a set of strings, so a later
@@ -279,8 +279,8 @@ def _accepted_description(
         or not isinstance(modules, list)
         or not all(isinstance(module, str) for module in modules)
     ):
-        error_message = "unsupported_protocol_version"
-        raise EmitterStartupError(error_message)
+        startup_reason = "unsupported_protocol_version"
+        raise EmitterStartupError(startup_reason)
     return description
 
 

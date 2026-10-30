@@ -70,8 +70,8 @@ def _configuration_payload(modules: JsonObject, startup_timeout: float) -> bytes
         or not math.isfinite(startup_timeout)
         or startup_timeout < 0
     ):
-        error_message = "invalid_configuration"
-        raise ServiceStartupError(error_message)
+        startup_reason = "invalid_configuration"
+        raise ServiceStartupError(startup_reason)
     if (
         not isinstance(modules, dict)
         or not modules
@@ -80,12 +80,12 @@ def _configuration_payload(modules: JsonObject, startup_timeout: float) -> bytes
             for name, settings in modules.items()
         )
     ):
-        error_message = "invalid_configuration"
-        raise ServiceStartupError(error_message)
+        startup_reason = "invalid_configuration"
+        raise ServiceStartupError(startup_reason)
     payload = json.dumps(modules, allow_nan=False).encode()
     if len(payload) > MAX_MESSAGE_BYTES:
-        error_message = "invalid_configuration"
-        raise ServiceStartupError(error_message)
+        startup_reason = "invalid_configuration"
+        raise ServiceStartupError(startup_reason)
     return payload
 
 
@@ -93,14 +93,14 @@ def _send_configuration(writer: socket.socket, payload: bytes, deadline: float) 
     """Write the configuration to the host's standard input before the deadline."""
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        error_message = "configuration_timeout"
-        raise ServiceStartupError(error_message)
+        startup_reason = "configuration_timeout"
+        raise ServiceStartupError(startup_reason)
     writer.settimeout(remaining)
     writer.sendall(payload)
     writer.shutdown(socket.SHUT_WR)
     if time.monotonic() >= deadline:
-        error_message = "configuration_timeout"
-        raise ServiceStartupError(error_message)
+        startup_reason = "configuration_timeout"
+        raise ServiceStartupError(startup_reason)
 
 
 def _wait_for_readiness(
@@ -110,8 +110,8 @@ def _wait_for_readiness(
     while time.monotonic() < deadline:
         exit_code = process.poll()
         if exit_code is not None:
-            error_message = "child_exit"
-            raise ServiceStartupError(error_message, exit_code=exit_code)
+            startup_reason = "child_exit"
+            raise ServiceStartupError(startup_reason, exit_code=exit_code)
         try:
             client.ping(timeout=min(client.timeout, deadline - time.monotonic()))
         except LocalServiceError:
@@ -123,8 +123,8 @@ def _wait_for_readiness(
         if remaining <= 0:
             break
         time.sleep(min(STARTUP_POLL, remaining))
-    error_message = "readiness_timeout"
-    raise ServiceStartupError(error_message)
+    startup_reason = "readiness_timeout"
+    raise ServiceStartupError(startup_reason)
 
 
 def start_services(

@@ -98,17 +98,17 @@ class ReleasesRecord:
     @classmethod
     def parse(cls, content: bytes) -> ReleasesRecord:
         if len(content) > MAX_RECORD_BYTES:
-            error_message = "INVALID_RECORD"
+            refusal_code = "INVALID_RECORD"
             raise _refuse(
-                error_message,
+                refusal_code,
                 f"releases.json is larger than {MAX_RECORD_BYTES} bytes.",
             )
         try:
             document = json.loads(content)
         except _UNREADABLE_JSON_ERRORS:
-            error_message = "INVALID_RECORD"
+            refusal_code = "INVALID_RECORD"
             raise _refuse(
-                error_message, "releases.json is not a readable JSON document."
+                refusal_code, "releases.json is not a readable JSON document."
             ) from None
         record = cls._from_document(document)
         violations = check_record(record)
@@ -232,15 +232,15 @@ def add_build(
     role_identifier(release_role, label="release role")
     existing = record.releases.get(release)
     if existing is not None and existing.role != release_role:
-        error_message = "RELEASE_ROLE_DIFFERS"
+        refusal_code = "RELEASE_ROLE_DIFFERS"
         raise _refuse(
-            error_message,
+            refusal_code,
             f"Release {release} has role {existing.role}, not {release_role}.",
         )
     entry = existing or ReleaseEntry(role=release_role, current=None, builds={})
     if build in entry.builds:
-        error_message = "BUILD_ALREADY_LISTED"
-        raise _refuse(error_message, f"Build {build} of {release} is listed.")
+        refusal_code = "BUILD_ALREADY_LISTED"
+        raise _refuse(refusal_code, f"Build {build} of {release} is listed.")
     builds = {**entry.builds, build: BuildEntry(published_at, False)}
     updated = replace(
         entry, builds=builds, current=build if make_current else entry.current
@@ -252,11 +252,11 @@ def make_current(record: ReleasesRecord, *, release: str, build: str) -> Release
     """Promote a listed, non-withdrawn build."""
     entry = record.releases.get(release)
     if entry is None or build not in entry.builds:
-        error_message = "BUILD_NOT_LISTED"
-        raise _refuse(error_message, f"Build {build} of {release} is not listed.")
+        refusal_code = "BUILD_NOT_LISTED"
+        raise _refuse(refusal_code, f"Build {build} of {release} is not listed.")
     if entry.builds[build].withdrawn:
-        error_message = "CURRENT_WITHDRAWN"
-        raise _refuse(error_message, f"Build {build} of {release} has been withdrawn.")
+        refusal_code = "CURRENT_WITHDRAWN"
+        raise _refuse(refusal_code, f"Build {build} of {release} has been withdrawn.")
     return replace(
         record,
         releases={**record.releases, release: replace(entry, current=build)},
@@ -272,12 +272,12 @@ def withdraw_build(
     """
     entry = record.releases.get(release)
     if entry is None or build not in entry.builds:
-        error_message = "BUILD_NOT_LISTED"
-        raise _refuse(error_message, f"Build {build} of {release} is not listed.")
+        refusal_code = "BUILD_NOT_LISTED"
+        raise _refuse(refusal_code, f"Build {build} of {release} is not listed.")
     if entry.current == build:
-        error_message = "WITHDRAWING_CURRENT_BUILD"
+        refusal_code = "WITHDRAWING_CURRENT_BUILD"
         raise _refuse(
-            error_message,
+            refusal_code,
             f"Build {build} is the current build of {release}.",
         )
     builds = {**entry.builds, build: replace(entry.builds[build], withdrawn=True)}

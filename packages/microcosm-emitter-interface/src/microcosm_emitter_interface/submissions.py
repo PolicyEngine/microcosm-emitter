@@ -55,7 +55,7 @@ class CollectorProvenance:
         safe_identifier(self.build_id, label="build_id")
         if not isinstance(self.licensed_data, bool):
             error_message = "licensed_data must be True or False."
-            # The interface README promises ValueError for every invalid field.
+            # The published constructors raise ValueError for every invalid value.
             raise ValueError(error_message)  # noqa: TRY004
         if self.release is not None:
             safe_identifier(self.release, label="release")

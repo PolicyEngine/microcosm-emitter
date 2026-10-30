@@ -14,7 +14,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
 
 import httpx
@@ -35,6 +35,8 @@ from microcosm_emitter.orrery.contracts import (
 )
 
 if TYPE_CHECKING:
+    from urllib.parse import SplitResult
+
     from microcosm_emitter.core.auth import SessionCredential
 
 MAX_GRAPH_FILE_BYTES = 64 * 1024 * 1024
@@ -335,8 +337,11 @@ def _check_unchanged(
         raise ValueError(error_message)
 
 
-def _requested_uploads(body: Mapping) -> list:
-    uploads = body.get("uploads")
+def _upload_list(uploads: object) -> list[Any]:
+    """Return the upload answer's ``uploads`` value, refusing one that isn't a list.
+
+    The items are the answer's unchecked JSON values.
+    """
     if not isinstance(uploads, list):
         error_message = "invalid_upload_response"
         # The caller records every malformed response with one error code.
@@ -344,16 +349,13 @@ def _requested_uploads(body: Mapping) -> list:
     return uploads
 
 
-def _upload_name(upload: Mapping, files: Mapping[str, object]) -> str:
-    name = upload.get("name")
+def _check_listed_name(name: object, files: Mapping[str, object]) -> None:
     if name not in files:
         error_message = "invalid_upload_response"
         raise ValueError(error_message)
-    return name
 
 
-def _check_upload_url(target: str) -> None:
-    url = urlsplit(target)
+def _check_upload_url(url: SplitResult) -> None:
     if (
         url.scheme != "https"
         or not (
@@ -369,11 +371,12 @@ def _check_upload_url(target: str) -> None:
 
 
 def _check_publication_answer(
-    answer: Mapping, publication_id: str, inventory: PublicationInventory
+    answered_id: object,
+    answered_digest: object,
+    publication_id: str,
+    inventory: PublicationInventory,
 ) -> None:
-    if answer.get("publication_id") != publication_id or answer.get(
-        "inventory_sha256"
-    ) != inventory_digest(inventory):
+    if answered_id != publication_id or answered_digest != inventory_digest(inventory):
         error_message = "invalid_publication_response"
         raise ValueError(error_message)
 
@@ -450,13 +453,14 @@ class GraphPublicationDelivery:
             )
             response.raise_for_status()
             body = response.json()
-            uploads = _requested_uploads(body)
+            uploads = _upload_list(body.get("uploads"))
             files = {f["name"]: f for f in inventory["files"]}
             for upload in uploads:
-                name = _upload_name(upload, files)
+                name = upload.get("name")
+                _check_listed_name(name, files)
                 if upload.get("already_uploaded"):
                     continue
-                _check_upload_url(upload["url"])
+                _check_upload_url(urlsplit(upload["url"]))
                 with (directory / name).open("rb") as stream:
                     result = self.client.put(
                         upload["url"],
@@ -471,7 +475,13 @@ class GraphPublicationDelivery:
                 self.origin + "/api/publications/", json=inventory, headers=headers
             )
             response.raise_for_status()
-            _check_publication_answer(response.json(), id_, inventory)
+            answer = response.json()
+            _check_publication_answer(
+                answer.get("publication_id"),
+                answer.get("inventory_sha256"),
+                id_,
+                inventory,
+            )
             self.queue.finish(
                 id_, url=f"{self.origin}/runs/{id_}/", expected_lease=lease
             )

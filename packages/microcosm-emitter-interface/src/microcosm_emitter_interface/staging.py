@@ -108,7 +108,7 @@ class StageRunFiles:
             raise ValueError(error_message)
         if not isinstance(self.flush, bool):
             error_message = "flush must be a boolean."
-            # The interface README promises ValueError for every invalid field.
+            # The published constructors raise ValueError for every invalid value.
             raise ValueError(error_message)  # noqa: TRY004
         interval = self.commit_interval_seconds
         if (
