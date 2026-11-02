@@ -359,3 +359,64 @@ def test_installed_check_keeps_the_interface_apart_from_the_emitter():
     script = (ROOT / "tools/check-installed.py").read_text()
     assert "microcosm_emitter_interface-" in script
     assert "tools/installed-interface-smoke.py" in script
+
+
+# --- setup-uv's cache -----------------------------------------------------
+
+SETUP_UV = "astral-sh/setup-uv@"
+UV_COMMAND = re.compile(r"uvx? ")
+SCRIPT_STEP = re.compile(r"bash (?P<script>tools/[\w.-]+\.sh)")
+# An unindented script line that can skip the commands after it.
+BRANCH_OR_EXIT = re.compile(r"(if|case|for|while|until)\b|[\w-]+\(\)|.*\bexit\b")
+
+
+def script_always_runs_uv(script):
+    """Whether the script's top-level commands reach uv before any branch or exit.
+
+    The scripts indent what their branches and functions run, so the
+    unindented lines are the commands every successful run reaches in order.
+    """
+    for script_line in (ROOT / script).read_text().splitlines():
+        if not script_line or script_line[0].isspace() or script_line[0] == "#":
+            continue
+        if BRANCH_OR_EXIT.match(script_line):
+            return False
+        if UV_COMMAND.match(script_line):
+            return True
+    return False
+
+
+def step_always_runs_uv(step):
+    if "if" in step or "run" not in step:
+        return False
+    command = step["run"].strip()
+    script_step = SCRIPT_STEP.fullmatch(command)
+    if script_step is not None:
+        return script_always_runs_uv(script_step["script"])
+    return UV_COMMAND.match(command) is not None
+
+
+def test_setup_uv_caches_only_in_jobs_that_always_run_uv():
+    """setup-uv's post-job step fails a job whose uv cache directory is missing.
+
+    The directory is created by the first uv command, so a job that can
+    finish without running one, such as the changelog check on a Dependabot
+    pull request, must turn the cache off.
+    """
+    setup_uv_steps = []
+    caching_without_uv = []
+    for path in workflow_paths():
+        for job_id, job in workflow(path.name)["jobs"].items():
+            steps = job.get("steps", [])
+            for position, step in enumerate(steps):
+                if not step.get("uses", "").startswith(SETUP_UV):
+                    continue
+                setup_uv_steps.append((path.name, job_id))
+                if step.get("with", {}).get("enable-cache") == "false":
+                    continue
+                if not any(
+                    step_always_runs_uv(later) for later in steps[position + 1 :]
+                ):
+                    caching_without_uv.append((path.name, job_id))
+    assert setup_uv_steps
+    assert caching_without_uv == []

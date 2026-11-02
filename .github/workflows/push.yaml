@@ -7,11 +7,14 @@ on:
 permissions:
   contents: read
 
-# Every merge runs this workflow twice. On the merge commit, versioning commits
-# the new version and changelog as "Update microcosm-emitter" with the
-# PolicyEngine GitHub App token: unlike GITHUB_TOKEN, its push starts another
-# run, and the app may bypass the main ruleset. On that release commit, the
-# remaining jobs verify, tag, then publish, each only after the one before.
+# A merge with changelog fragments runs this workflow twice. On the merge
+# commit, versioning commits the new version and changelog as "Update
+# microcosm-emitter" with the PolicyEngine GitHub App token: unlike
+# GITHUB_TOKEN, its push starts another run, and the app may bypass the main
+# ruleset. On that release commit, the remaining jobs verify, tag, then
+# publish, each only after the one before. A merge without fragments, such as
+# Dependabot's lock-only update, runs it once: versioning commits nothing, so
+# nothing is verified, tagged or published.
 #
 # PyPI trusts this file by name, in the pypi environment, which only main can
 # use, for both distributions (microcosm-emitter and microcosm-emitter-interface).
@@ -36,6 +39,10 @@ jobs:
         with:
           version-file: .github/uv-version.txt
           python-version: "3.13"
+          # A merge without changelog fragments runs no uv command, so no cache
+          # directory exists for setup-uv to save
+          # (rule emitter.ci.uv-cache-only-where-uv-runs).
+          enable-cache: false
       - id: version
         run: bash tools/update-version.sh
       # A merge without changelog fragments, such as Dependabot's lock-only
