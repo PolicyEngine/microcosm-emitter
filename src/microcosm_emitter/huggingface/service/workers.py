@@ -45,6 +45,7 @@ class DeliveryWorker:
         interval_seconds: float,
         on_error: Callable[[], None],
     ) -> None:
+        """Set up the worker's thread, named after ``name``, without starting it."""
         self.name = name
         self.cycle = cycle
         self.interval_seconds = interval_seconds
@@ -58,6 +59,7 @@ class DeliveryWorker:
         )
 
     def start(self) -> None:
+        """Start the worker's thread; its first cycle runs one interval later."""
         self._thread.start()
 
     def stop(self) -> None:

@@ -50,6 +50,12 @@ type EnvelopeResponse = Literal["acknowledgement", "answer"]
 
 @dataclass(frozen=True)
 class ProtocolFixture:
+    """One recorded protocol message, read from a file under ``fixtures/``.
+
+    ``name`` is the file name without ``.json`` and ``path`` its path below
+    ``fixtures/``; the other fields hold the file's keys of the same names.
+    """
+
     name: str
     path: str
     protocol_version: int
@@ -117,7 +123,11 @@ def materialize(
     socket_path: Path | None = None,
     parent_pid: int | None = None,
 ) -> dict[str, Any]:
-    """The fixture's body with its placeholders replaced."""
+    """Return the fixture's body with its placeholders replaced.
+
+    Placeholders are replaced in string values at any depth;
+    ``{socket_path}`` and ``{parent_pid}`` only when they are given.
+    """
     replacements = {
         DIRECTORY_PLACEHOLDER: str(directory),
         SPOOL_PATH_PLACEHOLDER: str(spool_path),

@@ -70,6 +70,11 @@ class EmitterStartupError(LocalEmitterError):
     def __init__(
         self, reason: StartupFailureReason, *, exit_code: int | None = None
     ) -> None:
+        """Hold the reason and an integer exit code; build the fixed message.
+
+        An ``exit_code`` whose type is not exactly ``int`` is stored as None.
+        An unknown ``reason`` raises ``ValueError``.
+        """
         if reason not in _STARTUP_MESSAGES:
             error_message = "Unknown startup failure reason."
             raise ValueError(error_message)
@@ -82,7 +87,12 @@ class EmitterStartupError(LocalEmitterError):
 
 
 def resolve_command(command: str | os.PathLike[str] | None = None) -> str:
-    """The emitter command: the argument, then the environment, then ``PATH``."""
+    """Return the emitter command: the argument, then the environment, then ``PATH``.
+
+    The name chosen from ``command``, ``MICROCOSM_EMITTER_COMMAND`` or the
+    default ``microcosm-emitter`` is resolved with ``shutil.which``. Raise
+    ``EmitterStartupError`` (``command_not_found``) when it does not resolve.
+    """
     candidate = (
         str(command)
         if command is not None

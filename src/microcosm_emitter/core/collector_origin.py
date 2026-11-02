@@ -38,7 +38,6 @@ def resolve_collector_origin(
     A setting that is not a string raises ``ValueError``, like any other
     refused setting.
     """
-
     for setting in (development_collector_url, collector_origin):
         if setting is not None and not isinstance(setting, str):
             raise ValueError(COLLECTOR_SETTING_TYPE_ERROR)
@@ -55,7 +54,7 @@ def resolve_collector_origin(
 
 
 def same_collector_origins(origin: str) -> frozenset[str]:
-    """The origins of the collector that ``origin`` reaches, ``origin`` included.
+    """Return the origins of the collector that ``origin`` reaches, ``origin`` included.
 
     Only the two origins of ``PRODUCTION_COLLECTOR_ORIGIN_PAIR`` are one
     collector, so collector rows queued under either (such as rows that earlier
@@ -63,7 +62,6 @@ def same_collector_origins(origin: str) -> frozenset[str]:
     this emitter resolved. Any other origin, trusted or a development one, has
     only itself.
     """
-
     if origin in PRODUCTION_COLLECTOR_ORIGIN_PAIR:
         return PRODUCTION_COLLECTOR_ORIGIN_PAIR
     return frozenset({origin})
@@ -75,7 +73,6 @@ def configured_collector_origin(configuration: Mapping[str, Any]) -> str:
     An empty or null setting counts as unset, as the Orrery and Hugging Face
     modules already did for ``development_collector_url``.
     """
-
     return resolve_collector_origin(
         development_collector_url=(
             configuration.get(DEVELOPMENT_COLLECTOR_URL_SETTING) or None

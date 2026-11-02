@@ -52,12 +52,20 @@ class RequestRefusedError(ValueError):
     """A request the emitter will not queue; ``code`` says why."""
 
     def __init__(self, code: str) -> None:
+        """Store the refusal ``code``, which is also the exception's message."""
         super().__init__(code)
         self.code = code
 
 
 @dataclass(frozen=True)
 class RunFilesHandOver:
+    """A checked ``stage_run_files`` request, with the bytes of every file it names.
+
+    ``files`` pairs each repository path with its bytes. ``interval`` is the
+    request's ``commit_interval_seconds``, and ``flush`` makes the files due at
+    the next cycle.
+    """
+
     repository: str
     run_id: str
     files: list[tuple[str, bytes]]
@@ -67,6 +75,11 @@ class RunFilesHandOver:
 
 
 def require_supported_version(message: Mapping[str, Any]) -> None:
+    """Refuse a message whose ``protocol_version`` this emitter does not support.
+
+    The refusal is a ``RequestRefusedError`` with ``UNSUPPORTED_PROTOCOL_VERSION``;
+    a version that is missing or not an integer is refused too.
+    """
     version = message.get("protocol_version")
     if (
         isinstance(version, bool)
@@ -86,6 +99,11 @@ def _valid(check, *arguments, **keywords):
 
 
 def run_reference(message: Mapping[str, Any]) -> tuple[str, str]:
+    """Return the repository and run ID a message names, after checking both.
+
+    An unsupported protocol version, or an invalid repository or run ID, raises
+    ``RequestRefusedError``.
+    """
     require_supported_version(message)
     return (
         _valid(repository_identifier, message.get("repository")),
@@ -179,6 +197,12 @@ def parse_stage_run_files(message: Mapping[str, Any]) -> RunFilesHandOver:
 
 @dataclass(frozen=True)
 class BundleHandOver:
+    """A checked ``stage_dataset_bundle`` request and the file bytes copied for it.
+
+    ``request`` is the message as it was handed over, and ``remote_prefix`` the
+    bundle's folder in the repository.
+    """
+
     handover_id: str
     repository: str
     remote_prefix: str
@@ -220,7 +244,11 @@ COLLECTOR_PROVENANCE_KEYS = frozenset(
 
 
 def _collector_provenance(value: Any) -> CollectorProvenance | None:
-    """The optional build description for the collector, checked like the rest."""
+    """Return the optional build description for the collector, checked like the rest.
+
+    ``None`` stays ``None``. Anything other than a mapping with exactly the
+    ``COLLECTOR_PROVENANCE_KEYS`` raises ``ValueError``.
+    """
     if value is None:
         return None
     if not isinstance(value, Mapping) or set(value) != COLLECTOR_PROVENANCE_KEYS:
@@ -292,6 +320,8 @@ def parse_stage_dataset_bundle(message: Mapping[str, Any]) -> BundleHandOver:
 
 @dataclass(frozen=True)
 class ReleaseHandOver:
+    """A checked release change: its hand-over identifier, change and queued message."""
+
     handover_id: str
     #: The validated change, and its canonical message, which is what is queued.
     change: ReleaseChange
@@ -299,6 +329,7 @@ class ReleaseHandOver:
 
     @property
     def repository(self) -> str:
+        """The dataset repository the change applies to."""
         return self.change.repository
 
 
@@ -313,7 +344,7 @@ def _file_entries(message: Mapping[str, Any]) -> list[Mapping[str, Any]]:
 
 
 def release_change_from_message(message: Mapping[str, Any]) -> ReleaseChange:
-    """The typed change a message describes; ``RequestRefusedError`` if invalid.
+    """Return the typed change a message describes; ``RequestRefusedError`` if invalid.
 
     Only the message's shape is checked here, so the worker can rebuild the
     typed change from the queued message.

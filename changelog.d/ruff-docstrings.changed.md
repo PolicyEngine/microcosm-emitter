@@ -1,0 +1,1 @@
+Docstrings follow Ruff's `D` rules: every public module, class, function and method has one, every summary fits on the first line, and function and method summaries are in the imperative mood. Ruff no longer ignores the family. Behaviour is unchanged.

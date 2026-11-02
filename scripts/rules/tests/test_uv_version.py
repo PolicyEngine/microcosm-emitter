@@ -55,8 +55,11 @@ def write_files(
     release: str | None = RELEASE_LINE,
     required: str | None = FLOOR,
 ) -> None:
-    """Write each file under ``root``, plus the version file holding ``release``
-    and a root project whose required-version is ``required``."""
+    """Write each file under ``root``, plus the version file and the root project.
+
+    The version file holds ``release`` and the root project's required-version is
+    ``required``; either file is left out when its value is ``None``.
+    """
     if release is not None:
         (root / VERSION_FILE).parent.mkdir(parents=True, exist_ok=True)
         (root / VERSION_FILE).write_text(f"{release}\n", encoding="utf-8")
@@ -288,8 +291,10 @@ class TestSetupUvSteps(GuardCase):
         )
 
     def test_another_version_file_is_not_a_pin(self) -> None:
-        """pyproject.toml's required-version is a floor, which setup-uv would
-        meet with the newest release."""
+        """pyproject.toml's required-version is a floor, not a pinned release.
+
+        setup-uv would meet it with the newest release.
+        """
         messages = self.messages(
             self.workflow(
                 "    - uses: astral-sh/setup-uv@v8.1.0\n"

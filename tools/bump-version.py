@@ -28,6 +28,11 @@ INTERFACE_PIN = re.compile(
 
 
 def fragment_types(changelog_dir: Path) -> set[str]:
+    """Return the types of the changelog fragments in ``changelog_dir``.
+
+    ``.gitkeep`` is skipped. Raises ``ValueError`` for an entry that is not a file
+    named ``<name>.<type>.md`` with a known type, or when there is no fragment.
+    """
     types = set()
     for fragment in changelog_dir.iterdir():
         if fragment.name == ".gitkeep":
@@ -51,6 +56,7 @@ def fragment_types(changelog_dir: Path) -> set[str]:
 
 
 def next_version(version: str, types: set[str]) -> str:
+    """Return ``version`` with the major, minor or patch bump that ``types`` needs."""
     major, minor, patch = (int(part) for part in version.split("."))
     if "breaking" in types:
         return f"{major + 1}.0.0"
@@ -70,6 +76,12 @@ def _file_version(root: Path, versioned_file: str) -> str:
 
 
 def current_version(root: Path) -> str:
+    """Return the version both distributions share.
+
+    Raises ``ValueError`` unless each pyproject.toml holds exactly one version,
+    the two versions match, and the emitter's pyproject.toml pins
+    microcosm-emitter-interface at that version exactly once.
+    """
     versions = {
         versioned_file: _file_version(root, versioned_file)
         for versioned_file in VERSIONED_FILES
@@ -89,11 +101,17 @@ def current_version(root: Path) -> str:
 
 
 def plan_release(root: Path) -> tuple[str, str]:
+    """Return the current version and the next one, from the changelog fragments."""
     current = current_version(root)
     return current, next_version(current, fragment_types(root / "changelog.d"))
 
 
 def write_version(root: Path, current: str, upcoming: str) -> None:
+    """Change ``current`` to ``upcoming`` in each pyproject.toml.
+
+    Both distributions' versions change, and so does the emitter's pin of
+    microcosm-emitter-interface.
+    """
     for versioned_file in VERSIONED_FILES:
         path = root / versioned_file
         text = PYPROJECT_VERSION.sub(
@@ -111,6 +129,12 @@ def write_version(root: Path, current: str, upcoming: str) -> None:
 
 
 def main(arguments: list[str]) -> None:
+    """Print the next version and, unless ``--check`` is given, write it.
+
+    The change is printed to standard error and the next version to standard
+    output. Exits with a message for other arguments, or when the release cannot
+    be planned.
+    """
     if arguments not in ([], ["--check"]):
         sys.exit("Usage: bump-version.py [--check]")
     try:

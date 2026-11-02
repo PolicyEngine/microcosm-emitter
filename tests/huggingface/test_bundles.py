@@ -23,9 +23,10 @@ DIAGNOSTICS = b'{"schema_version":8}'
 def bundle_files(
     directory, *, dataset=DATASET, manifest_note="first", build_record=None
 ):
-    """A bundle laid out as Microcosm's write_sidecars leaves it.
+    """Write a bundle laid out as Microcosm's write_sidecars leaves it.
 
-    ``build_record`` adds the national build's record as an output.
+    Returns the bundle's files and each file's content by name. ``build_record``
+    adds the national build's record as an output.
     """
     directory.mkdir(parents=True, exist_ok=True)
     outputs = {

@@ -125,6 +125,12 @@ class EmitterClient:
         *,
         startup_error: EmitterStartupError | None = None,
     ) -> None:
+        """Hold a started emitter process, or an unavailable client's startup error.
+
+        ``EmitterClient.start`` is the usual way to build one. Without
+        ``process`` the client is unavailable, and every call reports that it
+        was not accepted.
+        """
         self._process = process
         self.startup_error = startup_error
         self._closed = False
@@ -174,6 +180,7 @@ class EmitterClient:
 
     @property
     def available(self) -> bool:
+        """Whether the client has an emitter process and has not been closed."""
         return self._process is not None and not self._closed
 
     @property
@@ -186,6 +193,11 @@ class EmitterClient:
 
     @property
     def emitter_version(self) -> str | None:
+        """The version the emitter reported at startup, or None if there is none.
+
+        It is None for a client without an emitter process, and when the
+        emitter's ``hello`` answer had no string ``emitter_version``.
+        """
         if self._process is None:
             return None
         version = self._process.description.get("emitter_version")
@@ -218,7 +230,7 @@ class EmitterClient:
     def _message(
         self, build_message: MessageBuilder, *, kind: str
     ) -> dict[str, Any] | None:
-        """The converted message, or None after recording why it failed."""
+        """Return the converted message, or None after recording why it failed."""
         try:
             return dict(build_message())
         except Exception as error:
@@ -250,7 +262,7 @@ class EmitterClient:
         kind: str,
         timeout: float = FILE_REQUEST_TIMEOUT_SECONDS,
     ) -> tuple[dict[str, Any] | None, RequestFailureReason | None]:
-        """The module's answer, or None and why this call failed.
+        """Return the module's answer, or None and why this call failed.
 
         The reason belongs to this call only. ``last_failure`` is shared by
         every call and thread, so a receipt's error code never reads it.
@@ -327,6 +339,12 @@ class EmitterClient:
         return receipt
 
     def orrery_receipt(self, publication_id: str) -> PublicationReceipt:
+        """Return the emitter's latest delivery receipt for one publication.
+
+        Without an answer that holds a receipt, the result is a ``failed``
+        receipt whose ``error_code`` says why (``local_service_unavailable``
+        or ``invalid_arguments``).
+        """
         return self._orrery_receipt_request(
             lambda: receipt_message(publication_id), publication_id
         )
@@ -334,6 +352,12 @@ class EmitterClient:
     def retry_orrery_inputs(
         self, publication_id: str, *, wait_seconds: float = 0
     ) -> PublicationReceipt:
+        """Ask the emitter to attempt a pending publication's delivery again now.
+
+        Waits up to ``wait_seconds`` (by default not at all) while the receipt
+        stays ``pending`` with an unchanged ``attempts`` count, then returns
+        the latest receipt.
+        """
         receipt = self._orrery_receipt_request(
             lambda: retry_message(publication_id), publication_id
         )
@@ -375,6 +399,10 @@ class EmitterClient:
         return unavailable_run_files_receipt(request.repository, request.run_id)
 
     def run_files_receipt(self, repository: str, run_id: str) -> RunFilesReceipt:
+        """Return the emitter's current receipt for one staging run's files.
+
+        Without an answer, the receipt's ``status`` is ``unavailable``.
+        """
         response = self._query(
             HUGGING_FACE_MODULE,
             lambda: run_reference_message("run_files_receipt", repository, run_id),
@@ -476,12 +504,13 @@ class EmitterClient:
         return cast(DatasetBundleReceipt, self._wait_until_settled(value, wait_seconds))
 
     def dataset_bundle_receipt(self, handover_id: str) -> DatasetBundleReceipt | None:
+        """Return a bundle hand-over's latest receipt, or None without an answer."""
         return cast(DatasetBundleReceipt | None, self._handover_receipt(handover_id))
 
     def collector_submission_receipt(
         self, handover_id: str
     ) -> CollectorSubmissionReceipt | None:
-        """What the collector made of a bundle's submissions, so far.
+        """Return what the collector has made of a bundle's submissions so far.
 
         The emitter submits a bundle that carries ``CollectorProvenance`` after
         its Hugging Face commit, then checks each submission's status in the
@@ -560,14 +589,25 @@ class EmitterClient:
     def promote_build(
         self, request: PromoteBuild, *, wait_seconds: float = 60.0
     ) -> ReleaseReceipt:
+        """Queue making a build current; wait up to ``wait_seconds`` for it to settle.
+
+        A receipt still ``pending`` after the wait means the emitter is still
+        retrying; ask again with ``release_receipt``.
+        """
         return self._release_change(request, wait_seconds)
 
     def withdraw_build(
         self, request: WithdrawBuild, *, wait_seconds: float = 60.0
     ) -> ReleaseReceipt:
+        """Queue a build's withdrawal; wait up to ``wait_seconds`` for it to settle.
+
+        A receipt still ``pending`` after the wait means the emitter is still
+        retrying; ask again with ``release_receipt``.
+        """
         return self._release_change(request, wait_seconds)
 
     def release_receipt(self, handover_id: str) -> ReleaseReceipt | None:
+        """Return a release change's latest receipt, or None without an answer."""
         return cast(ReleaseReceipt | None, self._handover_receipt(handover_id))
 
     def close(self) -> None:
@@ -583,7 +623,7 @@ class EmitterClient:
 
 
 def _receipt_error_code(failure: RequestFailureReason | None) -> str:
-    """The error code of an unavailable receipt, from its own call's failure.
+    """Return an unavailable receipt's error code, from its own call's failure.
 
     An answer without a receipt, or no answer, is ``local_service_unavailable``,
     as in the emitter's in-process client.
@@ -594,7 +634,7 @@ def _receipt_error_code(failure: RequestFailureReason | None) -> str:
 
 
 def _wait_seconds(value: Any) -> float:
-    """A usable waiting time; an unusable one means not waiting."""
+    """Return ``value`` as seconds to wait, or 0.0 if it is not a positive number."""
     try:
         seconds = float(value)
     except Exception:

@@ -54,7 +54,7 @@ def wait_until(condition, *, seconds: float) -> bool:
 
 @pytest.fixture
 def running_module(tmp_path):
-    """The Hugging Face module in a host runtime; its next commit blocks."""
+    """Start the Hugging Face module in a host runtime; its next commit blocks."""
     from microcosm_emitter.host.contracts import ModuleContext
     from microcosm_emitter.host.runtime import ServiceRuntime
     from microcosm_emitter.huggingface.service.module import HuggingFaceModule

@@ -63,7 +63,7 @@ MAX_EXCHANGE_LIFETIME_SECONDS = 86_400
 
 
 def anonymous_tls_context(purpose: int) -> ssl.SSLContext:
-    """A TLS 1.2 context that negotiates only anonymous cipher suites."""
+    """Return a TLS 1.2 context that negotiates only anonymous cipher suites."""
     context = ssl.SSLContext(purpose)
     if purpose == ssl.PROTOCOL_TLS_CLIENT:
         context.check_hostname = False
@@ -370,7 +370,7 @@ class FakeCollector:
 
     @staticmethod
     def _chosen(handler: Any, answer: int | tuple[int, str]) -> None:
-        """A status the test chose, optionally with an error ``code``."""
+        """Answer with a status the test chose, optionally with an error ``code``."""
         status, code = answer if isinstance(answer, tuple) else (answer, None)
         handler._json(status, {"detail": "chosen", **({"code": code} if code else {})})
 
@@ -436,14 +436,14 @@ class FakeCollector:
 
     @staticmethod
     def _canonical_sha256(value: Any) -> str:
-        """The contract's canonical JSON, hashed."""
+        """Return the SHA-256 digest of ``value`` in the contract's canonical JSON."""
         canonical = json.dumps(
             value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
         )
         return hashlib.sha256(canonical.encode()).hexdigest()
 
     def _status_document(self, submission_id: str) -> dict[str, Any]:
-        """The contract's status document for one submission."""
+        """Return the contract's status document for one submission."""
         submission = self.submissions[submission_id]
         return {
             "contract_version": 1,
@@ -460,8 +460,10 @@ class FakeCollector:
         }
 
     def receipt_document(self, submission_id: str) -> dict[str, Any]:
-        """The contract's receipt, with its ``receipt_sha256``, as
-        collector#12's ``receipt_document`` builds it."""
+        """Return the contract's receipt, with its ``receipt_sha256``.
+
+        It is built as collector#12's ``receipt_document`` builds it.
+        """
         submission = self.submissions[submission_id]
         body = submission["body"]
         files = self._files(submission)

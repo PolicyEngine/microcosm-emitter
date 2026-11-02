@@ -54,6 +54,13 @@ def _encode_reply(value: object, too_large_message: str) -> bytes:
 
 
 class ServiceRuntime:
+    """Serve the selected modules on a Unix socket until stopped.
+
+    Each module gets a thread that calls its ``tick`` every ``tick_seconds``, and
+    a serial worker for its requests. The host stops on a ``close`` request, when
+    ``is_parent_alive`` returns false, or when every module's thread has failed.
+    """
+
     def __init__(
         self,
         socket_path: Path,
@@ -65,6 +72,12 @@ class ServiceRuntime:
         drain_seconds: float = DRAIN_SECONDS,
         description: Mapping[str, Any] | None = None,
     ):
+        """Hold the socket path, the modules and the timing settings.
+
+        Pass either one ``module``, served as ``default``, or a non-empty
+        ``modules`` mapping; anything else raises ``ValueError``. ``description``
+        is the answer to a ``hello`` request.
+        """
         self.socket_path = socket_path
         # Returned to ``hello`` requests; the host does not interpret it.
         self.description = None if description is None else dict(description)
@@ -87,9 +100,16 @@ class ServiceRuntime:
         self._shutdown_deadline: float | None = None
 
     def stop(self) -> None:
+        """Make ``run`` stop accepting connections and shut the modules down."""
         self._stop.set()
 
     def run(self) -> None:
+        """Initialize the modules, serve the socket until stopped, then close them.
+
+        Shutdown gives the modules ``drain_seconds`` to finish accepted requests
+        and close, then removes the socket file. Raises ``LocalServiceError``
+        when a module's thread failed or shutdown timed out.
+        """
         workers = {}
         initialized = []
         bound = False

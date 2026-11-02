@@ -97,7 +97,7 @@ def describe() -> EmitterDescription:
 
 
 def version_report() -> VersionReport:
-    """The versions, and the collector origin this emitter sends to by default."""
+    """Return the emitter's versions and the collector origin it sends to by default."""
     from microcosm_emitter.core.collector_origin import resolve_collector_origin
 
     return {**describe(), "collector_origin": resolve_collector_origin()}
@@ -185,6 +185,13 @@ def telemetry_token(arguments: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run one `microcosm-emitter` command and return its exit code.
+
+    ``argv`` defaults to ``sys.argv[1:]``. ``host`` hands the remaining arguments
+    to the host's own parser; ``version`` prints ``version_report()`` as JSON;
+    and an unexpected error in ``telemetry-token`` exits 7, naming only the
+    error's type.
+    """
     arguments = sys.argv[1:] if argv is None else list(argv)
     parser = argparse.ArgumentParser(prog="microcosm-emitter", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)

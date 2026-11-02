@@ -29,7 +29,7 @@ def given_token_variables(
     expires_in: timedelta = timedelta(hours=18),
     token: str = GIVEN_COLLECTOR_TOKEN,
 ) -> dict[str, str]:
-    """The three variables for a token obtained from ``origin``."""
+    """Return the three variables for a token obtained from ``origin``."""
     expires_at = datetime.now(UTC) + expires_in
     return {
         COLLECTOR_TOKEN_VARIABLE: token,

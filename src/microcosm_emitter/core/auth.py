@@ -139,9 +139,11 @@ def _http_post(
 
 
 class UnreadableLoginError(OSError):
-    """The login saved by `hf auth login` could not be read, such as a file
-    this user may not read or one that is not text, and neither `HF_TOKEN`
-    nor `HUGGINGFACE_TOKEN` is set.
+    """The saved Hugging Face login could not be read, and no token variable is set.
+
+    The login is the one `hf auth login` saved, which can be a file this user may
+    not read or one that is not text; the variables are `HF_TOKEN` and
+    `HUGGINGFACE_TOKEN`.
 
     ``error_type`` is the name of the error ``huggingface_hub`` raised. That
     error is not kept, not even as the context of this one: its text names
@@ -151,6 +153,7 @@ class UnreadableLoginError(OSError):
     """
 
     def __init__(self, error_type: str) -> None:
+        """Keep ``error_type``, and a message that names only that type."""
         super().__init__(
             f"the saved Hugging Face login could not be read ({error_type})"
         )
@@ -158,9 +161,11 @@ class UnreadableLoginError(OSError):
 
 
 def _saved_login_unreadable(error: OSError | UnicodeDecodeError) -> bool:
-    """Whether ``get_token()`` raised ``error`` reading the login files that
-    `hf auth login` saved: a ``PermissionError``, bytes that are not text, or
-    another ``OSError`` that names a file, such as ``IsADirectoryError``.
+    """Return whether ``get_token()`` raised ``error`` reading the saved login files.
+
+    The files are the ones `hf auth login` saved, and such an error is a
+    ``PermissionError``, bytes that are not text, or another ``OSError`` that
+    names a file, such as ``IsADirectoryError``.
 
     With ``HF_OIDC_RESOURCE`` set, huggingface_hub exchanges a CI OIDC token
     instead of reading those files, so none of its errors count, such as the
@@ -175,8 +180,10 @@ def _saved_login_unreadable(error: OSError | UnicodeDecodeError) -> bool:
 
 
 def huggingface_token() -> str | None:
-    """The build's Hugging Face token: `HF_TOKEN`, then `HUGGINGFACE_TOKEN`, then
-    the token saved by `hf auth login`; `None` without one.
+    """Return the build's Hugging Face token, or `None` without one.
+
+    It is read from `HF_TOKEN`, then `HUGGINGFACE_TOKEN`, skipping blank values,
+    then from the login saved by `hf auth login`.
 
     Raises ``UnreadableLoginError`` when only the saved login is left and it
     cannot be read (``_saved_login_unreadable``); every other error of
@@ -213,15 +220,16 @@ class GivenCollectorToken:
 
 
 class GivenCollectorTokenError(ValueError):
-    """The given-token variables are incomplete, unreadable, or name another
-    collector. The message names the variables, never their values."""
+    """The given-token variables are incomplete, unreadable, or name another collector.
+
+    The message names the variables, never their values.
+    """
 
 
 def given_collector_token(
     environment: Mapping[str, str],
 ) -> GivenCollectorToken | None:
-    """The collector token in ``environment``, or ``None`` without one."""
-
+    """Return the collector token in ``environment``, or ``None`` without one."""
     access_token, expires_at, origin = (
         environment.get(name, "").strip()
         for name in (
@@ -258,10 +266,12 @@ ExchangeFailureResult = Literal[
 
 @dataclass(frozen=True)
 class ExchangedToken:
-    """A usable answer to an exchange: a 200 with an ``access_token`` of
-    visible ASCII characters, which can be sent as a bearer token, and a
-    positive whole number of seconds, ``expires_in``. Its repr leaves the
-    token out."""
+    """A usable answer to an exchange: a 200 with a sendable token and its lifetime.
+
+    ``access_token`` is visible ASCII characters, which can be sent as a bearer
+    token, and ``expires_in`` a positive whole number of seconds. Its repr leaves
+    the token out.
+    """
 
     access_token: str = field(repr=False)
     expires_in: int
@@ -310,7 +320,6 @@ def exchange_huggingface_credential(
     token could not be sent as a bearer token, so it counts as no usable
     token: ``unavailable``.
     """
-
     if not hugging_face_token:
         return ExchangeFailure("missing")
     if not _SENDABLE_CREDENTIAL.fullmatch(hugging_face_token):
@@ -390,6 +399,7 @@ class SessionCredential(NamedTuple):
     token: str | None = None
 
     def __repr__(self) -> str:
+        """Show only ``result``, never the token."""
         return f"SessionCredential(result={self.result!r})"
 
 
@@ -431,6 +441,13 @@ class CollectorSession:
         scope=None,
         destination: str | None = None,
     ):
+        """Hold the session's settings and read any given token from ``os.environ``.
+
+        ``post`` defaults to ``_http_post`` and ``credential`` to
+        ``huggingface_token``; ``destination`` defaults to ``origin``. Raises
+        ``GivenCollectorTokenError`` when the given-token variables cannot be used
+        or name another collector than ``origin``.
+        """
         import threading
 
         self.origin = origin
@@ -446,12 +463,25 @@ class CollectorSession:
         self._given_token_rejected = False
 
     def invalidate(self) -> None:
+        """Drop the exchanged token, so that ``credential()`` exchanges again.
+
+        A given token cannot be renewed, so from then on ``credential()``
+        answers ``token_rejected`` for it, after its earlier checks: ``missing``
+        for a scope other than telemetry, and ``withheld_from_destination``
+        for a destination other than the collector origin.
+        """
         with self._lock:
             self._session_token = None
             # A given token is never sent again once the collector refused it.
             self._given_token_rejected = self.given_token is not None
 
     def credential(self) -> SessionCredential:
+        """Return the token to send, or the reason there is none.
+
+        An exchanged token is reused until ``TOKEN_REFRESH_MARGIN_SECONDS`` before
+        it expires. Raises ``UnreadableLoginError`` when the saved Hugging Face
+        login cannot be read.
+        """
         with self._lock:
             if self.given_token is not None:
                 return self._given_credential(self.given_token)

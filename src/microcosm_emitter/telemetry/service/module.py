@@ -34,6 +34,7 @@ class TelemetryModule:
     """Persist before acknowledging; authenticate and deliver on the worker thread."""
 
     def __init__(self, configuration: JsonObject, context: ModuleContext) -> None:
+        """Hold the configuration and context; ``initialize`` opens the event queue."""
         self.configuration = configuration
         self.context = context
         self.spool: EventSpool | None = None
@@ -42,6 +43,13 @@ class TelemetryModule:
         self.lifecycle = LifecycleState()
 
     def initialize(self) -> None:
+        """Read the settings, open the event queue and record that the run started.
+
+        An untrusted collector origin or an unusable given collector token is
+        refused before the event queue is opened, and a heartbeat interval that
+        is not finite raises ``ValueError``. The run is registered and its
+        started event appended, with a resource sample.
+        """
         self.registration = dict(self.configuration["registration"])
         heartbeat = float(
             self.configuration.get("heartbeat_seconds", DEFAULT_HEARTBEAT_SECONDS)
@@ -82,6 +90,10 @@ class TelemetryModule:
             raise
 
     def handle_message(self, message: JsonObject) -> None:
+        """Turn one build request into events and append them to the event queue.
+
+        The lifecycle state changes only once the events are stored.
+        """
         with self._lock:
             state, events = process_request(self.lifecycle, message)
             if events:
@@ -92,6 +104,12 @@ class TelemetryModule:
             self.lifecycle = state
 
     def tick(self, now: float) -> None:
+        """Do the periodic work: a heartbeat, pruning and one delivery pass.
+
+        ``now`` is a ``time.monotonic()`` reading. The heartbeat is appended only
+        when it is due and the run has not finished, and pruning runs only when
+        it is due.
+        """
         with self._lock:
             resources = self.sampler.sample()
             if not self.lifecycle.finished and now >= self._next_heartbeat:
@@ -106,6 +124,7 @@ class TelemetryModule:
         self.delivery.flush_once()
 
     def parent_exited(self) -> None:
+        """Fail an unfinished run because the build process exited unexpectedly."""
         with self._lock:
             if not self.lifecycle.finished:
                 self.handle_message(
@@ -118,6 +137,11 @@ class TelemetryModule:
                 )
 
     def close(self, deadline: float) -> None:
+        """Deliver queued events until ``deadline``, then close the event queue.
+
+        ``deadline`` is a ``time.monotonic()`` value. Delivery stops earlier when
+        nothing is left to deliver or when this emitter cannot deliver anything.
+        """
         try:
             if self.delivery is not None:
                 while time.monotonic() < deadline and self.spool.has_deliverable():

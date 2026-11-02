@@ -12,7 +12,6 @@ _MISSING_CONNECTION_ERROR = (
 
 def run_migrations() -> None:
     """Run migrations on the connection supplied by the emitter service."""
-
     connection = context.config.attributes.get("connection")
     if not isinstance(connection, Connection):
         # Alembic ran without the emitter's connection: a missing setting.

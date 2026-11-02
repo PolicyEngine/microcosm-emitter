@@ -7,6 +7,14 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolate_credentials_and_network(tmp_path, monkeypatch):
+    """Remove ambient credentials and refuse HTTP posts to non-loopback hosts.
+
+    Deletes the Hugging Face token variables and the collector token variables in
+    ``GIVEN_TOKEN_VARIABLES``, points ``HF_HOME`` and the Hugging Face token file
+    into ``tmp_path``, and replaces the collector's and the auth module's HTTP post
+    with one that raises ``AssertionError`` for any host other than a loopback
+    address.
+    """
     from given_token import GIVEN_TOKEN_VARIABLES
 
     for name in (

@@ -1237,8 +1237,10 @@ class CiScriptsBaselineTest(unittest.TestCase):
     """
 
     def messages_after(self, base_entries: str, entries: str) -> list[str]:
-        """Commit the shellcheck baseline with ``base_entries``, then list
-        ``entries`` in it, and return the guard's messages against the commit.
+        """Return the guard's messages after the shellcheck baseline changes.
+
+        The baseline is committed with ``base_entries``, then made to list
+        ``entries``; the guard's messages are against that commit.
         """
         files = {"rules/registry.toml": REGISTRY + CI_SCRIPTS_TABLE}
         for name in ("ci-multiline-run", "ci-untested-scripts", "ci-shellcheck"):

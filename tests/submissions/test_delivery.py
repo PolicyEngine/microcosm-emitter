@@ -1,5 +1,7 @@
-"""Bundles reach the collector after their Hugging Face commit, when switched on,
-and each submission's status is checked until it is final."""
+"""Bundles reach the collector after their Hugging Face commit, when switched on.
+
+Each submission's status is then checked until it is final.
+"""
 
 import hashlib
 import threading
@@ -282,8 +284,10 @@ def test_files_microcosm_rewrites_after_staging_are_submitted_as_handed_over(
 def test_a_folder_longer_than_the_collector_accepts_is_not_submitted(
     submitting_module,
 ):
-    """The contract allows a folder of at most 512 characters; a longer one
-    would be refused with a final 422."""
+    """The contract allows a folder of at most 512 characters.
+
+    A longer one would be refused with a final 422.
+    """
     controls = submitting_module
     long_prefix = "/".join(["p" * 128] * 3)
     request = bundle(controls, run_id="r" * 128, prefix=long_prefix)
@@ -336,8 +340,11 @@ def stage_progress(controls, *, flush: bool) -> None:
 
 
 def described_bundle_with_a_held_upload(controls) -> StageDatasetBundle:
-    """Hand over a bundle naming Orrery inputs; return it once its first
-    upload to the collector has started and is held."""
+    """Hand over a bundle naming Orrery inputs while the collector holds uploads.
+
+    Returns the bundle once its first upload to the collector has started and is
+    held.
+    """
     controls.hub.create_repository(STAGING_REPOSITORY, {"README.md": b"staging"})
     controls.collector.hold_uploads()
     request = bundle(controls, contents={**CONTENTS, **ORRERY_CONTENTS})
@@ -348,7 +355,7 @@ def described_bundle_with_a_held_upload(controls) -> StageDatasetBundle:
 
 @pytest.fixture
 def module_with_workers(module_factory, collector):
-    """The module with its own delivery workers, as the host runs it."""
+    """Start the module with its own delivery workers, as the host runs it."""
     controls = module_factory.start(
         background_workers=True,
         # As in the host: a submission waiting for its Hugging Face commit
@@ -477,10 +484,13 @@ def test_the_shutdown_commit_runs_during_a_held_collector_upload(
 def test_a_held_collector_upload_leaves_the_second_shutdown_commit_its_time(
     module_factory, collector
 ):
-    """The #27 fix review's case. At shutdown a bundle upload holds the
-    staging repository, so the first shutdown commit skips its run files;
-    that upload finishes in time, while a collector upload is still held
-    past the deadline. The second shutdown commit must still send them."""
+    """The second shutdown commit sends the run files while a collector upload is held.
+
+    The #27 fix review's case. At shutdown a bundle upload holds the staging
+    repository, so the first shutdown commit skips its run files; that upload
+    finishes in time, while a collector upload is still held past the deadline.
+    The second shutdown commit must still send them.
+    """
     from dataclasses import replace
 
     controls = module_factory.start(
@@ -659,8 +669,10 @@ OBSERVED_SECONDS = 2.5
 
 
 class RecordingSubmissionClient:
-    """A second emitter's collector client: records each submission it is
-    asked to make, and sends nothing."""
+    """A second emitter's collector client, which sends nothing.
+
+    It records each submission it is asked to make.
+    """
 
     def __init__(self, origin: str) -> None:
         self.origin = origin
@@ -695,8 +707,11 @@ def short_collector_leases(monkeypatch):
 
 @pytest.fixture
 def two_emitters(module_factory, collector, short_collector_leases):
-    """The first emitter runs its own workers; the second is a collector
-    delivery on the same hand-over database, driven by the test."""
+    """Yield two emitters on one hand-over database, and the second one's client.
+
+    The first emitter runs its own workers; the second is a collector delivery on
+    the same hand-over database, driven by the test.
+    """
     from microcosm_emitter.huggingface.service.queue import HandoverQueue
     from microcosm_emitter.submissions.delivery import CollectorSubmissionDelivery
 
@@ -720,8 +735,11 @@ def two_emitters(module_factory, collector, short_collector_leases):
 def test_a_second_emitter_never_claims_a_collector_row_during_its_upload(
     two_emitters,
 ):
-    """The #27 round-2 review's NEW BUGS 2: the first emitter's upload is
-    held for longer than two leases."""
+    """A second emitter never claims a collector row during the first one's upload.
+
+    The #27 round-2 review's NEW BUGS 2: the first emitter's upload is held for
+    longer than two leases.
+    """
     first, second, second_client = two_emitters
     request = described_bundle_with_a_held_upload(first)
 
@@ -744,8 +762,10 @@ def test_a_second_emitter_never_claims_a_collector_row_during_its_upload(
 
 
 def test_a_collector_row_is_free_within_one_lease_after_shutdown(two_emitters):
-    """Shutdown abandons the held upload; its lease must no longer be kept,
-    so another emitter can take the row over."""
+    """Shutdown abandons the held upload, and its lease must no longer be kept.
+
+    Another emitter can then take the row over.
+    """
     first, second, second_client = two_emitters
     described_bundle_with_a_held_upload(first)
 
@@ -840,8 +860,11 @@ FIRST_CHECK_SECONDS = 10
 
 
 def accepted_bundle(controls, **options):
-    """Stage a described bundle and run one cycle, in which the collector
-    accepts its completion; return the request and its submission ID."""
+    """Stage a described bundle and run one delivery cycle.
+
+    The collector accepts the submission's completion in that cycle. Returns the
+    request and its submission ID.
+    """
     request = bundle(controls, **options)
     stage(controls, request)
     cycle(controls)
@@ -1003,10 +1026,13 @@ def test_a_submission_the_collector_lost_is_created_again(submitting_module):
 def test_status_checks_resume_in_the_next_emitter_on_the_machine(
     module_factory, collector
 ):
-    """A build's emitter can exit before the collector's worker finishes, as
-    a Modal container does at the end of a build. The submission stays in
-    the hand-over database, and the next emitter started on the machine with
-    the same database checks it."""
+    """Status checks resume in the next emitter started on the machine.
+
+    A build's emitter can exit before the collector's worker finishes, as a Modal
+    container does at the end of a build. The submission stays in the hand-over
+    database, and the next emitter started on the machine with the same database
+    checks it.
+    """
     first = module_factory.start(
         collector_submissions=True, development_collector_url=collector.origin
     )
@@ -1034,8 +1060,11 @@ def test_status_checks_resume_in_the_next_emitter_on_the_machine(
 def test_hugging_face_commits_land_during_a_held_status_check(
     module_with_workers, monkeypatch
 ):
-    """Status checks run on the collector's worker: a slow one never delays
-    a Hugging Face commit, and the build's own calls answer at once."""
+    """Status checks run on the collector's worker.
+
+    A slow one never delays a Hugging Face commit, and the build's own calls
+    answer at once.
+    """
     from microcosm_emitter.submissions import delivery as delivery_module
 
     monkeypatch.setattr(
@@ -1129,9 +1158,11 @@ DAY_SECONDS = 24 * 3600
 
 
 def status_checks_until_past_the_day(controls):
-    """Run cycles until 15 minutes past a day after acceptance: a minute
-    apart, then a second apart from 15 minutes before the day. Return when
-    each status check ran, in seconds after acceptance."""
+    """Run cycles until 15 minutes past a day after acceptance.
+
+    The cycles run a minute apart, then a second apart from 15 minutes before the
+    day. Returns when each status check ran, in seconds after acceptance.
+    """
     accepted_at = controls.clock.now
     checked_at = []
 
@@ -1184,12 +1215,15 @@ def test_a_submission_not_final_within_a_day_times_out(
 def test_checks_refused_to_another_user_time_out_with_that_refusal(
     submitting_module, capsys, request_name, collector_status
 ):
-    """Every check answered 403 ``submission_owned_by_another_user`` (the
-    emitters running that day have another Hugging Face user's token than the
-    one that submitted it): checks go on until the day ends, and the
-    timed-out submission keeps the refusal as its code. The collector has the
-    submission and may have finished it, so ``FINAL_STATUS_TIMED_OUT`` alone
-    would hide why no final status was stored."""
+    """Checks refused to another user time out with that refusal as the code.
+
+    Every check answered 403 ``submission_owned_by_another_user`` (the emitters
+    running that day have another Hugging Face user's token than the one that
+    submitted it): checks go on until the day ends, and the timed-out submission
+    keeps the refusal as its code. The collector has the submission and may have
+    finished it, so ``FINAL_STATUS_TIMED_OUT`` alone would hide why no final
+    status was stored.
+    """
     controls = submitting_module
     request, submission_id = accepted_bundle(controls)
     refusals = [(403, "submission_owned_by_another_user")] * 1000
@@ -1224,8 +1258,10 @@ def test_checks_refused_to_another_user_time_out_with_that_refusal(
 def test_a_final_status_found_after_a_long_absence_is_still_stored(
     submitting_module,
 ):
-    """An emitter started days later checks once more before the limit
-    applies, so a result the collector holds is never thrown away."""
+    """An emitter started days later checks once more before the limit applies.
+
+    A result the collector holds is therefore never thrown away.
+    """
     controls = submitting_module
     request, submission_id = accepted_bundle(controls)
     controls.collector.finish(submission_id, "succeeded", result={})
@@ -1239,8 +1275,10 @@ def test_a_final_status_found_after_a_long_absence_is_still_stored(
 
 
 class ModuleTransport:
-    """Answers an interface client's queries with the module, in this thread,
-    as the emitter host would over its socket."""
+    """Answers an interface client's queries with the module, in this thread.
+
+    It answers them as the emitter host would over its socket.
+    """
 
     def __init__(self, module) -> None:
         self.module = module
@@ -1258,7 +1296,7 @@ class ModuleTransport:
 
 
 def build_client(controls):
-    """The interface client a build holds, answered by this module."""
+    """Return the interface client a build holds, answered by this module."""
     from pathlib import Path
 
     from microcosm_emitter_interface.client import EmitterClient
@@ -1275,8 +1313,11 @@ def build_client(controls):
 
 
 def test_a_build_reads_each_state_of_its_submissions_at_once(submitting_module):
-    """The build asks; the answer comes from the queue without waiting for
-    any status check."""
+    """A build reads each state of its submissions at once.
+
+    The build asks; the answer comes from the queue without waiting for any
+    status check.
+    """
     controls = submitting_module
     client = build_client(controls)
     request, submission_id = accepted_bundle(controls)

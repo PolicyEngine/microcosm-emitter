@@ -145,6 +145,10 @@ class GraphPublicationQueue:
     """SQLite job records with leases; retained until publication or operator action."""
 
     def __init__(self, path: Path) -> None:
+        """Open the event queue file at ``path`` and apply its migrations.
+
+        The parent folder is created if it is missing.
+        """
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._engine = create_spool_engine(self.path)
@@ -266,6 +270,14 @@ class GraphPublicationQueue:
         url: str | None = None,
         expected_lease: float | None = None,
     ) -> None:
+        """Record one attempt on a pending job and write its receipt.
+
+        With ``url`` the job is ``published``; without it the job stays pending
+        and its next attempt waits 2, 4, 8 ... seconds, at most 256. A job that
+        is no longer pending, or whose lease no longer ends at
+        ``expected_lease`` when that is given, is left as it is. The new
+        receipt is then copied, best effort, to the job's preserved directory.
+        """
         with self._sessions.begin() as session:
             statement = update(GraphPublicationJob).where(
                 GraphPublicationJob.publication_id == id_,
@@ -393,6 +405,14 @@ class GraphPublicationDelivery:
         client: httpx.Client | None = None,
         invalidate_credential: Callable[[], None] | None = None,
     ) -> None:
+        """Check ``origin`` and hold the queue, credential source and HTTP client.
+
+        ``origin`` must be an HTTPS origin, or an HTTP one whose host is
+        ``localhost``, ``127.0.0.1`` or ``::1``, with no user, query, fragment
+        or path other than ``/``; anything else
+        raises ``ValueError``. Without ``client``, a new ``httpx.Client`` that
+        does not follow redirects is made.
+        """
         parsed = urlsplit(origin)
         if parsed.scheme != "https" and not (
             parsed.scheme == "http"

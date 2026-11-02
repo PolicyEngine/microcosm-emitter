@@ -6,11 +6,23 @@ import psutil
 
 
 class ParentProcess:
+    """The parent process, identified by its process ID and its creation time.
+
+    A process later given the same ID has another creation time, so it does not
+    count as the parent.
+    """
+
     def __init__(self, pid: int, created_at: float):
+        """Hold the process ID and the creation time, in seconds since the epoch."""
         self.pid = pid
         self.created_at = created_at
 
     def alive(self) -> bool:
+        """Return whether the process with this ID and creation time still runs.
+
+        A zombie process counts as exited, and so does any error reading the
+        process.
+        """
         try:
             process = psutil.Process(self.pid)
             return (

@@ -41,6 +41,7 @@ class TelemetryRun:
     producer_id: str = field(default_factory=lambda: uuid.uuid4().hex)
 
     def as_registration(self) -> dict[str, Any]:
+        """Return the registration the emitter sends to the collector for this run."""
         return {
             "run_id": self.run_id,
             "producer_id": self.producer_id,
@@ -62,6 +63,10 @@ class TelemetrySettings:
     heartbeat_seconds: float = DEFAULT_HEARTBEAT_SECONDS
 
     def configuration(self, spool_path: Path) -> dict[str, Any]:
+        """Return the module's startup settings for the queue at ``spool_path``.
+
+        The values are converted with ``wire_value``.
+        """
         return wire_value(
             {
                 "registration": self.run.as_registration(),
@@ -96,7 +101,15 @@ class StageEvent:
 
 @dataclass(frozen=True)
 class StageTransition:
-    """Finish the current stage, if any, and start ``stage_id``."""
+    """A sequential stage update for ``stage_id``, with its ``status``.
+
+    The emitter maps ``running`` and ``started`` to a start, ``completed`` and
+    ``passed`` to completed, ``failed`` to failed, and any other status to
+    progress. An update for a stage other than the current one finishes the
+    current one first. A start makes ``stage_id`` the current stage, or, when
+    it already is, is recorded as progress; completed or failed ends it when
+    it is the current stage. No other update makes a stage current.
+    """
 
     stage_id: str
     status: str = "running"
@@ -106,6 +119,8 @@ class StageTransition:
 
 @dataclass(frozen=True)
 class StageProgress:
+    """Progress within one stage: ``done`` of ``total``, in the optional ``unit``."""
+
     stage_id: str
     done: int
     total: int
@@ -123,6 +138,12 @@ class CalibrationProgress:
 
 @dataclass(frozen=True)
 class BuildFailure:
+    """The build failed: the error's type name, its message and where it failed.
+
+    Without ``failed_during``, the service uses the current or last stage.
+    ``error_code`` is sent only when given.
+    """
+
     error_type: str
     message: str | None = None
     failed_during: str | None = None
@@ -148,7 +169,7 @@ class BuildRefused:
 
 @dataclass(frozen=True)
 class BuildCompleted:
-    pass
+    """The build completed; the service finishes the current stage, if any."""
 
 
 type TelemetryCommand = (
@@ -164,7 +185,11 @@ type TelemetryCommand = (
 
 
 def telemetry_message(command: TelemetryCommand) -> dict[str, Any]:
-    """The telemetry module's request for one typed command."""
+    """Return the telemetry module's request for one typed command.
+
+    The values are converted with ``wire_value``. Any other value raises
+    ``TypeError``.
+    """
     match command:
         case EventRecord():
             message: dict[str, Any] = {
@@ -247,6 +272,7 @@ class TelemetryRecorder:
     """
 
     def __init__(self, client: EmitterClient) -> None:
+        """Hold the client whose ``emit_telemetry`` sends each event."""
         self._client = client
 
     def emit(
@@ -258,6 +284,7 @@ class TelemetryRecorder:
         message: str | None = None,
         details: Mapping[str, Any] | None = None,
     ) -> bool:
+        """Send an event with the given type and status; True once committed."""
         return self._client.emit_telemetry(
             EventRecord(
                 event_type,
@@ -276,6 +303,11 @@ class TelemetryRecorder:
         message: str | None = None,
         **details: Any,
     ) -> bool:
+        """Send one stage event; True once committed.
+
+        The keyword arguments beyond ``status`` and ``message`` become the
+        event's details. The previous stage is not finished.
+        """
         return self._client.emit_telemetry(
             StageEvent(stage_id, status, message, details)
         )
@@ -288,6 +320,17 @@ class TelemetryRecorder:
         message: str | None = None,
         **details: Any,
     ) -> bool:
+        """Send a sequential stage update for ``stage_id``.
+
+        An update for a stage other than the current one finishes the current
+        one first. A ``status`` of ``running`` (the default) or ``started``
+        makes ``stage_id`` the current stage, and is recorded as progress when
+        it already is; ``completed``, ``passed`` or ``failed`` ends it when it
+        is the current stage; any other status is recorded as progress, and
+        none of these makes a stage current. Return True once the emitter
+        committed the update. The keyword arguments beyond ``status`` and
+        ``message`` become its details.
+        """
         return self._client.emit_telemetry(
             StageTransition(stage_id, status, message, details)
         )
@@ -301,14 +344,32 @@ class TelemetryRecorder:
         unit: str | None = None,
         **details: Any,
     ) -> bool:
+        """Send ``done`` of ``total`` progress within a stage; True once committed.
+
+        The keyword arguments beyond ``done``, ``total`` and ``unit`` become
+        the event's details.
+        """
         return self._client.emit_telemetry(
             StageProgress(stage_id, done, total, unit, details)
         )
 
     def calibration_progress(self, event: Mapping[str, Any]) -> bool:
+        """Send one calibration epoch's event.
+
+        The emitter records ``event`` only when its ``kind`` is
+        ``calibration_epoch``, and ignores any other. Return True once the
+        emitter accepted the request, also when it ignored the event.
+        """
         return self._client.emit_telemetry(CalibrationProgress(event))
 
     def transition_calibration_progress(self, event: Mapping[str, Any]) -> bool:
+        """Send one calibration epoch's event as a stage transition.
+
+        For an event whose ``kind`` is ``calibration_epoch``, the emitter first
+        moves the run to the calibrating stage, unless it is already there, then
+        records the event; it ignores any other event. Return True once the
+        emitter accepted the request, also when it ignored the event.
+        """
         return self._client.emit_telemetry(CalibrationProgress(event, transition=True))
 
     def fail(
@@ -319,6 +380,11 @@ class TelemetryRecorder:
         failure_class: str = DEFAULT_FAILURE_CLASS,
         error_code: str | None = None,
     ) -> bool:
+        """Record that the build failed with ``error``; True once committed.
+
+        Of the error, only its type name and its ``str`` text are sent; the
+        text is None when ``str`` raises.
+        """
         try:
             text = str(error)
         except Exception:
@@ -349,4 +415,5 @@ class TelemetryRecorder:
         )
 
     def complete(self) -> bool:
+        """Record that the build completed; True once committed."""
         return self._client.emit_telemetry(BuildCompleted())

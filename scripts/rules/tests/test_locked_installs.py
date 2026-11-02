@@ -359,8 +359,11 @@ removal = "never"
 
 
 class TestRepositoryLayout(unittest.TestCase):
-    """The checks read rule ids, the PR workflow and script directories from
-    the registry's [repository] table."""
+    """The checks read their repository settings from the registry.
+
+    The registry's [repository] table gives the rule ids, the PR workflow and the
+    script directories.
+    """
 
     def lock_messages(self, files: dict[str, str], repository: Repository) -> list:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
@@ -394,8 +397,10 @@ class TestRepositoryLayout(unittest.TestCase):
         )
 
     def test_the_relock_check_runs_only_for_a_registered_relock_rule(self) -> None:
-        """A repository that relocks another way, such as with Dependabot,
-        registers no scheduled-relock rule."""
+        """A repository that relocks another way registers no scheduled-relock rule.
+
+        Relocking with Dependabot is one such way.
+        """
         without = load_text(
             REGISTRY_HEADER + RULE_TEMPLATE.format(rule_id=INSTALL_RULE)
         )[0]

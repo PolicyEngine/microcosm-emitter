@@ -1,5 +1,8 @@
-"""Submitting one planned submission: exchange, create, upload, complete;
-then checking its status until it is final, and fetching its receipt."""
+"""Submitting one planned submission, checking its status and fetching its receipt.
+
+Submitting is the exchange, create, upload and complete requests; the status is
+then checked until it is final, and the receipt is fetched.
+"""
 
 import hashlib
 import socket
@@ -137,8 +140,11 @@ def test_an_upload_refused_as_already_stored_counts_as_stored(
 def test_a_collector_without_intake_leaves_the_submission_pending(
     collector, tmp_path, intake
 ) -> None:
-    """Off: the exchange answers 404 ``intake_not_enabled``. Absent: a collector
-    released before intake answers 200 with a ``telemetry:write`` token."""
+    """A collector with intake off or absent leaves the submission pending.
+
+    Off: the exchange answers 404 ``intake_not_enabled``. Absent: a collector
+    released before intake answers 200 with a ``telemetry:write`` token.
+    """
     collector.intake = intake
 
     outcome = submission_client(collector).submit(planned_submission(tmp_path))
@@ -421,7 +427,9 @@ def test_a_stored_object_with_another_digest_is_rejected_with_a_receipt(
     collector, tmp_path
 ) -> None:
     """Completion answers 200 ``rejected`` with ``stored_object_mismatch``.
-    The contract still says to poll the status, then read the receipt."""
+
+    The contract still says to poll the status, then read the receipt.
+    """
     collector.corrupt_uploads = True
     client = submission_client(collector)
 
@@ -515,8 +523,11 @@ def slow_link_collector():
 
 
 def slow_link_client(collector) -> CollectorSubmissionClient:
-    """A client with a small send buffer. With the fake's TLS uploads, it
-    sends ``https://`` requests over the fake's Unix socket and trusts it."""
+    """Return a client with a small send buffer.
+
+    With the fake's TLS uploads, it sends ``https://`` requests over the fake's
+    Unix socket and trusts it.
+    """
     session = CollectorSession(
         collector.origin, credential=lambda: "hf_synthetic", scope=SUBMIT_SCOPE
     )
@@ -547,7 +558,7 @@ def slow_link_client(collector) -> CollectorSubmissionClient:
 
 
 def one_large_file_submission(directory, content: bytes) -> PlannedSubmission:
-    """A submission of one file, uploaded from its path."""
+    """Return a submission of one file holding ``content``, uploaded from its path."""
     template = planned_submission(directory / "template")
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "calibration_diagnostics.json").write_bytes(content)
@@ -603,8 +614,10 @@ def test_an_upload_that_keeps_progressing_is_never_stopped(
 def test_a_stalled_upload_is_abandoned(
     slow_link_collector, tmp_path, monkeypatch
 ) -> None:
-    """The fake reads nothing: once the buffers are full no send makes
-    progress, and the upload fails after the stall threshold (0.5 s here)."""
+    """The fake reads nothing: once the buffers are full no send makes progress.
+
+    The upload then fails after the stall threshold (0.5 s here).
+    """
     from microcosm_emitter.submissions import client as client_module
 
     monkeypatch.setattr(client_module, "UPLOAD_TIMEOUT", httpx.Timeout(10.0, write=0.5))
@@ -637,10 +650,13 @@ TLS_FILE_BYTES = 3 * 1024 * 1024 // 2
 def test_an_https_upload_that_keeps_progressing_is_never_stopped(
     tmp_path, monkeypatch
 ) -> None:
-    """The #27 round-2 review's NEW BUGS 1: the link averages about 1 MiB/s,
-    so the upload keeps making progress, yet a 1 MiB piece takes twice the
-    stall threshold to write. Every piece must finish within the threshold
-    for the upload to complete."""
+    """An HTTPS upload that keeps making progress is never stopped.
+
+    The #27 round-2 review's NEW BUGS 1: the link averages about 1 MiB/s, so the
+    upload keeps making progress, yet a 1 MiB piece takes twice the stall
+    threshold to write. Every piece must finish within the threshold for the
+    upload to complete.
+    """
     from microcosm_emitter.submissions import client as client_module
 
     monkeypatch.setattr(
@@ -671,10 +687,12 @@ def test_an_https_upload_that_keeps_progressing_is_never_stopped(
 def test_completion_after_uploads_that_outlast_the_token_uses_a_fresh_token(
     collector, tmp_path, monkeypatch
 ) -> None:
-    """The #27 round-2 review's CODE QUALITY 3: the uploads outlast the
-    collector token, so completing with the token fetched before them is
-    answered 401. The client must ask its session again just before it
-    completes; the session exchanges again only when the token is expiring.
+    """Completion after uploads that outlast the token uses a fresh token.
+
+    The #27 round-2 review's CODE QUALITY 3: the uploads outlast the collector
+    token, so completing with the token fetched before them is answered 401. The
+    client must ask its session again just before it completes; the session
+    exchanges again only when the token is expiring.
     """
     from microcosm_emitter.core import auth as auth_module
 
@@ -708,7 +726,7 @@ def test_completion_after_uploads_that_outlast_the_token_uses_a_fresh_token(
 
 
 def accepted_submission(collector, tmp_path, **options):
-    """A client, and the ID of a submission it created and completed."""
+    """Return a client, and the ID of a submission it created and completed."""
     client = submission_client(collector, **options)
     outcome = client.submit(planned_submission(tmp_path))
     assert (outcome.status, outcome.collector_status) == ("accepted", "queued")
@@ -786,8 +804,11 @@ def test_a_submission_that_did_not_succeed_brings_the_collectors_reason(
 def test_a_final_status_whose_receipt_is_not_final_keeps_awaiting(
     collector, tmp_path
 ) -> None:
-    """An operator's reprocessing can return a final submission to queued
-    between the two requests: the receipt then answers 409."""
+    """A final status whose receipt answers 409 keeps the submission awaiting.
+
+    An operator's reprocessing can return a final submission to queued between
+    the two requests: the receipt then answers 409.
+    """
     client, submission_id = accepted_submission(collector, tmp_path)
     collector.finish(submission_id, "succeeded", result={})
     collector.receipt_answers = [
@@ -842,8 +863,11 @@ def test_a_receipt_for_another_submission_is_not_kept(collector, tmp_path) -> No
 def test_an_unknown_submission_at_a_status_check_is_created_again(
     collector, tmp_path, request_name
 ) -> None:
-    """404 ``submission_not_found``, for example after the collector's
-    database was reset: the submission is created again."""
+    """On a 404 ``submission_not_found`` answer, the submission is created again.
+
+    The collector can answer 404 ``submission_not_found``, for example, after its
+    database was reset.
+    """
     client, submission_id = accepted_submission(collector, tmp_path)
     if request_name == "status":
         del collector.submissions[submission_id]
@@ -938,10 +962,13 @@ def test_a_403_without_a_code_at_a_status_check_exchanges_again(
 def test_another_users_token_at_a_status_check_keeps_awaiting(
     collector, tmp_path, request_name, collector_status
 ) -> None:
-    """403 ``submission_owned_by_another_user``: the collector has the
-    submission, and only this token's user cannot read it, for example when
-    the next emitter on the machine runs with another Hugging Face token. The
-    submission did not fail, so checks go on, as for a refused token."""
+    """On a 403 ``submission_owned_by_another_user`` answer, status checks go on.
+
+    The collector has the submission, and only this token's user cannot read it,
+    for example when the next emitter on the machine runs with another Hugging
+    Face token. The submission did not fail, so checks go on, as for a refused
+    token.
+    """
     client, submission_id = accepted_submission(collector, tmp_path)
     refusal = (403, "submission_owned_by_another_user")
     if request_name == "status":

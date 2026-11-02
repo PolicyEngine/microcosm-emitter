@@ -35,6 +35,7 @@ JOB_PENDING = "pending"
 
 
 def sha256_bytes(content: bytes) -> str:
+    """Return the hex SHA-256 digest of ``content``."""
     return hashlib.sha256(content).hexdigest()
 
 
@@ -44,7 +45,7 @@ def retry_delay(failures: int) -> float:
 
 
 def repository_schedule(session: Session, repository: str) -> RepositoryCommitSchedule:
-    """The repository's commit schedule, added with zero times if it has none."""
+    """Return the repository's commit schedule, added with zero times if it has none."""
     schedule = session.get(RepositoryCommitSchedule, repository)
     if schedule is None:
         schedule = RepositoryCommitSchedule(
@@ -145,7 +146,7 @@ class HandoverJobs:
             return dict(receipt)
 
     def copied_files(self, handover_id: str) -> dict[str, bytes]:
-        """The bytes copied when ``handover_id`` was handed over, by name."""
+        """Return the bytes copied when ``handover_id`` was handed over, by name."""
         with self._sessions() as session:
             rows = session.scalars(
                 select(HandoverFile).where(HandoverFile.handover_id == handover_id)
@@ -162,11 +163,13 @@ class HandoverJobs:
         kinds: Iterable[str] | None = None,
         equivalent_targets: Iterable[str] = (),
     ) -> ClaimedJob | None:
-        """Lease the earliest-due pending job for ``target``, or for one of
-        ``equivalent_targets``, other names of the same target.
+        """Lease and return the earliest-due pending job for ``target``, if any.
 
-        A conditional update allows one current lease; a worker that exits
-        leaves its job eligible again once the lease expires.
+        A job queued for one of ``equivalent_targets``, other names of the same
+        target, counts too, and ``kinds`` limits the job kinds. A conditional
+        update allows one current lease; a worker that exits leaves its job
+        eligible again once the lease expires. ``None`` when no job is due or
+        another writer leased it first.
         """
         with self._sessions.begin() as session:
             statement = select(HandoverJob).where(
@@ -316,8 +319,11 @@ class HandoverJobs:
         status: str,
         destination: str = DESTINATION_HUGGING_FACE,
     ) -> list[tuple[float, dict[str, Any]]]:
-        """When each job of ``kind`` for ``target`` now at ``status`` was
-        handed over, with its request."""
+        """List the jobs of ``kind`` for ``target`` whose status is now ``status``.
+
+        Each item is the time the job was handed over, by this machine's clock,
+        and its request.
+        """
         with self._sessions() as session:
             rows = session.execute(
                 select(HandoverJob.created_at, HandoverJob.request).where(
@@ -332,6 +338,7 @@ class HandoverJobs:
     def job_receipt(
         self, handover_id: str, destination: str = DESTINATION_HUGGING_FACE
     ) -> dict[str, Any] | None:
+        """Return the job receipt for ``handover_id``, or ``None`` if none is queued."""
         with self._sessions() as session:
             job = session.get(HandoverJob, (handover_id, destination))
             return None if job is None else dict(job.receipt)

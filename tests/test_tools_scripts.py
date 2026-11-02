@@ -176,7 +176,7 @@ def test_check_artifacts_stops_when_the_build_fails(fakes, checkout):
 
 
 def pinned_collector_commit():
-    """The commit ci.yml's collector job checks out into .collector."""
+    """Return the commit ci.yml's collector job checks out into .collector."""
     steps = yaml.load(
         (WORKFLOWS_DIRECTORY / "ci.yml").read_text(), Loader=yaml.BaseLoader
     )["jobs"]["collector"]["steps"]
