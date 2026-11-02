@@ -1,3 +1,10 @@
+## [0.11.7] - 2026-11-02
+
+### Changed
+
+- A new "PR description" check, in `pr-description.yaml`, fails a pull request into `main` unless the first line of its description is `Fixes #N` and `N` is an open issue in this repository. It is registered as `emitter.process.pr-tracking-issue`. The wheels are unchanged.
+
+
 ## [0.11.6] - 2026-10-30
 
 ### Changed
