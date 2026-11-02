@@ -22,11 +22,12 @@ fails when an install pins no version or another one:
   ``uv==<version>``, and ``uv self update`` must name the version.
 
 When the repository root has a ``pyproject.toml``, its ``[tool.uv]
-required-version`` must be a lower bound written ``>=X.Y`` that the release
-meets: uv then refuses to run the project with an older release, while
-Dependabot, which runs ``uv lock`` with its own uv release and stops when
-``required-version`` excludes it, still can. An exact ``==`` release there
-would stop Dependabot whenever its uv differs.
+required-version`` must be a lower bound written ``>=X.Y`` or ``>=X.Y.Z``
+that the release meets: uv then refuses to run the project with a release
+below the bound, while Dependabot, which runs ``uv lock`` with its own uv
+release and stops when ``required-version`` excludes it, still can whenever
+its release meets the bound. An exact ``==`` release there would stop
+Dependabot whenever its uv differs.
 
 Violations name the rule that lists the ``uv-version`` guard.
 """
