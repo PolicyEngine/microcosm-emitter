@@ -8,11 +8,11 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 | Tier | enforced | ratcheted | advisory | doc-only | Total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| mechanical | 40 | 0 | 0 | 7 | 47 |
+| mechanical | 41 | 0 | 0 | 7 | 48 |
 | metric | 1 | 0 | 0 | 0 | 1 |
 | judgment | 0 | 0 | 0 | 0 | 0 |
 
-**Blocking:** 41 of 48 rules.
+**Blocking:** 42 of 49 rules.
 
 ## Gaps
 
@@ -39,6 +39,7 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 - `emitter.boundaries.shared-definitions-written-once`
 - `emitter.boundaries.telemetry-client-imports-no-service-code`
 - `emitter.ci.pull-request-workflow-structure`
+- `emitter.ci.uv-cache-only-where-uv-runs`
 - `emitter.dependencies.dependabot-relock`
 - `emitter.distributions.exactly-two-at-one-version`
 - `emitter.distributions.lock-only-merges-release-nothing`
@@ -141,7 +142,7 @@ flowchart LR
 | `emitter.distributions.release-credentials` | In push.yaml only the publish job, in the pypi environment, may request an OpenID Connect token, and the workflow reads no secrets but APP_ID and APP_PRIVATE_KEY, once each, for the GitHub App token that commits the version. | mechanical | enforced | yes | pytest `tests/test_workflows.py` | `ci.yml:tests` | **unproven** |
 | `emitter.distributions.release-order` | push.yaml releases a merge to main in order (the version commit, then ci.yml on that commit, then the tag, then publication) and publishes to PyPI only the artifacts ci.yml built, one per distribution, the interface first, skipping files PyPI already holds so a rerun completes a partial upload. | mechanical | enforced | yes | pytest `tests/test_workflows.py` | `ci.yml:tests` | **unproven** |
 | `emitter.distributions.source-archives-exclude-the-rules-tool` | The microcosm-emitter source archive leaves out the rules tool, the registry and their documents, and tools/check-installed.py refuses either source archive if it holds any of them, naming the same paths the build excludes. | mechanical | enforced | yes | pytest `tests/test_source_archives.py` | `ci.yml:tests` | **unproven** |
-| `emitter.distributions.version-from-fragments` | A release's version bump follows its changelog fragment types (breaking is a major bump, added or removed a minor bump, anything else a patch bump) and rewrites both distributions' versions and the interface pin together, and the release refuses diverged versions, a different pin, missing or untyped fragments, and a missing or repeated version line. | mechanical | enforced | yes | pytest `tests/test_workflows.py` | `ci.yml:tests` | **unproven** |
+| `emitter.distributions.version-from-fragments` | A release's version bump follows its changelog fragment types (breaking is a major bump, added or removed a minor bump, anything else a patch bump) and rewrites both distributions' versions and the interface pin together, and tools/bump-version.py refuses diverged versions, a different pin, missing or untyped fragments, and a missing or repeated version line. | mechanical | enforced | yes | pytest `tests/test_workflows.py` | `ci.yml:tests` | **unproven** |
 
 ```mermaid
 flowchart LR
@@ -276,10 +277,10 @@ flowchart LR
 | Rule | Statement | Tier | Status | Blocking | Enforced by | CI | Proof |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `emitter.dependencies.dependabot-relock` | Dependabot proposes uv.lock updates every week, for the uv ecosystem at the repository root, as one grouped pull request that changes only uv.lock (versioning-strategy lockfile-only); it runs on GitHub's side with its own credentials, so no secret of this repository reaches the code resolving runs. | mechanical | enforced | yes | pytest `tests/test_dependabot.py` | `ci.yml:tests` | **unproven** |
-| `emitter.dependencies.install-from-lock` | Every install of the project's Python dependencies, in workflows, the shell scripts under tools/ they run and the commands the Python scripts under tools/ start, installs exactly the locked versions (uv sync --locked, uv run --locked); any other install is a registered exception for that one site. | mechanical | enforced | yes | quality guard `locked-installs` | `pr.yaml:rules` | yes |
+| `emitter.dependencies.install-from-lock` | Every install of the project's Python dependencies, in workflows, in the shell scripts under tools/ they run, and in each call in a Python script under tools/ whose leading arguments, or the list or tuple passed first, give the command as at least two string literals, installs exactly the locked versions (uv sync --locked, uv run --locked); any other install is a registered exception for that one site, and a command a Python script builds any other way is not checked. | mechanical | enforced | yes | quality guard `locked-installs` | `pr.yaml:rules` | yes |
 | `emitter.dependencies.lock-committed` | Every project directory with a pyproject.toml commits a uv.lock that matches it, or is a member of the uv workspace whose uv.lock locks it, and a pull-request job checks the lock with uv lock --check. | mechanical | enforced | yes | quality guard `locked-installs` | `pr.yaml:rules`, `ci.yml:quality` | yes |
-| `emitter.dependencies.test-from-lock` | Every test command (pytest, python -m unittest) in workflows, the shell scripts under tools/ they run and the commands the Python scripts under tools/ start runs through uv run --locked, in the locked environment; any other test run is a registered exception for that one site. | mechanical | enforced | yes | quality guard `locked-installs` | `pr.yaml:rules` | yes |
-| `emitter.dependencies.uv-version-pinned` | The one uv release is written once, as the line uv==X.Y.Z in .github/uv-version.txt: each astral-sh/setup-uv step reads it with version-file and writes no version:, any uv container image, install script, release download or package install of uv names it, and the root pyproject.toml's [tool.uv] required-version is a lower bound (>=X.Y) it meets, so an older uv refuses the project while Dependabot's uv still runs. | mechanical | enforced | yes | quality guard `uv-version` | `pr.yaml:rules` | yes |
+| `emitter.dependencies.test-from-lock` | Every test command (pytest, python -m unittest) in workflows, in the shell scripts under tools/ they run, and in each call in a Python script under tools/ whose leading arguments, or the list or tuple passed first, give the command as at least two string literals, runs through uv run --locked, in the locked environment; any other test run is a registered exception for that one site, and a command a Python script builds any other way is not checked. | mechanical | enforced | yes | quality guard `locked-installs` | `pr.yaml:rules` | yes |
+| `emitter.dependencies.uv-version-pinned` | The one uv release is written once, as the line uv==X.Y.Z in .github/uv-version.txt: each astral-sh/setup-uv step reads it with version-file and writes no version:, any uv container image, install script, release download or package install of uv names it, and the root pyproject.toml's [tool.uv] required-version is a lower bound, written >=X.Y or >=X.Y.Z, that the release meets, so a uv release below that bound refuses the project. | mechanical | enforced | yes | quality guard `uv-version` | `pr.yaml:rules` | yes |
 
 ```mermaid
 flowchart LR
@@ -315,6 +316,7 @@ flowchart LR
 | `emitter.ci.shell-logic-in-tools-scripts` | Shell logic of several commands lives in a Bash script under tools/, which a workflow step calls with a single command, and a test runs that script, with fake commands in place of anything it would change or reach outside the test. | mechanical | doc-only | no | nothing | — | — |
 | `emitter.ci.shell-scripts-parse` | Every shell script under tools/ parses (bash -n). | mechanical | enforced | yes | CI job `quality` | `ci.yml:quality` | — |
 | `emitter.ci.shell-scripts-pass-shellcheck` | Every shell script under tools/ passes shellcheck, which the Rules registry job installs as shellcheck-py 0.11.0.1. | mechanical | enforced | yes | quality guard `ci-scripts` | `pr.yaml:rules` | yes |
+| `emitter.ci.uv-cache-only-where-uv-runs` | Every astral-sh/setup-uv step in a workflow sets enable-cache: false unless a later step of its job, with no if: condition, runs a command that starts with uv or uvx, or runs bash tools/<script>.sh where the script's unindented lines reach such a command before any if, case, for, while or until, function definition or line containing exit; setup-uv's post-job step fails a job whose uv cache directory no uv command created. | mechanical | enforced | yes | pytest `tests/test_workflows.py` | `ci.yml:tests` | **unproven** |
 | `emitter.ci.workflow-scripts-tested` | Every shell script under tools/ that a workflow calls is named in a test file under tests/. | mechanical | enforced | yes | quality guard `ci-scripts` | `pr.yaml:rules` | yes |
 | `emitter.ci.workflows-pass-actionlint` | Every workflow passes actionlint 1.7.12, which also runs shellcheck on each run: step. | mechanical | enforced | yes | CI job `lint-workflows` | `pr.yaml:lint-workflows` | — |
 
@@ -336,6 +338,7 @@ flowchart LR
   e_CI_job_quality["CI job quality"]
   j_CI_ci_yml_quality["CI ci.yml:quality"]
   r_emitter_ci_shell_scripts_pass_shellcheck("emitter.ci.shell-scripts-pass-shellcheck (enforced)")
+  r_emitter_ci_uv_cache_only_where_uv_runs("emitter.ci.uv-cache-only-where-uv-runs (enforced)")
   r_emitter_ci_workflow_scripts_tested("emitter.ci.workflow-scripts-tested (enforced)")
   r_emitter_ci_workflows_pass_actionlint("emitter.ci.workflows-pass-actionlint (enforced)")
   e_CI_job_lint_workflows["CI job lint-workflows"]
@@ -351,6 +354,7 @@ flowchart LR
   r_emitter_ci_shell_scripts_parse --> e_CI_job_quality
   e_CI_job_quality --> j_CI_ci_yml_quality
   r_emitter_ci_shell_scripts_pass_shellcheck --> e_quality_guard_ci_scripts
+  r_emitter_ci_uv_cache_only_where_uv_runs --> e_pytest_tests_test_workflows_py
   r_emitter_ci_workflow_scripts_tested --> e_quality_guard_ci_scripts
   r_emitter_ci_workflows_pass_actionlint --> e_CI_job_lint_workflows
   e_CI_job_lint_workflows --> j_CI_pr_yaml_lint_workflows
