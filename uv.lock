@@ -606,7 +606,7 @@ wheels = [
 
 [[package]]
 name = "microcosm-emitter"
-version = "0.11.9"
+version = "0.11.10"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
@@ -647,7 +647,7 @@ dev = [
 
 [[package]]
 name = "microcosm-emitter-interface"
-version = "0.11.9"
+version = "0.11.10"
 source = { editable = "packages/microcosm-emitter-interface" }
 
 [[package]]
