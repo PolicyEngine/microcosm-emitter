@@ -1,3 +1,10 @@
+## [0.11.9] - 2026-11-02
+
+### Changed
+
+- Ruff now selects every rule (`ALL`), as the simulation API and the Public API do, with their four global ignores (COM812, ISC001, D203, D213) and their per-file ignores for tests and command-line scripts, each registered as a rule, and with the copyright-notice rules (CPY) off. The rule families with findings not fixed yet are ignored until the pull requests stacked on this one fix them. The wheels are unchanged.
+
+
 ## [0.11.8] - 2026-11-02
 
 ### Fixed
