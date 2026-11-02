@@ -8,11 +8,11 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 | Tier | enforced | ratcheted | advisory | doc-only | Total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| mechanical | 41 | 0 | 0 | 7 | 48 |
+| mechanical | 47 | 0 | 0 | 7 | 54 |
 | metric | 1 | 0 | 0 | 0 | 1 |
 | judgment | 0 | 0 | 0 | 0 | 0 |
 
-**Blocking:** 42 of 49 rules.
+**Blocking:** 48 of 55 rules.
 
 ## Gaps
 
@@ -54,6 +54,7 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 - `emitter.protocol.every-fixture-sent-and-answered`
 - `emitter.protocol.released-fixtures-unchanged`
 - `emitter.protocol.trusted-collector-origins`
+- `emitter.quality.runtime-evaluated-models-resolve`
 
 ### Ratcheted (existing violations still tolerated)
 
@@ -235,41 +236,71 @@ flowchart LR
 
 | Rule | Statement | Tier | Status | Blocking | Enforced by | CI | Proof |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| `emitter.quality.command-line-scripts-ruff-exemptions` | Command-line scripts under scripts/ may print their output (T201), run other programs (S603, S607) and use today's date (DTZ011); every other Ruff rule applies to them. | mechanical | enforced | yes | ruff per-file ignore of DTZ011, S603, S607, T201 for `scripts/**` | `ci.yml:quality` | — |
+| `emitter.quality.installed-checks-ruff-exemptions` | The installed-artifact checks (tools/check-installed.py, tools/installed-smoke.py and tools/installed-interface-smoke.py) assert, as tests do (S101), and import inside each check to test what that import loads (PLC0415). | mechanical | enforced | yes | ruff per-file ignore of PLC0415, S101 for `tools/{check-installed,installed-smoke,installed-interface-smoke}.py` | `ci.yml:quality` | — |
 | `emitter.quality.python-file-length` | No tracked Python file has more than 800 lines, or more than 1,500 if it is test code: a file under tests/ or under the rules tool's tests and fixtures, scripts/rules/tests/. | metric | enforced | yes | quality guard `file-length` | `pr.yaml:rules` | yes |
 | `emitter.quality.ruff-format` | All Python is formatted with ruff format. | mechanical | enforced | yes | ruff format | `ci.yml:quality` | — |
-| `emitter.quality.ruff-lint` | All Python passes ruff check with the rule families E, F, I, N, W, UP and B selected, except E501 (line length), which ruff format settles. | mechanical | enforced | yes | ruff check (B, E, F, I, N, UP, W) | `ci.yml:quality` | — |
+| `emitter.quality.ruff-lint` | All Python passes ruff check with every Ruff rule selected (ALL), as in the simulation API and the Public API, except COM812 and ISC001, which conflict with ruff format, D203 and D213, which conflict with D211 and D212, CPY, which Ruff 0.16 makes stable but their Ruff 0.15 keeps in preview, the registered per-file ignores, and, until the pull requests stacked on #55 fix them, the families pyproject.toml lists as not fixed yet. | mechanical | enforced | yes | ruff check (ALL) | `ci.yml:quality` | — |
 | `emitter.quality.rules-tool-tests-pass` | The rules tool's own tests, the unittest tests under scripts/rules/tests, pass in pr.yaml's rules job, on Ubuntu with Python 3.13 and only the standard library. | mechanical | enforced | yes | CI job `rules` | `pr.yaml:rules` | — |
+| `emitter.quality.runtime-evaluated-models-resolve` | Every SQLAlchemy model in microcosm_emitter is one Ruff treats as runtime-evaluated (a base resolves, through the import in its own module, to a name in runtime-evaluated-base-classes, or is a same-module class that does), and every mapper configures once the package is imported, as in the simulation API and the Public API. | mechanical | enforced | yes | pytest `tests/test_runtime_evaluated_annotations.py` | `ci.yml:tests` | **unproven** |
 | `emitter.quality.tests-pass` | Every pytest test under tests/ except the collector contract test passes in ci.yml's tests job, on Ubuntu and macOS with Python 3.13 and 3.14, in the environment uv sync --locked installs. | mechanical | enforced | yes | CI job `tests` | `ci.yml:tests` | — |
+| `emitter.quality.tests-ruff-exemptions` | Test files may use pytest's bare assert, need no docstrings, annotations or named constants for magic numbers, and may reach into private members, live in directories that aren't packages, import inside a test, import the lazily loaded modules at module level, and use fake credentials, temporary paths, naive datetimes, string-built SQL, prints and subprocess calls to repository scripts (ANN, D1, S101, PLR2004, SLF001, INP001, PLC0415, TID253, S105, S106, S108, S608, DTZ001, DTZ011, T201, S603, S607), may name a fake's methods after the interface it replaces (N802), and may leave a stand-in's arguments unused (ARG001, ARG002, ARG005), as in the Public API and the simulation API; every other Ruff rule applies to tests. | mechanical | enforced | yes | ruff per-file ignore of ANN, ARG001, ARG002, ARG005, D1, DTZ001, DTZ011, INP001, N802, PLC0415, PLR2004, S101, S105, S106, S108, S603, S607, S608, SLF001, T201, TID253 for `**/tests/**` | `ci.yml:quality` | — |
 | `emitter.quality.toolchain` | Use uv, Python 3.13 or later, pytest and Ruff. | mechanical | doc-only | no | nothing | — | — |
+| `emitter.quality.tools-ruff-exemptions` | The Python scripts under tools/, which CI runs, may have hyphenated file names (N999), print their results (T201) and run other programs (S603); every other Ruff rule applies to them. | mechanical | enforced | yes | ruff per-file ignore of N999, S603, T201 for `tools/**` | `ci.yml:quality` | — |
+| `emitter.quality.unittest-ruff-exemptions` | The rules tool's tests use unittest, because the tool needs only the standard library, so Ruff's pytest-style rules (PT) don't apply to them. | mechanical | enforced | yes | ruff per-file ignore of PT for `scripts/rules/tests/**` | `ci.yml:quality` | — |
 
 ```mermaid
 flowchart LR
+  r_emitter_quality_command_line_scripts_ruff_exemptions("emitter.quality.command-line-scripts-ruff-exemptions (enforced)")
+  e_ruff_per_file_ignore_of_DTZ011__S603__S607__T201_for_scripts___["ruff per-file ignore of DTZ011, S603, S607, T201 for scripts/**"]
+  j_CI_ci_yml_quality["CI ci.yml:quality"]
+  r_emitter_quality_installed_checks_ruff_exemptions("emitter.quality.installed-checks-ruff-exemptions (enforced)")
+  e_ruff_per_file_ignore_of_PLC0415__S101_for_tools__check_installed_installed_smoke_installed_interface_smoke__py["ruff per-file ignore of PLC0415, S101 for tools/{check-installed,installed-smoke,installed-interface-smoke}.py"]
   r_emitter_quality_python_file_length("emitter.quality.python-file-length (enforced)")
   e_quality_guard_file_length["quality guard file-length"]
   j_CI_pr_yaml_rules["CI pr.yaml:rules"]
   r_emitter_quality_ruff_format("emitter.quality.ruff-format (enforced)")
   e_ruff_format["ruff format"]
-  j_CI_ci_yml_quality["CI ci.yml:quality"]
   r_emitter_quality_ruff_lint("emitter.quality.ruff-lint (enforced)")
-  e_ruff_check__B__E__F__I__N__UP__W_["ruff check (B, E, F, I, N, UP, W)"]
+  e_ruff_check__ALL_["ruff check (ALL)"]
   r_emitter_quality_rules_tool_tests_pass("emitter.quality.rules-tool-tests-pass (enforced)")
   e_CI_job_rules["CI job rules"]
+  r_emitter_quality_runtime_evaluated_models_resolve("emitter.quality.runtime-evaluated-models-resolve (enforced)")
+  e_pytest_tests_test_runtime_evaluated_annotations_py["pytest tests/test_runtime_evaluated_annotations.py"]
+  j_CI_ci_yml_tests["CI ci.yml:tests"]
   r_emitter_quality_tests_pass("emitter.quality.tests-pass (enforced)")
   e_CI_job_tests["CI job tests"]
-  j_CI_ci_yml_tests["CI ci.yml:tests"]
+  r_emitter_quality_tests_ruff_exemptions("emitter.quality.tests-ruff-exemptions (enforced)")
+  e_ruff_per_file_ignore_of_ANN__ARG001__ARG002__ARG005__D1__DTZ001__DTZ011__INP001__N802__PLC0415__PLR2004__S101__S105__S106__S108__S603__S607__S608__SLF001__T201__TID253_for____tests___["ruff per-file ignore of ANN, ARG001, ARG002, ARG005, D1, DTZ001, DTZ011, INP001, N802, PLC0415, PLR2004, S101, S105, S106, S108, S603, S607, S608, SLF001, T201, TID253 for **/tests/**"]
   r_emitter_quality_toolchain("emitter.quality.toolchain (doc-only)")
   gap_unenforced>"not enforced"]
+  r_emitter_quality_tools_ruff_exemptions("emitter.quality.tools-ruff-exemptions (enforced)")
+  e_ruff_per_file_ignore_of_N999__S603__T201_for_tools___["ruff per-file ignore of N999, S603, T201 for tools/**"]
+  r_emitter_quality_unittest_ruff_exemptions("emitter.quality.unittest-ruff-exemptions (enforced)")
+  e_ruff_per_file_ignore_of_PT_for_scripts_rules_tests___["ruff per-file ignore of PT for scripts/rules/tests/**"]
+  r_emitter_quality_command_line_scripts_ruff_exemptions --> e_ruff_per_file_ignore_of_DTZ011__S603__S607__T201_for_scripts___
+  e_ruff_per_file_ignore_of_DTZ011__S603__S607__T201_for_scripts___ --> j_CI_ci_yml_quality
+  r_emitter_quality_installed_checks_ruff_exemptions --> e_ruff_per_file_ignore_of_PLC0415__S101_for_tools__check_installed_installed_smoke_installed_interface_smoke__py
+  e_ruff_per_file_ignore_of_PLC0415__S101_for_tools__check_installed_installed_smoke_installed_interface_smoke__py --> j_CI_ci_yml_quality
   r_emitter_quality_python_file_length --> e_quality_guard_file_length
   e_quality_guard_file_length --> j_CI_pr_yaml_rules
   r_emitter_quality_ruff_format --> e_ruff_format
   e_ruff_format --> j_CI_ci_yml_quality
-  r_emitter_quality_ruff_lint --> e_ruff_check__B__E__F__I__N__UP__W_
-  e_ruff_check__B__E__F__I__N__UP__W_ --> j_CI_ci_yml_quality
+  r_emitter_quality_ruff_lint --> e_ruff_check__ALL_
+  e_ruff_check__ALL_ --> j_CI_ci_yml_quality
   r_emitter_quality_rules_tool_tests_pass --> e_CI_job_rules
   e_CI_job_rules --> j_CI_pr_yaml_rules
+  r_emitter_quality_runtime_evaluated_models_resolve --> e_pytest_tests_test_runtime_evaluated_annotations_py
+  e_pytest_tests_test_runtime_evaluated_annotations_py --> j_CI_ci_yml_tests
   r_emitter_quality_tests_pass --> e_CI_job_tests
   e_CI_job_tests --> j_CI_ci_yml_tests
+  r_emitter_quality_tests_ruff_exemptions --> e_ruff_per_file_ignore_of_ANN__ARG001__ARG002__ARG005__D1__DTZ001__DTZ011__INP001__N802__PLC0415__PLR2004__S101__S105__S106__S108__S603__S607__S608__SLF001__T201__TID253_for____tests___
+  e_ruff_per_file_ignore_of_ANN__ARG001__ARG002__ARG005__D1__DTZ001__DTZ011__INP001__N802__PLC0415__PLR2004__S101__S105__S106__S108__S603__S607__S608__SLF001__T201__TID253_for____tests___ --> j_CI_ci_yml_quality
   r_emitter_quality_toolchain -.-> gap_unenforced
+  r_emitter_quality_tools_ruff_exemptions --> e_ruff_per_file_ignore_of_N999__S603__T201_for_tools___
+  e_ruff_per_file_ignore_of_N999__S603__T201_for_tools___ --> j_CI_ci_yml_quality
+  r_emitter_quality_unittest_ruff_exemptions --> e_ruff_per_file_ignore_of_PT_for_scripts_rules_tests___
+  e_ruff_per_file_ignore_of_PT_for_scripts_rules_tests___ --> j_CI_ci_yml_quality
 ```
 
 ## Dependency locking

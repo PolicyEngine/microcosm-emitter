@@ -69,13 +69,107 @@ markers = ["collector: requires the pinned collector and disposable PostgreSQL"]
 [tool.ruff]
 line-length = 88
 target-version = "py313"
+# Directories with no __init__.py on purpose (INP001); Ruff resolves modules as
+# if each, and every directory below it, were a package. tools/ and scripts/
+# hold scripts that run, never imported (scripts/rules is a package inside the
+# implicit namespace package scripts), and the two Alembic directories hold the
+# migration environments and revisions Alembic loads by path.
+namespace-packages = [
+    "scripts",
+    "src/microcosm_emitter/core/alembic",
+    "src/microcosm_emitter/core/handover_alembic",
+    "tools",
+]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B"]
-ignore = ["E501"]
+# Every Ruff rule applies apart from the ignores below, as in the simulation
+# API and the Public API (emitter.quality.ruff-lint).
+select = ["ALL"]
+ignore = [
+    # These conflict with ruff format; Ruff's documentation says to disable
+    # them when using the formatter.
+    "COM812", "ISC001",
+    # Mutually exclusive pydocstyle pairs: keep D211 (no blank line before a
+    # class docstring) and D212 (summary on the first line).
+    "D203", "D213",
+    # Copyright notices: CPY001 is a stable rule from Ruff 0.16, but a preview
+    # rule in the Ruff 0.15 the simulation API and the Public API run, so neither
+    # enforces it; this repository leaves it off too.
+    "CPY",
+    # Not fixed yet: the pull requests stacked on #55 fix these families,
+    # one group each, and remove them here. None stays.
+    # Exception messages and raising.
+    "EM", "RSE", "TRY",
+    # Docstrings.
+    "D",
+    # Typing-only imports, annotations and in-function imports.
+    "ANN", "PLC", "TC",
+    # Broad excepts, security findings, prints and private access.
+    "BLE", "S", "SLF", "T20",
+    # Smaller rules.
+    "A", "ARG", "C4", "E", "FBT", "ISC", "PERF", "PLW", "PT", "PTH", "RET", "RUF", "SIM",
+    # Complexity.
+    "C90", "PLR",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# File-level exceptions are allowed only for tests, tools/ and scripts/; the
+# rules guard checks each pattern covers nothing else
+# (docs/engineering/skills/rules-registry.md#file-level-exceptions).
+# Tests may use pytest's bare assert, and need no docstrings, annotations or
+# named constants for magic numbers. They may also reach into private members,
+# live in directories that aren't packages, import inside a test (often after
+# patching the environment), and use fake credentials, temporary paths, naive
+# datetimes, SQL built from strings, prints and subprocess calls to the
+# repository's scripts, may import the lazily loaded modules at module level,
+# may name a fake's methods after the interface it replaces, and may leave a
+# stand-in's arguments unused, as in the Public API and the simulation API.
+# Every other rule applies to tests.
+"**/tests/**" = [
+    "ANN", "ARG001", "ARG002", "ARG005", "D1", "DTZ001", "DTZ011", "INP001",
+    "N802", "PLC0415", "PLR2004", "S101", "S105", "S106", "S108", "S603",
+    "S607", "S608", "SLF001", "T201", "TID253",
+]
+# The shared rules tool needs only the standard library, so its tests use
+# unittest on purpose; pytest-style rules don't apply to them.
+"scripts/rules/tests/**" = ["PT"]
+# Command-line scripts print their output, run other programs and stamp
+# today's date.
+"scripts/**" = ["DTZ011", "S603", "S607", "T201"]
+# The tools/ scripts CI runs have hyphenated file names, print their results
+# and run other programs.
+"tools/**" = ["N999", "S603", "T201"]
+# The installed-artifact checks assert, as tests do, and import inside each
+# check to test what that import loads.
+"tools/{check-installed,installed-smoke,installed-interface-smoke}.py" = ["PLC0415", "S101"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["microcosm_emitter", "microcosm_emitter_interface"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# Modules imported only inside the function that needs them, never at module
+# level (TID253 enforces it; TYPE_CHECKING imports are fine), as in the
+# simulation API and the Public API. The telemetry and Hugging Face entry
+# points (the service packages) import their module's implementation only when
+# create_module runs, and the Hub client's HfApi and CommitOperationAdd are
+# imported only by the functions in huggingface/service/hub.py that build them.
+# Ruff's PLC0415 accepts in-function imports of these without a suppression. A
+# module belongs here only if no application module imports it at module level.
+banned-module-level-imports = [
+    "huggingface_hub.CommitOperationAdd",
+    "huggingface_hub.HfApi",
+    "microcosm_emitter.huggingface.service.module",
+    "microcosm_emitter.telemetry.service.module",
+]
+
+[tool.ruff.lint.flake8-type-checking]
+# Classes whose annotations SQLAlchemy evaluates at runtime, when it configures
+# the mappers, so their imports must stay at runtime. Ruff checks a class's
+# bases through the imports of its own module and follows inheritance only
+# through classes in that module, so the declarative bases' own base is listed;
+# tests/test_runtime_evaluated_annotations.py checks every model
+# (emitter.quality.runtime-evaluated-models-resolve).
+runtime-evaluated-base-classes = ["sqlalchemy.orm.DeclarativeBase"]
 
 [tool.towncrier]
 directory = "changelog.d"
