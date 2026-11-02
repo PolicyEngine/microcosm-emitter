@@ -8,11 +8,11 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 | Tier | enforced | ratcheted | advisory | doc-only | Total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| mechanical | 39 | 0 | 0 | 7 | 46 |
+| mechanical | 40 | 0 | 0 | 7 | 47 |
 | metric | 1 | 0 | 0 | 0 | 1 |
 | judgment | 0 | 0 | 0 | 0 | 0 |
 
-**Blocking:** 40 of 47 rules.
+**Blocking:** 41 of 48 rules.
 
 ## Gaps
 
@@ -60,6 +60,7 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 ### Exceptions and review dates
 
+- `emitter.dependencies.install-from-lock`: exception for `.github/workflows/pr-description.yaml` (`uv run --no-project python -m scripts.rules.pr_description`); remove when scripts/rules needs a package beyond the standard library (The PR description check is part of the rules tool, which uses only the standard library, so it runs without installing the project.)
 - `emitter.dependencies.install-from-lock`: exception for `.github/workflows/pr.yaml` (`uv run --no-project python -m unittest discover -s scripts/rules/tests`); remove when scripts/rules needs a package beyond the standard library (The rules tool uses only the standard library, so its tests run without installing the project.)
 - `emitter.dependencies.install-from-lock`: exception for `.github/workflows/pr.yaml` (`uv run --no-project python scripts/run_quality_guards.py`); remove when scripts/rules needs a package beyond the standard library (The quality guards are the rules tool, which uses only the standard library, so they run without installing the project.)
 - `emitter.dependencies.install-from-lock`: exception for `.github/workflows/pr.yaml` (`uv tool install shellcheck-py==0.11.0.1`) [pinned-tool] (shellcheck is a binary the ci-scripts tests run; the rules job has no project environment, so it installs the exact shellcheck-py release.)
@@ -309,8 +310,8 @@ flowchart LR
 | Rule | Statement | Tier | Status | Blocking | Enforced by | CI | Proof |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `emitter.ci.multiline-run-is-script` | Every workflow run: step holds one command: one line of code, with no commands chained by &&, \|\| or ;. | mechanical | enforced | yes | quality guard `ci-scripts` | `pr.yaml:rules` | yes |
-| `emitter.ci.pull-request-workflow-structure` | pr.yaml runs on pull requests and calls ci.yml, the changelog check and the rules registry, and its Required checks job runs always and needs each other job; ci.yml is called only by other workflows and has exactly the quality, tests, build-packages and collector jobs, testing on Ubuntu and macOS with Python 3.13 and 3.14, with the collector job after build-packages. | mechanical | enforced | yes | pytest `tests/test_workflows.py` | `ci.yml:tests` | **unproven** |
-| `emitter.ci.required-checks` | Every pull request runs the verification workflow, ci.yml, and Required checks, the one status check main's ruleset requires, passes only when every other pull-request job succeeded. | mechanical | enforced | yes | CI job `verify`, `required` | `pr.yaml:verify`, `pr.yaml:required` | — |
+| `emitter.ci.pull-request-workflow-structure` | pr.yaml runs on pull requests and calls ci.yml, the changelog check and the rules registry, and its Required checks job runs always and needs each other job; ci.yml is called only by other workflows and has exactly the quality, tests, build-packages and collector jobs, testing on Ubuntu and macOS with Python 3.13 and 3.14, with the collector job after build-packages; pr-description.yaml runs for open pull requests whose base, or whose stack's final target, is main, on every event that can change the description, with read-only permissions, in one job named PR description. | mechanical | enforced | yes | pytest `tests/test_workflows.py` | `ci.yml:tests` | **unproven** |
+| `emitter.ci.required-checks` | Every pull request runs the verification workflow, ci.yml, and Required checks, a status check main's ruleset requires, passes only when every other pr.yaml job succeeded. | mechanical | enforced | yes | CI job `verify`, `required` | `pr.yaml:verify`, `pr.yaml:required` | — |
 | `emitter.ci.shell-logic-in-tools-scripts` | Shell logic of several commands lives in a Bash script under tools/, which a workflow step calls with a single command, and a test runs that script, with fake commands in place of anything it would change or reach outside the test. | mechanical | doc-only | no | nothing | — | — |
 | `emitter.ci.shell-scripts-parse` | Every shell script under tools/ parses (bash -n). | mechanical | enforced | yes | CI job `quality` | `ci.yml:quality` | — |
 | `emitter.ci.shell-scripts-pass-shellcheck` | Every shell script under tools/ passes shellcheck, which the Rules registry job installs as shellcheck-py 0.11.0.1. | mechanical | enforced | yes | quality guard `ci-scripts` | `pr.yaml:rules` | yes |
@@ -362,6 +363,7 @@ flowchart LR
 | `emitter.agents.adapters-point-to-agents-md` | CLAUDE.md only points to AGENTS.md; guidance and rules are written in AGENTS.md alone. | mechanical | enforced | yes | quality guard `rules-registry` | `pr.yaml:rules` | yes |
 | `emitter.process.changelog-fragment` | Every pull request adds at least one changelog fragment, changelog.d/<name>.<type>.md with a type of breaking, added, changed, fixed or removed, and keeps both distributions' versions and the interface pin consistent, so its merge can be released; a Dependabot pull request that changes only uv.lock is the exception. | mechanical | enforced | yes | CI job `changelog` | `pr.yaml:changelog` | — |
 | `emitter.process.feature-branches-and-pull-requests` | Push feature branches and open pull requests; never push to main directly, merge automatically or monitor queued checks. | mechanical | doc-only | no | nothing | — | — |
+| `emitter.process.pr-tracking-issue` | The first line of the description of every open pull request whose base, or whose stack's final target, is main is Fixes #ISSUE_NUMBER, naming an open issue, not a pull request, in this repository; a pull request Dependabot opens is the exception. | mechanical | enforced | yes | CI job `pr-description` | `pr-description.yaml:pr-description` | yes |
 | `emitter.process.rules-registry` | Every rule is registered in rules/registry.toml, is enforced where it claims to be, and its rendered views are current. | mechanical | enforced | yes | quality guard `rules-registry` | `pr.yaml:rules` | **unproven** |
 
 ```mermaid
@@ -374,11 +376,16 @@ flowchart LR
   j_CI_pr_yaml_changelog["CI pr.yaml:changelog"]
   r_emitter_process_feature_branches_and_pull_requests("emitter.process.feature-branches-and-pull-requests (doc-only)")
   gap_unenforced>"not enforced"]
+  r_emitter_process_pr_tracking_issue("emitter.process.pr-tracking-issue (enforced)")
+  e_CI_job_pr_description["CI job pr-description"]
+  j_CI_pr_description_yaml_pr_description["CI pr-description.yaml:pr-description"]
   r_emitter_process_rules_registry("emitter.process.rules-registry (enforced)")
   r_emitter_agents_adapters_point_to_agents_md --> e_quality_guard_rules_registry
   e_quality_guard_rules_registry --> j_CI_pr_yaml_rules
   r_emitter_process_changelog_fragment --> e_CI_job_changelog
   e_CI_job_changelog --> j_CI_pr_yaml_changelog
   r_emitter_process_feature_branches_and_pull_requests -.-> gap_unenforced
+  r_emitter_process_pr_tracking_issue --> e_CI_job_pr_description
+  e_CI_job_pr_description --> j_CI_pr_description_yaml_pr_description
   r_emitter_process_rules_registry --> e_quality_guard_rules_registry
 ```

@@ -1,0 +1,48 @@
+name: PR description
+
+# Rule emitter.process.pr-tracking-issue: the first line of every pull
+# request's description is "Fixes #ISSUE_NUMBER", naming an open issue in this
+# repository.
+#
+# A workflow of its own, so that editing a description reruns only this
+# check, not the whole of CI. It runs for pull requests whose base is main.
+# In a stack of pull requests that gh stack links on GitHub, GitHub gives
+# every pull request the stack's final target, main, as its base, so it runs
+# on each of them too, as CI does.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize]
+
+# The check reads the description from the event payload and looks the issue
+# up with the job's token, so it needs only read access.
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-description:
+    # main's ruleset can require the check by this name.
+    name: PR description
+    # GitHub also sends "edited" for closed pull requests. Merging closed the
+    # issue a merged pull request names, so checking one would fail.
+    if: ${{ github.event.pull_request.state == 'open' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          version-file: .github/uv-version.txt
+          python-version: "3.13"
+      - name: Check the first line and the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --no-project python -m scripts.rules.pr_description

@@ -1,0 +1,12 @@
+{
+  "action": "opened",
+  "number": 38,
+  "pull_request": {
+    "number": 38,
+    "title": "Keep telemetry running after an unreadable saved login or a malformed collector answer, and refuse an unsendable collector token",
+    "body": "Fixes #37\n\n## What changes\n\n- An unreadable saved login keeps runs pending instead of local-only.\n"
+  },
+  "repository": {
+    "full_name": "PolicyEngine/microcosm-emitter"
+  }
+}

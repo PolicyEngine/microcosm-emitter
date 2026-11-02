@@ -60,10 +60,14 @@ id = "process"
 title = "Process and repository hygiene"
 
 [discovery]
-# Every job of the pull-request workflow and of the verification workflow it
-# calls needs a rule. push.yaml stays out: its jobs run after merging, and
+# Every job of the pull-request workflow, of the verification workflow it
+# calls and of the PR description workflow needs a rule. push.yaml stays out: its jobs run after merging, and
 # tests/test_workflows.py checks their order.
-workflows = [".github/workflows/pr.yaml", ".github/workflows/ci.yml"]
+workflows = [
+  ".github/workflows/pr.yaml",
+  ".github/workflows/ci.yml",
+  ".github/workflows/pr-description.yaml",
+]
 # Every test in these files checks structure, configuration or a released
 # contract, so each needs a rule.
 guard_test_globs = [
@@ -737,6 +741,12 @@ reason = "The quality guards are the rules tool, which uses only the standard li
 removal = "scripts/rules needs a package beyond the standard library"
 
 [[rule.exception]]
+path = ".github/workflows/pr-description.yaml"
+match = "uv run --no-project python -m scripts.rules.pr_description"
+reason = "The PR description check is part of the rules tool, which uses only the standard library, so it runs without installing the project."
+removal = "scripts/rules needs a package beyond the standard library"
+
+[[rule.exception]]
 path = "tools/check-changelog.sh"
 match = "uv run --no-project python tools/bump-version.py --check"
 reason = "tools/bump-version.py uses only the standard library, so the changelog job checks fragments without installing the project."
@@ -1002,9 +1012,9 @@ invocation = "rhysd/actionlint"
 [[rule]]
 id = "emitter.ci.pull-request-workflow-structure"
 category = "ci"
-statement = "pr.yaml runs on pull requests and calls ci.yml, the changelog check and the rules registry, and its Required checks job runs always and needs each other job; ci.yml is called only by other workflows and has exactly the quality, tests, build-packages and collector jobs, testing on Ubuntu and macOS with Python 3.13 and 3.14, with the collector job after build-packages."
+statement = "pr.yaml runs on pull requests and calls ci.yml, the changelog check and the rules registry, and its Required checks job runs always and needs each other job; ci.yml is called only by other workflows and has exactly the quality, tests, build-packages and collector jobs, testing on Ubuntu and macOS with Python 3.13 and 3.14, with the collector job after build-packages; pr-description.yaml runs for open pull requests whose base, or whose stack's final target, is main, on every event that can change the description, with read-only permissions, in one job named PR description."
 rationale = "README.md#publication"
-scope = [".github/workflows/pr.yaml", ".github/workflows/ci.yml"]
+scope = [".github/workflows/pr.yaml", ".github/workflows/ci.yml", ".github/workflows/pr-description.yaml"]
 tier = "mechanical"
 status = "enforced"
 autofix = false
@@ -1013,6 +1023,7 @@ kind = "pytest"
 nodes = [
   "tests/test_workflows.py::test_pull_requests_require_every_check_and_a_changelog_fragment",
   "tests/test_workflows.py::test_pull_requests_check_the_rules_registry",
+  "tests/test_workflows.py::test_pull_request_descriptions_are_checked_for_pull_requests_into_main",
   "tests/test_workflows.py::test_verification_includes_real_collector_and_matrix",
 ]
 [[rule.ci]]
@@ -1023,7 +1034,7 @@ invocation = 'pytest -m "not collector"'
 [[rule]]
 id = "emitter.ci.required-checks"
 category = "ci"
-statement = "Every pull request runs the verification workflow, ci.yml, and Required checks, the one status check main's ruleset requires, passes only when every other pull-request job succeeded."
+statement = "Every pull request runs the verification workflow, ci.yml, and Required checks, a status check main's ruleset requires, passes only when every other pr.yaml job succeeded."
 rationale = "README.md#publication"
 scope = [".github/workflows/pr.yaml"]
 tier = "mechanical"
@@ -1098,6 +1109,31 @@ kind = "workflow-job"
 workflow = ".github/workflows/pr.yaml"
 job = "changelog"
 invocation = "tools/check-changelog.sh"
+
+[[rule]]
+id = "emitter.process.pr-tracking-issue"
+category = "process"
+statement = "The first line of the description of every open pull request whose base, or whose stack's final target, is main is Fixes #ISSUE_NUMBER, naming an open issue, not a pull request, in this repository; a pull request Dependabot opens is the exception."
+rationale = "README.md#publication"
+scope = [".github/workflows/pr-description.yaml", "scripts/rules/pr_description.py"]
+tier = "mechanical"
+status = "enforced"
+autofix = false
+[rule.enforcer]
+kind = "workflow-job"
+step = "Check the first line and the tracking issue"
+[[rule.ci]]
+workflow = ".github/workflows/pr-description.yaml"
+job = "pr-description"
+invocation = "scripts.rules.pr_description"
+[rule.proof]
+# #13's description named no issue; #38's names #37.
+bad_fixture = "scripts/rules/tests/fixtures/pr_description/bad_event.json"
+good_fixture = "scripts/rules/tests/fixtures/pr_description/good_event.json"
+test = "scripts/rules/tests/test_pr_description.py::TestPrDescriptionProof::test_rule_proof_pr_tracking_issue"
+workflow = ".github/workflows/pr.yaml"
+job = "rules"
+invocation = "unittest discover -s scripts/rules/tests"
 
 [[rule]]
 id = "emitter.process.feature-branches-and-pull-requests"

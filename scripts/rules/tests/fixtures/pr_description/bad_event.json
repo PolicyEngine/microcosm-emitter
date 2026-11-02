@@ -1,0 +1,12 @@
+{
+  "action": "opened",
+  "number": 13,
+  "pull_request": {
+    "number": 13,
+    "title": "Release automatically on every merge to main",
+    "body": "This PR replaces release-triggered publication with the org's two-pass push workflow, as in `policyengine-core`.\n\n## What changes\n\n- Every merge to `main` releases a new version.\n"
+  },
+  "repository": {
+    "full_name": "PolicyEngine/microcosm-emitter"
+  }
+}
