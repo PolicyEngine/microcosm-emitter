@@ -8,11 +8,11 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 | Tier | enforced | ratcheted | advisory | doc-only | Total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| mechanical | 48 | 0 | 0 | 7 | 55 |
+| mechanical | 49 | 0 | 0 | 7 | 56 |
 | metric | 1 | 0 | 0 | 0 | 1 |
 | judgment | 0 | 0 | 0 | 0 | 0 |
 
-**Blocking:** 49 of 56 rules.
+**Blocking:** 50 of 57 rules.
 
 ## Gaps
 
