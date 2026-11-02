@@ -37,6 +37,10 @@ jobs:
         with:
           version-file: .github/uv-version.txt
           python-version: "3.13"
+          # A Dependabot pull request that changes only uv.lock passes without
+          # running uv, so no cache directory exists for setup-uv to save
+          # (rule emitter.ci.uv-cache-only-where-uv-runs).
+          enable-cache: false
       - env:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           BASE_REF: ${{ github.base_ref }}
