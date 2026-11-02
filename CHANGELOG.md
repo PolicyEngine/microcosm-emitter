@@ -1,3 +1,10 @@
+## [0.11.10] - 2026-11-02
+
+### Changed
+
+- Exceptions are raised as Ruff's `EM`, `RSE` and `TRY` rules require: messages are assigned before the raise, checks that raise inside a `try` block are moved into helper functions, and Ruff no longer ignores these families. Behaviour is unchanged.
+
+
 ## [0.11.9] - 2026-11-02
 
 ### Changed
