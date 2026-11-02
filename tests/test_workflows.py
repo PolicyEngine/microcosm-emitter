@@ -83,6 +83,34 @@ def test_pull_requests_check_the_rules_registry():
     assert rules["steps"][-1]["env"] == {"GH_TOKEN": "${{ github.token }}"}
 
 
+def test_pull_request_descriptions_are_checked_for_pull_requests_into_main():
+    """A workflow of its own, so editing a description reruns only this check."""
+    config = workflow("pr-description.yaml")
+    assert config["on"] == {
+        "pull_request": {
+            "branches": ["main"],
+            "types": ["opened", "edited", "reopened", "synchronize"],
+        }
+    }
+    assert config["permissions"] == {
+        "contents": "read",
+        "issues": "read",
+        "pull-requests": "read",
+    }
+    (job_id,) = config["jobs"]
+    assert job_id == "pr-description"
+    job = config["jobs"][job_id]
+    # main's ruleset requires the check by this name.
+    assert job["name"] == "PR description"
+    # GitHub also sends "edited" for closed pull requests, whose issue merging
+    # closed.
+    assert job["if"] == "${{ github.event.pull_request.state == 'open' }}"
+    check = job["steps"][-1]
+    assert check["name"] == "Check the first line and the tracking issue"
+    assert check["run"] == "uv run --no-project python -m scripts.rules.pr_description"
+    assert check["env"] == {"GH_TOKEN": "${{ github.token }}"}
+
+
 def test_verification_includes_real_collector_and_matrix():
     config = workflow("ci.yml")
     assert set(config["on"]) == {"workflow_call"}
