@@ -89,20 +89,23 @@ def heartbeat_event(state: LifecycleState) -> dict[str, Any]:
 
 def _mapping(value: Any) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
-        raise TypeError("telemetry details must be an object")
+        error_message = "telemetry details must be an object"
+        raise TypeError(error_message)
     return value
 
 
 def _optional_text(value: Any) -> str | None:
     if value is not None and not isinstance(value, str):
-        raise TypeError("telemetry text must be a string or null")
+        error_message = "telemetry text must be a string or null"
+        raise TypeError(error_message)
     return value
 
 
 def _stage_id(request: Mapping[str, Any]) -> str:
     value = _optional_stage_id(request.get("stage_id"))
     if value is None:
-        raise ValueError("stage_id must be a nonempty string")
+        error_message = "stage_id must be a nonempty string"
+        raise ValueError(error_message)
     return value
 
 
@@ -112,7 +115,8 @@ def _optional_stage_id(value: Any) -> str | None:
         not isinstance(value, str)
         or re.fullmatch(TELEMETRY_IDENTIFIER_PATTERN, value) is None
     ):
-        raise ValueError("stage_id must match the collector identifier contract")
+        error_message = "stage_id must match the collector identifier contract"
+        raise ValueError(error_message)
     return value
 
 
@@ -125,17 +129,20 @@ def _validate_block_details(details: Mapping[str, Any]) -> None:
         not isinstance(phase, str)
         or re.fullmatch(TELEMETRY_IDENTIFIER_PATTERN, phase) is None
     ):
-        raise ValueError("blocked phase must be a safe identifier")
+        error_message = "blocked phase must be a safe identifier"
+        raise ValueError(error_message)
     if isinstance(count, bool) or not isinstance(count, int) or count < 1:
-        raise ValueError("blocking_failure_count must be an integer of at least 1")
+        error_message = "blocking_failure_count must be an integer of at least 1"
+        raise ValueError(error_message)
     if not isinstance(check_ids, list) or any(
         not isinstance(check_id, str)
         or not 1 <= len(check_id) <= MAX_TELEMETRY_CHECK_ID_CHARS
         for check_id in check_ids
     ):
-        raise ValueError(
+        error_message = (
             "blocking_gate_ids must contain check identifiers of 1 to 200 characters"
         )
+        raise ValueError(error_message)
 
 
 def _event(
@@ -146,9 +153,11 @@ def _event(
     details: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(event_type, str) or event_type not in _EVENT_TYPES:
-        raise ValueError("unsupported telemetry event type")
+        error_message = "unsupported telemetry event type"
+        raise ValueError(error_message)
     if not isinstance(status, str) or status not in _STATUSES:
-        raise ValueError("unsupported telemetry status")
+        error_message = "unsupported telemetry status"
+        raise ValueError(error_message)
     stage_id, message = _optional_stage_id(stage_id), _optional_text(message)
     original_details = _mapping(details if details is not None else {})
     if status == STATUS_BLOCKED:
@@ -246,7 +255,8 @@ class _RequestProcessor:
                 BUILD_COMPLETED_MESSAGE,
             )
         else:
-            raise ValueError("unsupported telemetry command")
+            error_message = "unsupported telemetry command"
+            raise ValueError(error_message)
 
     def add(
         self,
@@ -270,7 +280,8 @@ class _RequestProcessor:
         stage = _stage_id(request)
         source_status = request.get("status", "running")
         if not isinstance(source_status, str):
-            raise TypeError("stage status must be a string")
+            error_message = "stage status must be a string"
+            raise TypeError(error_message)
         status = SEQUENTIAL_STATUS_MAP.get(source_status, STATUS_PROGRESS)
         if status == STATUS_STARTED:
             if self.state.transition_stage == stage:
@@ -325,7 +336,8 @@ class _RequestProcessor:
     def block(self, request: Mapping[str, Any]) -> None:
         check_ids = request.get("blocking_gate_ids")
         if not isinstance(check_ids, list):
-            raise ValueError("blocking_gate_ids must be a list")
+            error_message = "blocking_gate_ids must be a list"
+            raise TypeError(error_message)
         count = request.get("blocking_failure_count")
         details = {
             "phase": request.get("phase"),

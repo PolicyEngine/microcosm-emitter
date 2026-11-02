@@ -112,9 +112,10 @@ class HandoverJobs:
                     or existing.kind != kind
                     or existing.target not in {target, *equivalent_targets}
                 ):
-                    raise ValueError(
+                    error_message = (
                         "Hand-over identity conflicts with a queued hand-over."
                     )
+                    raise ValueError(error_message)
                 return dict(existing.receipt)
             session.add(
                 HandoverJob(

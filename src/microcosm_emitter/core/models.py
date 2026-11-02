@@ -45,7 +45,9 @@ class JsonObjectText(TypeDecorator[dict[str, Any]]):
             return None
         decoded = json.loads(value)
         if not isinstance(decoded, dict):
-            raise ValueError("telemetry spool JSON must contain an object")
+            error_message = "telemetry spool JSON must contain an object"
+            # The same type as json.loads's JSONDecodeError for invalid JSON above.
+            raise ValueError(error_message)  # noqa: TRY004
         return decoded
 
 

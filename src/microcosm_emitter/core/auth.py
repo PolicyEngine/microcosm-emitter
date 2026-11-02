@@ -513,5 +513,6 @@ def shared_session(
         return session
     shared = services.setdefault("collector_session", session)
     if not isinstance(shared, CollectorSession) or shared.origin != origin:
-        raise ValueError("Provider modules must use the same collector origin.")
+        error_message = "Provider modules must use the same collector origin."
+        raise ValueError(error_message)
     return shared

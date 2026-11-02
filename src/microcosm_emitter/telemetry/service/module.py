@@ -47,7 +47,8 @@ class TelemetryModule:
             self.configuration.get("heartbeat_seconds", DEFAULT_HEARTBEAT_SECONDS)
         )
         if not math.isfinite(heartbeat):
-            raise ValueError("heartbeat interval must be finite")
+            error_message = "heartbeat interval must be finite"
+            raise ValueError(error_message)
         self.heartbeat_seconds = max(MINIMUM_HEARTBEAT_SECONDS, heartbeat)
         self._next_heartbeat = time.monotonic() + self.heartbeat_seconds
         self.sampler = ProcessTreeSampler(self.context.parent_pid)

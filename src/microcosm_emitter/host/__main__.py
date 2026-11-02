@@ -4,14 +4,51 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from microcosm_emitter.compatibility import EmitterDescription, HelloResponse
 from microcosm_emitter.host.constants import MAX_MESSAGE_BYTES
-from microcosm_emitter.host.contracts import ModuleContext
+from microcosm_emitter.host.contracts import ModuleContext, ServiceModule
 from microcosm_emitter.host.errors import ModuleNotInstalledError, safe_startup_error
 from microcosm_emitter.host.loading import load_module
 from microcosm_emitter.host.process import parent_process
 from microcosm_emitter.host.runtime import ServiceRuntime
+
+
+def _read_configurations() -> dict[str, Any]:
+    payload = sys.stdin.buffer.read(MAX_MESSAGE_BYTES + 1)
+    if len(payload) > MAX_MESSAGE_BYTES:
+        error_message = "configuration is too large"
+        raise ValueError(error_message)
+    configurations = json.loads(payload)
+    if not isinstance(configurations, dict) or not configurations:
+        error_message = "module configurations must be a nonempty object"
+        raise ValueError(error_message)
+    return configurations
+
+
+def _load_modules(
+    configurations: dict[str, Any],
+    context: ModuleContext,
+    *,
+    skip_unavailable: bool,
+) -> tuple[dict[str, ServiceModule], list[str]]:
+    modules = {}
+    skipped = []
+    for name, settings in configurations.items():
+        if not isinstance(name, str) or not isinstance(settings, dict):
+            error_message = "invalid module configuration"
+            raise TypeError(error_message)
+        try:
+            modules[name] = load_module(name, settings, context)
+        except ModuleNotInstalledError:
+            if not skip_unavailable:
+                raise
+            skipped.append(name)
+    if not modules:
+        error_message = "no requested module is installed"
+        raise ValueError(error_message)
+    return modules, skipped
 
 
 def main(
@@ -39,27 +76,14 @@ def main(
     )
     args = parser.parse_args(argv)
     try:
-        payload = sys.stdin.buffer.read(MAX_MESSAGE_BYTES + 1)
-        if len(payload) > MAX_MESSAGE_BYTES:
-            raise ValueError("configuration is too large")
-        configurations = json.loads(payload)
-        if not isinstance(configurations, dict) or not configurations:
-            raise ValueError("module configurations must be a nonempty object")
+        configurations = _read_configurations()
         parent = parent_process(args.parent_pid, args.parent_created_at)
         context = ModuleContext(args.parent_pid)
-        modules = {}
-        skipped = []
-        for name, settings in configurations.items():
-            if not isinstance(name, str) or not isinstance(settings, dict):
-                raise ValueError("invalid module configuration")
-            try:
-                modules[name] = load_module(name, settings, context)
-            except ModuleNotInstalledError:
-                if not args.skip_unavailable_modules:
-                    raise
-                skipped.append(name)
-        if not modules:
-            raise ValueError("no requested module is installed")
+        modules, skipped = _load_modules(
+            configurations,
+            context,
+            skip_unavailable=args.skip_unavailable_modules,
+        )
         hello_response: HelloResponse | None = (
             None
             if description is None
@@ -76,11 +100,12 @@ def main(
             is_parent_alive=parent.alive,
             description=hello_response,
         ).run()
-        return 0
     except Exception as error:
         # Never include configuration or module exception payloads in stderr.
         print(str(safe_startup_error(error)), file=sys.stderr)
         return 1
+    else:
+        return 0
     finally:
         try:
             args.socket.parent.rmdir()

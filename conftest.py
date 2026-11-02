@@ -29,7 +29,8 @@ def isolate_credentials_and_network(tmp_path, monkeypatch):
 
     def loopback_post(url, *args, **kwargs):
         if urlsplit(url).hostname not in {"localhost", "127.0.0.1", "::1"}:
-            raise AssertionError("Tests must not contact a hosted collector")
+            error_message = "Tests must not contact a hosted collector"
+            raise AssertionError(error_message)
         return real_post(url, *args, **kwargs)
 
     monkeypatch.setattr(collector, "_http_post", loopback_post)

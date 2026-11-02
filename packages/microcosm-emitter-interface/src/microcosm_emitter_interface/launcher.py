@@ -71,7 +71,8 @@ class EmitterStartupError(LocalEmitterError):
         self, reason: StartupFailureReason, *, exit_code: int | None = None
     ) -> None:
         if reason not in _STARTUP_MESSAGES:
-            raise ValueError("Unknown startup failure reason.")
+            error_message = "Unknown startup failure reason."
+            raise ValueError(error_message)
         self.reason: StartupFailureReason = reason
         self.exit_code = exit_code if type(exit_code) is int else None
         details = [reason]
@@ -89,7 +90,8 @@ def resolve_command(command: str | os.PathLike[str] | None = None) -> str:
     )
     resolved = shutil.which(candidate)
     if resolved is None:
-        raise EmitterStartupError("command_not_found")
+        startup_reason = "command_not_found"
+        raise EmitterStartupError(startup_reason)
     return resolved
 
 
@@ -120,6 +122,72 @@ class EmitterProcess:
             _remove_runtime_directory(self.runtime_directory)
 
 
+def _configuration_payload(
+    modules: Mapping[str, Mapping[str, Any]], startup_timeout: float
+) -> bytes:
+    """Return the configuration to send to the emitter, or refuse an invalid one."""
+    if (
+        not isinstance(startup_timeout, (int, float))
+        or not math.isfinite(startup_timeout)
+        or startup_timeout < 0
+    ):
+        startup_reason = "invalid_configuration"
+        raise EmitterStartupError(startup_reason)
+    if (
+        not isinstance(modules, Mapping)
+        or not modules
+        or any(
+            not isinstance(name, str) or not isinstance(settings, Mapping)
+            for name, settings in modules.items()
+        )
+    ):
+        startup_reason = "invalid_configuration"
+        raise EmitterStartupError(startup_reason)
+    payload = json.dumps(
+        {name: dict(settings) for name, settings in modules.items()},
+        allow_nan=False,
+    ).encode()
+    if len(payload) > MAX_MESSAGE_BYTES:
+        startup_reason = "invalid_configuration"
+        raise EmitterStartupError(startup_reason)
+    return payload
+
+
+def _send_configuration(writer: socket.socket, payload: bytes, deadline: float) -> None:
+    """Write the configuration to the emitter's standard input before the deadline."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        startup_reason = "configuration_timeout"
+        raise EmitterStartupError(startup_reason)
+    writer.settimeout(remaining)
+    writer.sendall(payload)
+    writer.shutdown(socket.SHUT_WR)
+    if time.monotonic() >= deadline:
+        startup_reason = "configuration_timeout"
+        raise EmitterStartupError(startup_reason)
+
+
+def _wait_for_readiness(
+    process: subprocess.Popen, transport: SocketTransport, deadline: float
+) -> None:
+    """Return once the emitter answers a ping before the deadline."""
+    while True:
+        exit_code = process.poll()
+        if exit_code is not None:
+            startup_reason = "child_exit"
+            raise EmitterStartupError(startup_reason, exit_code=exit_code)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            startup_reason = "readiness_timeout"
+            raise EmitterStartupError(startup_reason)
+        try:
+            transport.ping(timeout=min(transport.timeout, remaining))
+        except LocalEmitterError:
+            time.sleep(min(STARTUP_POLL_SECONDS, max(0, remaining)))
+            continue
+        break
+
+
 def start_emitter(
     modules: Mapping[str, Mapping[str, Any]],
     *,
@@ -131,27 +199,7 @@ def start_emitter(
     process: subprocess.Popen | None = None
     phase: StartupFailureReason = "invalid_configuration"
     try:
-        if (
-            not isinstance(startup_timeout, (int, float))
-            or not math.isfinite(startup_timeout)
-            or startup_timeout < 0
-        ):
-            raise EmitterStartupError("invalid_configuration")
-        if (
-            not isinstance(modules, Mapping)
-            or not modules
-            or any(
-                not isinstance(name, str) or not isinstance(settings, Mapping)
-                for name, settings in modules.items()
-            )
-        ):
-            raise EmitterStartupError("invalid_configuration")
-        payload = json.dumps(
-            {name: dict(settings) for name, settings in modules.items()},
-            allow_nan=False,
-        ).encode()
-        if len(payload) > MAX_MESSAGE_BYTES:
-            raise EmitterStartupError("invalid_configuration")
+        payload = _configuration_payload(modules, startup_timeout)
         executable = resolve_command(command)
         deadline = time.monotonic() + startup_timeout
         phase = "startup_failure"
@@ -176,29 +224,10 @@ def start_emitter(
                 start_new_session=True,
             )
             phase = "configuration_timeout"
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise EmitterStartupError("configuration_timeout")
-            writer.settimeout(remaining)
-            writer.sendall(payload)
-            writer.shutdown(socket.SHUT_WR)
-            if time.monotonic() >= deadline:
-                raise EmitterStartupError("configuration_timeout")
+            _send_configuration(writer, payload, deadline)
         phase = "startup_failure"
         transport = SocketTransport(socket_path)
-        while True:
-            exit_code = process.poll()
-            if exit_code is not None:
-                raise EmitterStartupError("child_exit", exit_code=exit_code)
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise EmitterStartupError("readiness_timeout")
-            try:
-                transport.ping(timeout=min(transport.timeout, remaining))
-            except LocalEmitterError:
-                time.sleep(min(STARTUP_POLL_SECONDS, max(0, remaining)))
-                continue
-            break
+        _wait_for_readiness(process, transport, deadline)
         description = _accepted_description(transport, deadline)
         return EmitterProcess(process, transport, directory, description)
     except Exception as error:
@@ -231,12 +260,14 @@ def _accepted_description(
 ) -> dict[str, Any]:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        raise EmitterStartupError("readiness_timeout")
+        startup_reason = "readiness_timeout"
+        raise EmitterStartupError(startup_reason)
     try:
         description = transport.hello(timeout=remaining)
     except LocalEmitterError:
         # An emitter without a ``hello`` answer predates this protocol.
-        raise EmitterStartupError("unsupported_protocol_version") from None
+        startup_reason = "unsupported_protocol_version"
+        raise EmitterStartupError(startup_reason) from None
     versions = description.get("protocol_versions")
     modules = description.get("modules")
     # Every call reads the module names as a set of strings, so a later
@@ -248,7 +279,8 @@ def _accepted_description(
         or not isinstance(modules, list)
         or not all(isinstance(module, str) for module in modules)
     ):
-        raise EmitterStartupError("unsupported_protocol_version")
+        startup_reason = "unsupported_protocol_version"
+        raise EmitterStartupError(startup_reason)
     return description
 
 

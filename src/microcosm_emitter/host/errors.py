@@ -38,7 +38,8 @@ class ServiceStartupError(LocalServiceError):
         exit_code: int | None = None,
     ) -> None:
         if reason not in _STARTUP_MESSAGES:
-            raise ValueError("Unknown startup failure reason.")
+            error_message = "Unknown startup failure reason."
+            raise ValueError(error_message)
         self.reason = reason
         self.exit_code = exit_code if type(exit_code) is int else None
         metadata = [reason]

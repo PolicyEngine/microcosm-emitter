@@ -39,12 +39,14 @@ def fragment_types(changelog_dir: Path) -> set[str]:
             or parts[-1] != "md"
             or parts[-2] not in FRAGMENT_TYPES
         ):
-            raise ValueError(
+            error_message = (
                 f"Unrecognised changelog fragment {fragment.name}. {FRAGMENT_HELP}."
             )
+            raise ValueError(error_message)
         types.add(parts[-2])
     if not types:
-        raise ValueError(f"No changelog fragment to release. {FRAGMENT_HELP}.")
+        error_message = f"No changelog fragment to release. {FRAGMENT_HELP}."
+        raise ValueError(error_message)
     return types
 
 
@@ -60,9 +62,10 @@ def next_version(version: str, types: set[str]) -> str:
 def _file_version(root: Path, versioned_file: str) -> str:
     versions = PYPROJECT_VERSION.findall((root / versioned_file).read_text())
     if len(versions) != 1:
-        raise ValueError(
+        error_message = (
             f"Expected one version line in {versioned_file}, found {versions}."
         )
+        raise ValueError(error_message)
     return versions[0]
 
 
@@ -72,14 +75,16 @@ def current_version(root: Path) -> str:
         for versioned_file in VERSIONED_FILES
     }
     if len(set(versions.values())) != 1:
-        raise ValueError(f"Both distributions must have the same version: {versions}.")
+        error_message = f"Both distributions must have the same version: {versions}."
+        raise ValueError(error_message)
     version = versions[VERSIONED_FILE]
     pins = INTERFACE_PIN.findall((root / VERSIONED_FILE).read_text())
     if pins != [version]:
-        raise ValueError(
+        error_message = (
             f"{VERSIONED_FILE} must pin microcosm-emitter-interface=={version} "
             f"exactly once, found {pins}."
         )
+        raise ValueError(error_message)
     return version
 
 

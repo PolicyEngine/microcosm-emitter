@@ -20,15 +20,18 @@ from microcosm_emitter_interface.protocol_fixtures import materialize, protocol_
 
 class MultiElementArray:
     def item(self):
-        raise ValueError("can only convert an array of size 1 to a Python scalar")
+        error_message = "can only convert an array of size 1 to a Python scalar"
+        raise ValueError(error_message)
 
 
 class UnresolvablePath:
     def __fspath__(self):
-        raise OSError("synthetic unresolvable path")
+        error_message = "synthetic unresolvable path"
+        raise OSError(error_message)
 
     def resolve(self):
-        raise OSError("synthetic unresolvable path")
+        error_message = "synthetic unresolvable path"
+        raise OSError(error_message)
 
 
 def test_in_process_clients_reuse_the_interface_definitions():
@@ -179,7 +182,8 @@ def test_in_process_orrery_client_reports_an_unexpected_transport_error():
     from microcosm_emitter.orrery.client import GraphPublicationClient
 
     def unexpected(message):
-        raise RecursionError("synthetic")
+        error_message = "synthetic"
+        raise RecursionError(error_message)
 
     client = GraphPublicationClient(RecordingGraphTransport(unexpected))
     receipt = client.receipt("fixture-publication")

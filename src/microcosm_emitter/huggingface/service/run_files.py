@@ -154,4 +154,5 @@ def commit_run_files(
                 or attempt + 1 == MAX_PARENT_CONFLICT_ATTEMPTS
             ):
                 raise
-    raise AssertionError("unreachable")  # pragma: no cover
+    error_message = "unreachable"
+    raise AssertionError(error_message)  # pragma: no cover

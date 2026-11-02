@@ -75,27 +75,33 @@ class BundleFile:
         bare_file_name(self.name, label="bundle file name")
         role_identifier(self.role)
         if not isinstance(self.sha256, str) or not _SHA256.fullmatch(self.sha256):
-            raise ValueError("sha256 must be a lowercase hexadecimal digest.")
+            error_message = "sha256 must be a lowercase hexadecimal digest."
+            raise ValueError(error_message)
         if (
             isinstance(self.bytes, bool)
             or not isinstance(self.bytes, int)
             or self.bytes < 0
         ):
-            raise ValueError("bytes must be a nonnegative integer.")
+            error_message = "bytes must be a nonnegative integer."
+            raise ValueError(error_message)
 
 
 def check_bundle_files(files: Sequence[BundleFile]) -> None:
     names = [item.name for item in files]
     if len(set(names)) != len(names):
-        raise ValueError("A bundle names each file once.")
+        error_message = "A bundle names each file once."
+        raise ValueError(error_message)
     roles = [item.role for item in files]
     if roles.count(BUNDLE_INVENTORY_ROLE) != 1:
-        raise ValueError("A bundle has exactly one staged_manifest file.")
+        error_message = "A bundle has exactly one staged_manifest file."
+        raise ValueError(error_message)
     for role in (BUILD_MANIFEST_ROLE, CHECKSUMS_ROLE):
         if roles.count(role) > 1:
-            raise ValueError(f"A bundle has at most one {role} file.")
+            error_message = f"A bundle has at most one {role} file."
+            raise ValueError(error_message)
     if all(role in SIDECAR_ROLES for role in roles):
-        raise ValueError("A bundle has at least one output file.")
+        error_message = "A bundle has at least one output file."
+        raise ValueError(error_message)
 
 
 @dataclass(frozen=True)
@@ -124,16 +130,19 @@ class StageDatasetBundle:
         repository_prefix(self.prefix)
         object.__setattr__(self, "files", tuple(self.files))
         if any(not isinstance(item, BundleFile) for item in self.files):
-            raise ValueError("files must be BundleFile values.")
+            error_message = "files must be BundleFile values."
+            raise ValueError(error_message)
         check_bundle_files(self.files)
         if self.commit_message is not None and (
             not isinstance(self.commit_message, str) or not self.commit_message.strip()
         ):
-            raise ValueError("commit_message must be nonempty when given.")
+            error_message = "commit_message must be nonempty when given."
+            raise ValueError(error_message)
         if self.collector is not None and not isinstance(
             self.collector, CollectorProvenance
         ):
-            raise ValueError("collector must be a CollectorProvenance value.")
+            error_message = "collector must be a CollectorProvenance value."
+            raise ValueError(error_message)
 
     @property
     def remote_prefix(self) -> str:

@@ -106,7 +106,8 @@ def version_report() -> VersionReport:
 def _positive_integer(value: str) -> int:
     number = int(value)
     if number < 1:
-        raise argparse.ArgumentTypeError("must be a positive whole number")
+        error_message = "must be a positive whole number"
+        raise argparse.ArgumentTypeError(error_message)
     return number
 
 

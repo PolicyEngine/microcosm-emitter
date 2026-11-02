@@ -98,15 +98,17 @@ class ReleasesRecord:
     @classmethod
     def parse(cls, content: bytes) -> ReleasesRecord:
         if len(content) > MAX_RECORD_BYTES:
+            refusal_code = "INVALID_RECORD"
             raise _refuse(
-                "INVALID_RECORD",
+                refusal_code,
                 f"releases.json is larger than {MAX_RECORD_BYTES} bytes.",
             )
         try:
             document = json.loads(content)
         except _UNREADABLE_JSON_ERRORS:
+            refusal_code = "INVALID_RECORD"
             raise _refuse(
-                "INVALID_RECORD", "releases.json is not a readable JSON document."
+                refusal_code, "releases.json is not a readable JSON document."
             ) from None
         record = cls._from_document(document)
         violations = check_record(record)
@@ -120,38 +122,47 @@ class ReleasesRecord:
             return _refuse("INVALID_RECORD", message)
 
         if not isinstance(document, dict) or set(document) != _RECORD_KEYS:
-            raise invalid(f"releases.json must have exactly {sorted(_RECORD_KEYS)}.")
+            error_message = f"releases.json must have exactly {sorted(_RECORD_KEYS)}."
+            raise invalid(error_message)
         version = document["schema_version"]
         # ``True`` and ``1.0`` equal 1 in Python; only the integer is the version.
         if type(version) is not int or version != RELEASES_SCHEMA_VERSION:
-            raise invalid(
+            error_message = (
                 f"releases.json schema_version must be {RELEASES_SCHEMA_VERSION}."
             )
+            raise invalid(error_message)
         releases_document = document["releases"]
         if not isinstance(releases_document, dict):
-            raise invalid("releases must be an object.")
+            error_message = "releases must be an object."
+            raise invalid(error_message)
         releases = {}
         for release, entry in releases_document.items():
             try:
                 safe_identifier(release, label="release")
             except ValueError:
-                raise invalid("A release name is not a safe identifier.") from None
+                error_message = "A release name is not a safe identifier."
+                raise invalid(error_message) from None
             if not isinstance(entry, dict) or set(entry) != _RELEASE_KEYS:
-                raise invalid(f"Release {release} must have {sorted(_RELEASE_KEYS)}.")
+                error_message = f"Release {release} must have {sorted(_RELEASE_KEYS)}."
+                raise invalid(error_message)
             try:
                 role_identifier(entry["role"], label="release role")
             except ValueError:
-                raise invalid(f"Release {release} has an invalid role.") from None
+                error_message = f"Release {release} has an invalid role."
+                raise invalid(error_message) from None
             if entry["current"] is not None and not isinstance(entry["current"], str):
-                raise invalid(f"Release {release} current must be a build or null.")
+                error_message = f"Release {release} current must be a build or null."
+                raise invalid(error_message)
             if not isinstance(entry["builds"], dict):
-                raise invalid(f"Release {release} builds must be an object.")
+                error_message = f"Release {release} builds must be an object."
+                raise invalid(error_message)
             builds = {}
             for build, build_entry in entry["builds"].items():
                 try:
                     safe_identifier(build, label="build")
                 except ValueError:
-                    raise invalid("A build name is not a safe identifier.") from None
+                    error_message = "A build name is not a safe identifier."
+                    raise invalid(error_message) from None
                 if (
                     not isinstance(build_entry, dict)
                     or set(build_entry) != _BUILD_KEYS
@@ -159,14 +170,16 @@ class ReleasesRecord:
                     or not build_entry["published_at"]
                     or not isinstance(build_entry["withdrawn"], bool)
                 ):
-                    raise invalid(f"Build {build} of {release} is malformed.")
+                    error_message = f"Build {build} of {release} is malformed."
+                    raise invalid(error_message)
                 builds[build] = BuildEntry(
                     build_entry["published_at"], build_entry["withdrawn"]
                 )
             releases[release] = ReleaseEntry(entry["role"], entry["current"], builds)
         default = document["default"]
         if default is not None and not isinstance(default, str):
-            raise invalid("default must be a release name or null.")
+            error_message = "default must be a release name or null."
+            raise invalid(error_message)
         return cls(default=default, releases=releases)
 
     def to_document(self) -> dict[str, Any]:
@@ -219,13 +232,15 @@ def add_build(
     role_identifier(release_role, label="release role")
     existing = record.releases.get(release)
     if existing is not None and existing.role != release_role:
+        refusal_code = "RELEASE_ROLE_DIFFERS"
         raise _refuse(
-            "RELEASE_ROLE_DIFFERS",
+            refusal_code,
             f"Release {release} has role {existing.role}, not {release_role}.",
         )
     entry = existing or ReleaseEntry(role=release_role, current=None, builds={})
     if build in entry.builds:
-        raise _refuse("BUILD_ALREADY_LISTED", f"Build {build} of {release} is listed.")
+        refusal_code = "BUILD_ALREADY_LISTED"
+        raise _refuse(refusal_code, f"Build {build} of {release} is listed.")
     builds = {**entry.builds, build: BuildEntry(published_at, False)}
     updated = replace(
         entry, builds=builds, current=build if make_current else entry.current
@@ -237,11 +252,11 @@ def make_current(record: ReleasesRecord, *, release: str, build: str) -> Release
     """Promote a listed, non-withdrawn build."""
     entry = record.releases.get(release)
     if entry is None or build not in entry.builds:
-        raise _refuse("BUILD_NOT_LISTED", f"Build {build} of {release} is not listed.")
+        refusal_code = "BUILD_NOT_LISTED"
+        raise _refuse(refusal_code, f"Build {build} of {release} is not listed.")
     if entry.builds[build].withdrawn:
-        raise _refuse(
-            "CURRENT_WITHDRAWN", f"Build {build} of {release} has been withdrawn."
-        )
+        refusal_code = "CURRENT_WITHDRAWN"
+        raise _refuse(refusal_code, f"Build {build} of {release} has been withdrawn.")
     return replace(
         record,
         releases={**record.releases, release: replace(entry, current=build)},
@@ -257,10 +272,12 @@ def withdraw_build(
     """
     entry = record.releases.get(release)
     if entry is None or build not in entry.builds:
-        raise _refuse("BUILD_NOT_LISTED", f"Build {build} of {release} is not listed.")
+        refusal_code = "BUILD_NOT_LISTED"
+        raise _refuse(refusal_code, f"Build {build} of {release} is not listed.")
     if entry.current == build:
+        refusal_code = "WITHDRAWING_CURRENT_BUILD"
         raise _refuse(
-            "WITHDRAWING_CURRENT_BUILD",
+            refusal_code,
             f"Build {build} is the current build of {release}.",
         )
     builds = {**entry.builds, build: replace(entry.builds[build], withdrawn=True)}

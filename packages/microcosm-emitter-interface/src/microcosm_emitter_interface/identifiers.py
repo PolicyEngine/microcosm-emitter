@@ -21,46 +21,53 @@ RESERVED_PREFIXES: Final = frozenset({"releases"})
 
 def safe_identifier(value: object, *, label: str) -> str:
     if not isinstance(value, str) or not SAFE_IDENTIFIER.fullmatch(value):
-        raise ValueError(f"{label} must match {SAFE_IDENTIFIER.pattern}.")
+        error_message = f"{label} must match {SAFE_IDENTIFIER.pattern}."
+        raise ValueError(error_message)
     return value
 
 
 def repository_identifier(value: object) -> str:
     """A Hugging Face repository identifier, ``owner/name``."""
     if not isinstance(value, str) or not REPOSITORY_IDENTIFIER.fullmatch(value):
-        raise ValueError("repository must be a Hugging Face owner/name identifier.")
+        error_message = "repository must be a Hugging Face owner/name identifier."
+        raise ValueError(error_message)
     return value
 
 
 def role_identifier(value: object, *, label: str = "role") -> str:
     if not isinstance(value, str) or not ROLE_IDENTIFIER.fullmatch(value):
-        raise ValueError(f"{label} must match {ROLE_IDENTIFIER.pattern}.")
+        error_message = f"{label} must match {ROLE_IDENTIFIER.pattern}."
+        raise ValueError(error_message)
     return value
 
 
 def repository_prefix(value: object) -> str:
     """A folder of safe segments that is not reserved for release records."""
     if not isinstance(value, str) or not value:
-        raise ValueError("prefix must be a nonempty relative folder.")
+        error_message = "prefix must be a nonempty relative folder."
+        raise ValueError(error_message)
     segments = value.split("/")
     for segment in segments:
         safe_identifier(segment, label="prefix segment")
     if segments[0] in RESERVED_PREFIXES:
-        raise ValueError(f"prefix may not start with {segments[0]!r}.")
+        error_message = f"prefix may not start with {segments[0]!r}."
+        raise ValueError(error_message)
     return value
 
 
 def relative_file_path(value: object, *, label: str) -> str:
     """A relative POSIX path that cannot leave its folder."""
     if not isinstance(value, str) or not value or "\\" in value:
-        raise ValueError(f"{label} must be a nonempty POSIX relative path.")
+        error_message = f"{label} must be a nonempty POSIX relative path."
+        raise ValueError(error_message)
     path = PurePosixPath(value)
     if (
         path.is_absolute()
         or any(part in {"", ".", ".."} for part in value.split("/"))
         or path.as_posix() != value
     ):
-        raise ValueError(f"{label} must stay inside its folder.")
+        error_message = f"{label} must stay inside its folder."
+        raise ValueError(error_message)
     return value
 
 
@@ -68,5 +75,6 @@ def bare_file_name(value: object, *, label: str) -> str:
     """One path segment: a file name without folders."""
     name = relative_file_path(value, label=label)
     if "/" in name:
-        raise ValueError(f"{label} must be a bare file name.")
+        error_message = f"{label} must be a bare file name."
+        raise ValueError(error_message)
     return name

@@ -319,11 +319,13 @@ class FakeHuggingFaceApi:
 
     def create_tag(self, repo_id: str, **arguments: Any) -> None:
         self._record("create_tag", repo_id=repo_id, **arguments)
-        raise AssertionError("The emitter must never create a Hugging Face tag.")
+        error_message = "The emitter must never create a Hugging Face tag."
+        raise AssertionError(error_message)
 
     def create_branch(self, repo_id: str, **arguments: Any) -> None:
         self._record("create_branch", repo_id=repo_id, **arguments)
-        raise AssertionError("The emitter must never create a Hugging Face branch.")
+        error_message = "The emitter must never create a Hugging Face branch."
+        raise AssertionError(error_message)
 
 
 def uuid_name(filename: str) -> str:

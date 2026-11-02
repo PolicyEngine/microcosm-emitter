@@ -94,7 +94,8 @@ def protocol_fixtures(version: int | None = None) -> list[ProtocolFixture]:
             response=document.get("response"),
         )
         if relative_path.split("/", 1)[0] != f"protocol-v{fixture.protocol_version}":
-            raise ValueError(f"{relative_path} is filed under the wrong version.")
+            error_message = f"{relative_path} is filed under the wrong version."
+            raise ValueError(error_message)
         if version is None or fixture.protocol_version == version:
             fixtures.append(fixture)
     return fixtures

@@ -230,7 +230,8 @@ def test_failed_commit_preserves_active_stage_and_allows_completion_retry(module
 
     def fail_commit(session):
         session.flush()
-        raise OSError("simulated commit failure")
+        error_message = "simulated commit failure"
+        raise OSError(error_message)
 
     factory = module.spool._session_factory
     sqlalchemy_event.listen(factory, "before_commit", fail_commit)
@@ -447,7 +448,8 @@ def test_block_commit_failure_preserves_stage_and_sequence(module):
 
     def fail_commit(session):
         session.flush()
-        raise OSError("simulated block commit failure")
+        error_message = "simulated block commit failure"
+        raise OSError(error_message)
 
     factory = module.spool._session_factory
     sqlalchemy_event.listen(factory, "before_commit", fail_commit)
@@ -481,6 +483,8 @@ def test_block_commit_failure_preserves_stage_and_sequence(module):
         {"blocking_gate_ids": [""]},
         {"blocking_gate_ids": ["x" * 201]},
         {"blocking_gate_ids": [1]},
+        {"blocking_gate_ids": "check"},
+        {"blocking_gate_ids": None},
         {"blocking_gate_ids": [], "blocking_failure_count": None},
         {"gate_statuses": {f"check-{number}": "x" * 2000 for number in range(10)}},
     ],

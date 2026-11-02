@@ -742,7 +742,8 @@ def test_a_user_without_a_name_is_named_by_its_numeric_id(tmp_path, hub, monkeyp
     import getpass
 
     def no_user_name():
-        raise OSError("No username set in the environment")
+        error_message = "No username set in the environment"
+        raise OSError(error_message)
 
     monkeypatch.setattr(getpass, "getuser", no_user_name)
     callers = []

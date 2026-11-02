@@ -35,8 +35,10 @@ def parent_process(pid: int, created_at: float | None) -> ParentProcess:
     if created_at is not None:
         return ParentProcess(pid, created_at)
     if os.getppid() != pid:
-        raise ValueError("the named parent process is not this host's parent")
+        error_message = "the named parent process is not this host's parent"
+        raise ValueError(error_message)
     parent_created_at = psutil.Process(pid).create_time()
     if os.getppid() != pid:
-        raise ValueError("the named parent process is not this host's parent")
+        error_message = "the named parent process is not this host's parent"
+        raise ValueError(error_message)
     return ParentProcess(pid, parent_created_at)

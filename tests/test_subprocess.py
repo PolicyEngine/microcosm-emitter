@@ -183,7 +183,8 @@ def test_finished_telemetry_keeps_shared_graph_process_until_outer_cleanup(
             assert graph.receipt(inventory["publication_id"])["status"] == "pending"
             emitter.stage("after-finish")
             if export_fails:
-                raise RuntimeError("synthetic export")
+                error_message = "synthetic export"
+                raise RuntimeError(error_message)
         finally:
             graph.close()
             emitter.close()

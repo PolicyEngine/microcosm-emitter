@@ -21,6 +21,29 @@ class LocalEmitterError(RuntimeError):
     """The local emitter could not start, accept a request, or answer it."""
 
 
+def _encode_request(payload: Mapping[str, Any]) -> bytes:
+    data = (
+        json.dumps(payload, separators=(",", ":"), allow_nan=False).encode() + DELIMITER
+    )
+    if len(data) > MAX_MESSAGE_BYTES:
+        error_message = "local message exceeds size limit"
+        raise ValueError(error_message)
+    return data
+
+
+def _check_response_size(response: bytearray) -> None:
+    if len(response) > MAX_MESSAGE_BYTES:
+        error_message = "local response exceeds size limit"
+        raise ValueError(error_message)
+
+
+def _complete_response(response: bytearray) -> bytes:
+    if not response.endswith(DELIMITER):
+        error_message = "incomplete response"
+        raise ValueError(error_message)
+    return bytes(response)
+
+
 class SocketTransport:
     """One connection per request; each step shares the request's time limit."""
 
@@ -42,12 +65,7 @@ class SocketTransport:
         deadline: float | None = None,
     ) -> bytes:
         try:
-            data = (
-                json.dumps(payload, separators=(",", ":"), allow_nan=False).encode()
-                + DELIMITER
-            )
-            if len(data) > MAX_MESSAGE_BYTES:
-                raise ValueError("local message exceeds size limit")
+            data = _encode_request(payload)
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
 
                 def bound_next_step() -> None:
@@ -55,7 +73,7 @@ class SocketTransport:
                     if deadline is not None:
                         remaining = min(remaining, deadline - time.monotonic())
                         if remaining <= 0:
-                            raise TimeoutError()
+                            raise TimeoutError
                     peer.settimeout(remaining)
 
                 bound_next_step()
@@ -69,26 +87,26 @@ class SocketTransport:
                     if not part:
                         break
                     response.extend(part)
-                    if len(response) > MAX_MESSAGE_BYTES:
-                        raise ValueError("local response exceeds size limit")
-                if not response.endswith(DELIMITER):
-                    raise ValueError("incomplete response")
-                return bytes(response)
+                    _check_response_size(response)
+                return _complete_response(response)
         except (OSError, ValueError, TypeError) as error:
             raise LocalEmitterError(type(error).__name__) from error
 
     def _acknowledged(self, payload: Mapping[str, Any], **limits: Any) -> None:
         if self._exchange(payload, **limits) != ACK_OK:
-            raise LocalEmitterError("emitter refused the request")
+            error_message = "emitter refused the request"
+            raise LocalEmitterError(error_message)
 
     def _answered(self, payload: Mapping[str, Any], **limits: Any) -> dict[str, Any]:
         response = self._exchange(payload, **limits)
         try:
             result = json.loads(response.removesuffix(DELIMITER))
         except ValueError as error:
-            raise LocalEmitterError("emitter refused the request") from error
+            error_message = "emitter refused the request"
+            raise LocalEmitterError(error_message) from error
         if not isinstance(result, dict):
-            raise LocalEmitterError("emitter refused the request")
+            error_message = "emitter refused the request"
+            raise LocalEmitterError(error_message)
         return result
 
     def ping(self, *, timeout: float | None = None) -> None:
@@ -112,7 +130,8 @@ class SocketTransport:
     ) -> None:
         """Return only after the module has handled and committed the message."""
         if self.closed:
-            raise LocalEmitterError("transport is closed")
+            error_message = "transport is closed"
+            raise LocalEmitterError(error_message)
         self._acknowledged(
             {"action": "message", "module": module, "message": dict(message)},
             timeout=timeout,
@@ -123,7 +142,8 @@ class SocketTransport:
     ) -> dict[str, Any]:
         """Return the module's answer after its request has completed."""
         if self.closed:
-            raise LocalEmitterError("transport is closed")
+            error_message = "transport is closed"
+            raise LocalEmitterError(error_message)
         return self._answered(
             {"action": "query", "module": module, "message": dict(message)},
             timeout=timeout,

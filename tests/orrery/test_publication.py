@@ -241,6 +241,37 @@ def test_telemetry_pruning_cannot_remove_graph_jobs(tmp_path):
     )
 
 
+@pytest.mark.parametrize(
+    "uploads",
+    [{"graph.orrery.json": {}}, "graph.orrery.json", None],
+    ids=["object", "text", "null"],
+)
+def test_an_upload_answer_without_a_list_is_recorded_as_an_invalid_response(
+    tmp_path, uploads
+):
+    directory, inventory = source(tmp_path)
+    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
+    queue.enqueue(directory, inventory)
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json={"uploads": uploads})
+
+    delivery = GraphPublicationDelivery(
+        queue,
+        credential=lambda: ("ok", "session"),
+        origin="https://runs.example",
+        client=httpx.Client(transport=httpx.MockTransport(respond)),
+    )
+
+    assert not delivery.flush_once()
+    receipt = queue.receipt(inventory["publication_id"])
+    assert receipt["status"] == "pending"
+    assert receipt["error_code"] == "publication_invalid_evidence_or_response"
+    assert [request.url.path for request in requests] == ["/api/uploads/"]
+
+
 def test_rejected_graph_session_is_refreshed_without_discarding_the_job(tmp_path):
     directory, inventory = source(tmp_path)
     queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
@@ -374,7 +405,10 @@ def test_orrery_module_survives_a_local_queue_error(capsys):
         def flush_once(self):
             attempts.append(None)
             if len(attempts) == 1:
-                raise OperationalError("UPDATE", {}, Exception("database is locked"))
+                error_message = "UPDATE"
+                raise OperationalError(
+                    error_message, {}, Exception("database is locked")
+                )
             return False
 
     module = OrreryModule({}, None)
@@ -403,7 +437,8 @@ def test_status_file_reloads_newer_receipt_after_an_older_commit(tmp_path):
     def pause_after_commit(session):
         entered.set()
         if not release.wait(5):
-            raise TimeoutError("test did not release older status writer")
+            error_message = "test did not release older status writer"
+            raise TimeoutError(error_message)
 
     event.listen(queue._sessions, "after_commit", pause_after_commit)
 
@@ -531,7 +566,8 @@ def test_status_file_lock_covers_read_through_replace_across_processes(
     def paused_write(path, receipt):
         entered.set()
         if not release.wait(5):
-            raise TimeoutError("test did not release status copy")
+            error_message = "test did not release status copy"
+            raise TimeoutError(error_message)
         original_write(path, receipt)
 
     monkeypatch.setattr(queue_module, "_write_status", paused_write)

@@ -250,7 +250,8 @@ class HuggingFaceModule:
         return CollectorSubmissionDelivery(queue, client, clock=self.clock)
 
     def handle_message(self, message: JsonObject) -> None:
-        raise ValueError("Hugging Face hand-overs are queries with receipts.")
+        error_message = "Hugging Face hand-overs are queries with receipts."
+        raise ValueError(error_message)
 
     def query(self, message: JsonObject) -> dict[str, Any]:
         assert self.queue is not None, "The host initializes modules first."
@@ -280,7 +281,8 @@ class HuggingFaceModule:
             return {"access": self._check_write_access(message)}
         if command in {"publish_release", "promote_build", "withdraw_build"}:
             return {"receipt": self._release_change(message)}
-        raise ValueError("unsupported Hugging Face hand-over command")
+        error_message = "unsupported Hugging Face hand-over command"
+        raise ValueError(error_message)
 
     def _stage_dataset_bundle(self, message: JsonObject) -> dict[str, Any]:
         assert self.queue is not None
@@ -389,7 +391,8 @@ class HuggingFaceModule:
         require_supported_version(message)
         handover_id = message.get("handover_id")
         if not isinstance(handover_id, str) or not handover_id:
-            raise ValueError("handover_id must be a nonempty string")
+            error_message = "handover_id must be a nonempty string"
+            raise ValueError(error_message)
         return self.queue.job_receipt(handover_id)
 
     def _collector_submission_receipt(
@@ -398,7 +401,8 @@ class HuggingFaceModule:
         require_supported_version(message)
         handover_id = message.get("handover_id")
         if not isinstance(handover_id, str) or not handover_id:
-            raise ValueError("handover_id must be a nonempty string")
+            error_message = "handover_id must be a nonempty string"
+            raise ValueError(error_message)
         if self.collector_delivery is None:
             return None
         return self.collector_delivery.receipt(handover_id)
