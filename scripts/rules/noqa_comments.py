@@ -64,7 +64,8 @@ FILE_NOQA_DIRECTIVE = re.compile(
 RULE_CODE = re.compile(r"[A-Z]+[0-9]+")
 CODE_SEPARATOR = re.compile(r"[\s,]*")
 NEW_SUPPRESSION_FIX = (
-    "fix the finding instead of suppressing it; {file} may only shrink"
+    "fix the finding instead of suppressing it, or remove another suppression and "
+    "list this one in {file}: the total may not grow"
 )
 REMOVED_SUPPRESSION_FIX = (
     "remove the extra entry from {file} and lower the rule's baseline count"

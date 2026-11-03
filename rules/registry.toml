@@ -769,7 +769,7 @@ invocation = 'pytest -m "not collector"'
 [[rule]]
 id = "emitter.quality.inline-suppressions-only-shrink"
 category = "quality"
-statement = "Every inline # noqa comment in a tracked Python file is listed in rules/baselines/noqa-comments.txt, once per comment as <path>: <codes>, and the list may only shrink: a pull request that adds a # noqa comment fails, and one that removes a comment removes its entry and lowers the count."
+statement = "The total number of inline suppressions may not grow. Every suppression comment Ruff applies in a tracked Python file (a # noqa, Ruff's ruff: ignore, disable and file-ignore forms, or a file-level ruff: noqa or flake8: noqa) is listed in rules/baselines/noqa-comments.txt, once per comment as `<path>: <codes>`, and the count may only fall against the base branch: a pull request may add a suppression only by removing another. The check counts comments only, so it does not stop a swap at the same total, a rename, or a code added to an existing comment."
 rationale = "README.md#development"
 scope = ["**/*.py", "rules/baselines/noqa-comments.txt"]
 tier = "mechanical"

@@ -145,6 +145,18 @@ fail the guard yet.
   new violation. Don't use `--add-noqa`. Outside the files that allow
   file-level exceptions, a justified exception is an inline
   `# noqa: CODE  # reason`.
+- **The number of inline suppressions may not grow.** The ratcheted rule
+  `emitter.quality.inline-suppressions-only-shrink` lists every suppression
+  comment Ruff applies (`# noqa`, Ruff's `ruff: ignore`, `disable` and
+  `file-ignore` forms, and a file-level `ruff: noqa` or `flake8: noqa`) in
+  `rules/baselines/noqa-comments.txt`, one entry per comment. A pull request
+  that needs a new justified suppression removes another in the same pull
+  request and updates the baseline to list the result. Raising the total is a
+  person's decision: the guard refuses a baseline count that grows against the
+  base branch, with or without a `[rule.downgrade]`, so it takes a change to
+  the rule itself. The comparison counts comments only, so a swap at the same
+  total, a rename or a code added to an existing comment passes once the
+  baseline lists it.
 - Other enforcers (mypy, Pyright, Import Linter, custom guards) may start
   `ratcheted` with a baseline file of tolerated violations. A new rule that
   starts ratcheted with a count above 0 needs a `[rule.downgrade]` section,
@@ -196,7 +208,8 @@ allowed only where that's the norm rather than an exception to it:
   (here `tests`, `.github`, and the script directories `tools` and `scripts`);
 - modules that run as a program through `if __name__ == "__main__":`.
 
-Everywhere else, keep a finding only with an inline suppression and its reason.
+Everywhere else, keep a finding only with an inline suppression and its reason,
+within the total that [Baselines](#baselines) allows.
 
 Each entry needs a `per-file-ignore` rule (see below). The guard expands the
 entry's pattern like ruff does and fails when the pattern:
