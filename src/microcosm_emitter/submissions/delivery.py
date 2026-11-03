@@ -50,6 +50,9 @@ if TYPE_CHECKING:
 
     from microcosm_emitter.huggingface.service.queue import ClaimedJob, HandoverQueue
 
+# Each print in this module that suppresses Ruff's T201 writes one of its
+# messages to standard error on purpose; none is leftover debugging output.
+
 COLLECTOR_SUBMISSIONS_ENABLED_BY_DEFAULT: Final = False
 DESTINATION_COLLECTOR: Final = "collector"
 COLLECTOR_SUBMISSION: Final = "collector_submission"
@@ -102,7 +105,7 @@ SUBMISSION_OUTCOME_MESSAGE: Final = (
 
 def print_to_standard_error(message: str) -> None:
     """Print ``message`` to standard error and flush it."""
-    print(message, file=sys.stderr, flush=True)
+    print(message, file=sys.stderr, flush=True)  # noqa: T201
 
 
 def status_check_delay(checks_made: int) -> float:
@@ -236,16 +239,18 @@ class CollectorSubmissionDelivery:
             ).start()
             try:
                 result = self._attempt(job)
-            except Exception:
-                # Record the attempt, so the row is retried after the usual
-                # backoff instead of staying leased for the whole lease.
+            # Any failure is recorded as an attempt, so the row is retried after
+            # the usual backoff instead of staying leased for the whole lease.
+            except Exception:  # noqa: BLE001
                 earlier = (self.receipt(job.handover_id) or {}).get("submissions")
                 result = AttemptResult(
                     "pending", LOCAL_ERROR, list(earlier or []), retry=True
                 )
             finally:
                 held.stop()
-            assert held.job is not None, "The held lease names the claimed job."
+            if held.job is None:
+                error_message = "The held lease names the claimed job."
+                raise AssertionError(error_message)
             # The renewed lease: only the holder of the current lease records.
             self._finish(held.job, result)
             attempted += 1

@@ -147,7 +147,10 @@ def start_services(
         parent = psutil.Process(os.getpid())
         reader, writer = socket.socketpair()
         with reader, writer:
-            process = subprocess.Popen(
+            # No shell: the program is this interpreter running the emitter's own
+            # host module, and the other arguments are fixed apart from this
+            # run's socket path and this process's ID and start time.
+            process = subprocess.Popen(  # noqa: S603
                 [
                     sys.executable,
                     "-m",
@@ -170,7 +173,9 @@ def start_services(
         client = SocketClient(path)
         _wait_for_readiness(process, client, deadline)
         return ServiceHandle(process, client, directory)
-    except Exception as error:
+    # Any failure stops the child, removes its directory, and is raised as a
+    # startup error with a fixed reason, never as the original exception.
+    except Exception as error:  # noqa: BLE001
         # Only transfer timeouts are classified as such; an unrelated writer
         # failure is a startup failure rather than evidence of deadline expiry.
         reason = (
@@ -186,7 +191,9 @@ def start_services(
             finally:
                 if directory is not None:
                     _remove_runtime_directory(directory)
-        except Exception as cleanup_error:
+        # A failure while cleaning up is raised as a startup error with a fixed
+        # reason, never as the original exception.
+        except Exception as cleanup_error:  # noqa: BLE001
             failure = safe_startup_error(cleanup_error)
     # Raise outside the handler so the discarded exception is not retained as
     # either a cause or an implicit context containing private configuration.

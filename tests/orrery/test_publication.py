@@ -449,7 +449,8 @@ def test_status_file_reloads_newer_receipt_after_an_older_commit(tmp_path):
                 error_code="publication_network_error",
                 expected_lease=lease.lease_until,
             )
-        except Exception as error:
+        # Keeps any exception this thread's call raises, for the test to check.
+        except Exception as error:  # noqa: BLE001
             errors.append(error)
 
     thread = threading.Thread(target=failed_attempt)
@@ -579,7 +580,8 @@ def test_status_file_lock_covers_read_through_replace_across_processes(
                 error_code="publication_network_error",
                 expected_lease=lease.lease_until,
             )
-        except Exception as error:
+        # Keeps any exception this thread's call raises, for the test to check.
+        except Exception as error:  # noqa: BLE001
             errors.append(error)
 
     committed = tmp_path / "newer-committed"

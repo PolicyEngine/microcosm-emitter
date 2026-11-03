@@ -87,6 +87,9 @@ if TYPE_CHECKING:
 
     from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 
+# Each print in this module that suppresses Ruff's T201 writes one of its
+# messages to standard error on purpose; none is leftover debugging output.
+
 STARTUP_WARNING = (
     "Local Microcosm emitter failed to start ({reason}); the build will continue."
 )
@@ -164,20 +167,24 @@ class EmitterClient:
                 modules[ORRERY_MODULE] = orrery.configuration(path)
             if hugging_face is not None:
                 modules[HUGGING_FACE_MODULE] = hugging_face.configuration(path)
-        except Exception:
+        # No call raises into the build: any failure gives an unavailable
+        # client with a fixed startup reason.
+        except Exception:  # noqa: BLE001
             failure = EmitterStartupError("invalid_configuration")
-            print(STARTUP_WARNING.format(reason=failure.reason), file=sys.stderr)
+            print(STARTUP_WARNING.format(reason=failure.reason), file=sys.stderr)  # noqa: T201
             return cls(startup_error=failure)
         try:
             process = start_emitter(
                 modules, command=command, startup_timeout=startup_timeout
             )
         except EmitterStartupError as error:
-            print(STARTUP_WARNING.format(reason=error.reason), file=sys.stderr)
+            print(STARTUP_WARNING.format(reason=error.reason), file=sys.stderr)  # noqa: T201
             return cls(startup_error=error)
-        except Exception:
+        # No call raises into the build: any failure gives an unavailable
+        # client with a fixed startup reason.
+        except Exception:  # noqa: BLE001
             failure = EmitterStartupError("startup_failure")
-            print(STARTUP_WARNING.format(reason=failure.reason), file=sys.stderr)
+            print(STARTUP_WARNING.format(reason=failure.reason), file=sys.stderr)  # noqa: T201
             return cls(startup_error=failure)
         return cls(process)
 
@@ -191,7 +198,8 @@ class EmitterClient:
         """The modules the running emitter loaded."""
         if not self.available:
             return frozenset()
-        assert self._process is not None
+        if self._process is None:
+            raise AssertionError
         return frozenset(self._process.description.get("modules", ()))
 
     @property
@@ -225,7 +233,7 @@ class EmitterClient:
             if kind in self._warned:
                 return
             self._warned.add(kind)
-        print(
+        print(  # noqa: T201
             REQUEST_WARNING.format(kind=kind, reason=reason, error_type=error_type),
             file=sys.stderr,
         )
@@ -236,7 +244,8 @@ class EmitterClient:
         """Return the converted message, or None after recording why it failed."""
         try:
             return dict(build_message())
-        except Exception as error:
+        # No call raises into the build; the failure is reported in last_failure.
+        except Exception as error:  # noqa: BLE001
             self._fail(kind, "invalid_arguments", error)
             return None
 
@@ -247,12 +256,14 @@ class EmitterClient:
         message = self._message(build_message, kind=kind)
         if message is None:
             return False
-        assert self._process is not None
+        if self._process is None:
+            raise AssertionError
         try:
             self._process.transport.send(
                 module, message, timeout=ACKNOWLEDGEMENT_TIMEOUT_SECONDS
             )
-        except Exception as error:
+        # No call raises into the build; the failure is reported in last_failure.
+        except Exception as error:  # noqa: BLE001
             self._fail(kind, "not_accepted", error)
             return False
         return True
@@ -276,10 +287,12 @@ class EmitterClient:
         message = self._message(build_message, kind=kind)
         if message is None:
             return None, "invalid_arguments"
-        assert self._process is not None
+        if self._process is None:
+            raise AssertionError
         try:
             return self._process.transport.query(module, message, timeout=timeout), None
-        except Exception as error:
+        # No call raises into the build; the failure is reported in last_failure.
+        except Exception as error:  # noqa: BLE001
             self._fail(kind, "not_accepted", error)
             return None, "not_accepted"
 
@@ -430,7 +443,8 @@ class EmitterClient:
             return unavailable_read_back()
         try:
             flush = StageRunFiles(repository=repository, run_id=run_id, flush=True)
-        except Exception as error:
+        # No call raises into the build; the failure is reported in last_failure.
+        except Exception as error:  # noqa: BLE001
             self._fail("staging", "invalid_arguments", error)
             return unavailable_read_back()
         receipt = self.stage_run_files(flush)
@@ -625,7 +639,9 @@ class EmitterClient:
         if self._process is not None:
             try:
                 self._process.close()
-            except Exception as error:
+            # No call raises into the build; the failure is reported in
+            # last_failure.
+            except Exception as error:  # noqa: BLE001
                 self._fail("close", "not_accepted", error)
 
 
@@ -644,6 +660,8 @@ def _wait_seconds(value: object) -> float:
     """Return ``value`` as seconds to wait, or 0.0 if it is not a positive number."""
     try:
         seconds = float(value)
-    except Exception:
+    # No call raises into the build: a value float() cannot convert, whatever
+    # it raises, waits no time.
+    except Exception:  # noqa: BLE001
         return 0.0
     return seconds if seconds > 0 else 0.0

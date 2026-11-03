@@ -53,6 +53,9 @@ if TYPE_CHECKING:
     import email.message
     from collections.abc import Callable, Mapping
 
+# Each print in this module that suppresses Ruff's T201 writes one of its
+# messages to standard error on purpose; none is leftover debugging output.
+
 #: Visible ASCII (letters, digits and punctuation), the only characters of a
 #: Hugging Face credential or a collector token. Any other value is refused
 #: before it is sent: a bearer token (RFC 6750) has no spaces, tabs, line
@@ -126,7 +129,11 @@ def _http_post(
 ) -> tuple[int, dict[str, Any]]:
     if not _SENDABLE_CREDENTIAL.fullmatch(bearer_token):
         raise ValueError(UNSENDABLE_CREDENTIAL_ERROR)
-    request = urllib.request.Request(
+    # Every caller in this package passes a collector origin that
+    # resolve_collector_origin (core/collector_origin.py) accepted, HTTPS or
+    # loopback HTTP, plus a path from core.constants; _NoRedirectHandler
+    # follows no redirect.
+    request = urllib.request.Request(  # noqa: S310
         url,
         data=json.dumps(payload, separators=(",", ":")).encode(),
         headers={
@@ -543,7 +550,7 @@ def shared_session(
     try:
         session = CollectorSession(origin, destination=destination)
     except GivenCollectorTokenError as error:
-        print(
+        print(  # noqa: T201
             GIVEN_TOKEN_START_ERROR_MESSAGE.format(reason=error),
             file=sys.stderr,
             flush=True,

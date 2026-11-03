@@ -8,11 +8,11 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 | Tier | enforced | ratcheted | advisory | doc-only | Total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| mechanical | 47 | 0 | 0 | 7 | 54 |
+| mechanical | 49 | 0 | 0 | 7 | 56 |
 | metric | 1 | 0 | 0 | 0 | 1 |
 | judgment | 0 | 0 | 0 | 0 | 0 |
 
-**Blocking:** 48 of 55 rules.
+**Blocking:** 50 of 57 rules.
 
 ## Gaps
 
@@ -238,6 +238,8 @@ flowchart LR
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `emitter.quality.command-line-scripts-ruff-exemptions` | Command-line scripts under scripts/ may print their output (T201), run other programs (S603, S607) and use today's date (DTZ011); every other Ruff rule applies to them. | mechanical | enforced | yes | ruff per-file ignore of DTZ011, S603, S607, T201 for `scripts/**` | `ci.yml:quality` | — |
 | `emitter.quality.installed-checks-ruff-exemptions` | The installed-artifact checks (tools/check-installed.py, tools/installed-smoke.py and tools/installed-interface-smoke.py) assert, as tests do (S101), and import inside each check to test what that import loads (PLC0415). | mechanical | enforced | yes | ruff per-file ignore of PLC0415, S101 for `tools/{check-installed,installed-smoke,installed-interface-smoke}.py` | `ci.yml:quality` | — |
+| `emitter.quality.installed-smoke-ruff-exemptions` | The two installed smoke checks, tools/installed-smoke.py and tools/installed-interface-smoke.py, read the clients' private members to check the processes they started (SLF001), as tests do. | mechanical | enforced | yes | ruff per-file ignore of SLF001 for `tools/{installed-smoke,installed-interface-smoke}.py` | `ci.yml:quality` | — |
+| `emitter.quality.program-ruff-exemptions` | The modules that run as command-line programs, microcosm_emitter.cli and microcosm_emitter.host.__main__, may print their output (T201), as the Public API's modules that run as programs do; every other Ruff rule applies to them. | mechanical | enforced | yes | ruff per-file ignore of T201 for `src/microcosm_emitter/{cli,host/__main__}.py` | `ci.yml:quality` | — |
 | `emitter.quality.python-file-length` | No tracked Python file has more than 800 lines, or more than 1,500 if it is test code: a file under tests/ or under the rules tool's tests and fixtures, scripts/rules/tests/. | metric | enforced | yes | quality guard `file-length` | `pr.yaml:rules` | yes |
 | `emitter.quality.ruff-format` | All Python is formatted with ruff format. | mechanical | enforced | yes | ruff format | `ci.yml:quality` | — |
 | `emitter.quality.ruff-lint` | All Python passes ruff check with every Ruff rule selected (ALL), as in the simulation API and the Public API, except COM812 and ISC001, which conflict with ruff format, D203 and D213, which conflict with D211 and D212, CPY, which Ruff 0.16 makes stable but their Ruff 0.15 keeps in preview, the registered per-file ignores, and, until the pull requests stacked on #55 fix them, the families pyproject.toml lists as not fixed yet. | mechanical | enforced | yes | ruff check (ALL) | `ci.yml:quality` | — |
@@ -256,6 +258,10 @@ flowchart LR
   j_CI_ci_yml_quality["CI ci.yml:quality"]
   r_emitter_quality_installed_checks_ruff_exemptions("emitter.quality.installed-checks-ruff-exemptions (enforced)")
   e_ruff_per_file_ignore_of_PLC0415__S101_for_tools__check_installed_installed_smoke_installed_interface_smoke__py["ruff per-file ignore of PLC0415, S101 for tools/{check-installed,installed-smoke,installed-interface-smoke}.py"]
+  r_emitter_quality_installed_smoke_ruff_exemptions("emitter.quality.installed-smoke-ruff-exemptions (enforced)")
+  e_ruff_per_file_ignore_of_SLF001_for_tools__installed_smoke_installed_interface_smoke__py["ruff per-file ignore of SLF001 for tools/{installed-smoke,installed-interface-smoke}.py"]
+  r_emitter_quality_program_ruff_exemptions("emitter.quality.program-ruff-exemptions (enforced)")
+  e_ruff_per_file_ignore_of_T201_for_src_microcosm_emitter__cli_host___main____py["ruff per-file ignore of T201 for src/microcosm_emitter/{cli,host/__main__}.py"]
   r_emitter_quality_python_file_length("emitter.quality.python-file-length (enforced)")
   e_quality_guard_file_length["quality guard file-length"]
   j_CI_pr_yaml_rules["CI pr.yaml:rules"]
@@ -282,6 +288,10 @@ flowchart LR
   e_ruff_per_file_ignore_of_DTZ011__S603__S607__T201_for_scripts___ --> j_CI_ci_yml_quality
   r_emitter_quality_installed_checks_ruff_exemptions --> e_ruff_per_file_ignore_of_PLC0415__S101_for_tools__check_installed_installed_smoke_installed_interface_smoke__py
   e_ruff_per_file_ignore_of_PLC0415__S101_for_tools__check_installed_installed_smoke_installed_interface_smoke__py --> j_CI_ci_yml_quality
+  r_emitter_quality_installed_smoke_ruff_exemptions --> e_ruff_per_file_ignore_of_SLF001_for_tools__installed_smoke_installed_interface_smoke__py
+  e_ruff_per_file_ignore_of_SLF001_for_tools__installed_smoke_installed_interface_smoke__py --> j_CI_ci_yml_quality
+  r_emitter_quality_program_ruff_exemptions --> e_ruff_per_file_ignore_of_T201_for_src_microcosm_emitter__cli_host___main____py
+  e_ruff_per_file_ignore_of_T201_for_src_microcosm_emitter__cli_host___main____py --> j_CI_ci_yml_quality
   r_emitter_quality_python_file_length --> e_quality_guard_file_length
   e_quality_guard_file_length --> j_CI_pr_yaml_rules
   r_emitter_quality_ruff_format --> e_ruff_format

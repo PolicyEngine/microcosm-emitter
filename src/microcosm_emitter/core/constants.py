@@ -40,13 +40,15 @@ TRUSTED_COLLECTOR_ORIGINS: Final = PRODUCTION_COLLECTOR_ORIGIN_PAIR
 # telemetry-token`, for an emitter without a Hugging Face credential, such as
 # one in a Modal container. The variables only supply that token:
 # MICROCOSM_COLLECTOR_ORIGIN is compared with the origin the emitter resolved,
-# and never chooses where it sends.
-COLLECTOR_TOKEN_VARIABLE: Final = "MICROCOSM_COLLECTOR_TOKEN"
-COLLECTOR_TOKEN_EXPIRES_AT_VARIABLE: Final = "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT"
-COLLECTOR_TOKEN_ORIGIN_VARIABLE: Final = "MICROCOSM_COLLECTOR_ORIGIN"
+# and never chooses where it sends. These are the variables' names, not
+# secrets.
+COLLECTOR_TOKEN_VARIABLE: Final = "MICROCOSM_COLLECTOR_TOKEN"  # noqa: S105
+COLLECTOR_TOKEN_EXPIRES_AT_VARIABLE: Final = "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT"  # noqa: S105
+COLLECTOR_TOKEN_ORIGIN_VARIABLE: Final = "MICROCOSM_COLLECTOR_ORIGIN"  # noqa: S105
 
 LOOPBACK_HOSTS: Final = frozenset({"localhost", "127.0.0.1", "::1"})
-TOKEN_EXCHANGE_PATH: Final = "/v1/auth/huggingface/exchange"
+# A URL path, not a secret.
+TOKEN_EXCHANGE_PATH: Final = "/v1/auth/huggingface/exchange"  # noqa: S105
 TELEMETRY_SCOPE: Final = "telemetry:write"
 RUN_REGISTRATION_PATH: Final = "/v1/runs"
 RUN_EVENTS_PATH_TEMPLATE: Final = "/v1/runs/{run_id}/events"
@@ -65,9 +67,10 @@ LOCAL_ONLY_PRE_ELIGIBILITY: Final = "created_before_upload_eligibility"
 # expired or was refused (401), and cannot be renewed where it is used. The
 # run stays pending, so an emitter with a Hugging Face login delivers it later.
 # Stored in the run's `local_only_reason` column, which the spool database
-# already has; a successful registration clears it.
-PENDING_GIVEN_TOKEN_EXPIRED: Final = "collector_token_expired"
-PENDING_GIVEN_TOKEN_REJECTED: Final = "collector_token_rejected"
+# already has; a successful registration clears it. These are reason codes,
+# not secrets.
+PENDING_GIVEN_TOKEN_EXPIRED: Final = "collector_token_expired"  # noqa: S105
+PENDING_GIVEN_TOKEN_REJECTED: Final = "collector_token_rejected"  # noqa: S105
 # Why a pending run waits: the login saved by `hf auth login` could not be read,
 # such as a file this user may not read, and neither HF_TOKEN nor
 # HUGGINGFACE_TOKEN is set. The login exists and can be repaired, so the run
@@ -98,7 +101,8 @@ UNSENDABLE_CREDENTIAL_MESSAGE: Final = (
     "will continue."
 )
 GIVEN_TOKEN_UNUSABLE_MESSAGE: Final = (
-    "Microcosm telemetry is waiting: the collector token this emitter was given "
+    # A message, not a secret.
+    "Microcosm telemetry is waiting: the collector token this emitter was given "  # noqa: S105
     "has expired or was refused, and it cannot be renewed here. Queued events "
     "stay pending for delivery by an emitter with a Hugging Face login. The "
     "dataset build will continue."
@@ -124,25 +128,30 @@ UNSENDABLE_CREDENTIAL_ERROR: Final = (
     "the credential contains characters that cannot be sent as a bearer token"
 )
 GIVEN_TOKEN_VARIABLES_ERROR: Final = (
-    "MICROCOSM_COLLECTOR_TOKEN, MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and "
+    # An error message, not a secret.
+    "MICROCOSM_COLLECTOR_TOKEN, MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and "  # noqa: S105
     "MICROCOSM_COLLECTOR_ORIGIN must be set together"
 )
 GIVEN_TOKEN_VALUE_ERROR: Final = (
-    "MICROCOSM_COLLECTOR_TOKEN must be visible ASCII characters, without spaces "
+    # An error message, not a secret.
+    "MICROCOSM_COLLECTOR_TOKEN must be visible ASCII characters, without spaces "  # noqa: S105
     "or line breaks"
 )
 GIVEN_TOKEN_EXPIRY_ERROR: Final = (
-    "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT must be an ISO 8601 time with a time zone"
+    # An error message, not a secret.
+    "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT must be an ISO 8601 time with a time zone"  # noqa: S105
 )
 GIVEN_TOKEN_ORIGIN_ERROR: Final = (
-    "MICROCOSM_COLLECTOR_ORIGIN is not the collector origin this emitter's module "
+    # An error message, not a secret.
+    "MICROCOSM_COLLECTOR_ORIGIN is not the collector origin this emitter's module "  # noqa: S105
     "settings resolve (without a `collector_origin` or `development_collector_url` "
     "setting, the origin that `microcosm-emitter version` prints)"
 )
 # Printed by the telemetry or Orrery module, whichever the host starts first:
 # the host itself prints only a fixed startup failure, and exits.
 GIVEN_TOKEN_START_ERROR_MESSAGE: Final = (
-    "The Microcosm emitter cannot start: {reason}. It exits before accepting any "
+    # A message, not a secret.
+    "The Microcosm emitter cannot start: {reason}. It exits before accepting any "  # noqa: S105
     "request from the build."
 )
 

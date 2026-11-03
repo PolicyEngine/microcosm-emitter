@@ -74,7 +74,11 @@ def sanitize_json(value: object, *, depth: int = 0) -> JsonValue:
 def sanitize_details(value: Mapping[str, Any]) -> dict[str, Any]:
     """Return a redacted details object within the wire-size limit."""
     sanitized = sanitize_json(value)
-    assert isinstance(sanitized, dict)
+    # An invariant, not a caller's type error: sanitize_json returns a dict for
+    # every mapping, so this raises only if that changes. AssertionError, as the
+    # assert it replaces raised.
+    if not isinstance(sanitized, dict):
+        raise AssertionError  # noqa: TRY004
     if (
         len(json.dumps(sanitized, separators=(",", ":")).encode())
         <= MAX_TELEMETRY_DETAILS_BYTES

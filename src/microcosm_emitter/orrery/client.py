@@ -137,14 +137,17 @@ class GraphPublicationClient:
             return None, UNAVAILABLE
         try:
             message = dict(build_message())
-        except Exception:
+        # No call raises: an argument that cannot be sent gives an unavailable
+        # receipt with invalid_arguments.
+        except Exception:  # noqa: BLE001
             return None, INVALID_ARGUMENTS
         try:
             return (
                 self.transport.request(message, timeout=GRAPH_REQUEST_TIMEOUT_SECONDS),
                 UNAVAILABLE,
             )
-        except Exception:
+        # No call raises: a failed request gives an unavailable receipt.
+        except Exception:  # noqa: BLE001
             return None, UNAVAILABLE
 
     def _receipt(

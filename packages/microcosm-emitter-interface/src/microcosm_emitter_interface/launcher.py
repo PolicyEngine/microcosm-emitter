@@ -219,7 +219,10 @@ def start_emitter(
         socket_path = directory / SOCKET_FILENAME
         reader, writer = socket.socketpair()
         with reader, writer:
-            process = subprocess.Popen(
+            # No shell: the program is the emitter command resolve_command found
+            # with shutil.which, and the other arguments are fixed apart from
+            # this run's socket path and this process's ID.
+            process = subprocess.Popen(  # noqa: S603
                 [
                     executable,
                     "host",
@@ -240,7 +243,9 @@ def start_emitter(
         _wait_for_readiness(process, transport, deadline)
         description = _accepted_description(transport, deadline)
         return EmitterProcess(process, transport, directory, description)
-    except Exception as error:
+    # Any failure stops the child, removes its directory, and is raised as a
+    # startup error with a fixed reason, never as the original exception.
+    except Exception as error:  # noqa: BLE001
         # Only transfer timeouts are classified as such; an unrelated writer
         # failure is a startup failure rather than evidence of deadline expiry.
         if isinstance(error, EmitterStartupError):
@@ -258,7 +263,9 @@ def start_emitter(
             finally:
                 if directory is not None:
                     _remove_runtime_directory(directory)
-        except Exception:
+        # A failure while cleaning up is raised as a startup error with a fixed
+        # reason, never as the original exception.
+        except Exception:  # noqa: BLE001
             failure = EmitterStartupError("startup_failure")
     # Raise outside the handler so neither a cause nor an implicit context
     # can carry private configuration or exception details.

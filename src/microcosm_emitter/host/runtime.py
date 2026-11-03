@@ -182,7 +182,8 @@ class ServiceRuntime:
     def _respond(self, connection: socket.socket) -> bytes | None:
         try:
             return self._answer(connection)
-        except Exception:
+        # Any failure rejects only this request; the host keeps serving.
+        except Exception:  # noqa: BLE001
             # Module errors reject this request, never acknowledge lost data.
             return ACK_ERROR
 
@@ -200,7 +201,9 @@ class ServiceRuntime:
             if name not in self.modules or name in self._failed:
                 error_message = "module is unavailable"
                 raise ValueError(error_message)
-            assert self._requests is not None, "Requests start before socket intake."
+            if self._requests is None:
+                error_message = "Requests start before socket intake."
+                raise AssertionError(error_message)
             if not self._requests.submit(
                 name,
                 ModuleRequest(
@@ -223,7 +226,8 @@ class ServiceRuntime:
     def _handle_request(self, name: str, action: str, message: JsonObject) -> bytes:
         try:
             return self._run_request(name, action, message)
-        except Exception:
+        # Any failure rejects only this request; the host keeps serving.
+        except Exception:  # noqa: BLE001
             return ACK_ERROR
 
     def _run_request(self, name: str, action: str, message: JsonObject) -> bytes:
@@ -240,11 +244,20 @@ class ServiceRuntime:
         module.handle_message(message)
         return ACK_OK
 
+    def _started_requests(self) -> ModuleRequestDispatcher:
+        """Return the request dispatcher, which ``run`` starts before any worker."""
+        if self._requests is None:
+            error_message = "Requests start before workers."
+            raise AssertionError(error_message)
+        return self._requests
+
     def _work(self, name: str, module: ServiceModule) -> None:
         try:
             while not self._stop.wait(self.tick_seconds):
                 module.tick(time.monotonic())
-        except Exception as error:
+        # A failing module is marked failed and its error kept for run to raise
+        # at shutdown; the other modules keep running.
+        except Exception as error:  # noqa: BLE001
             self._worker_error = error
             self._failed.add(name)
             if len(self._failed) == len(self.modules):
@@ -253,13 +266,13 @@ class ServiceRuntime:
             try:
                 # Periodic uploads stay independent of request work, but lifecycle
                 # callbacks must never close resources still in use by a request.
-                assert self._requests is not None, "Requests start before workers."
+                requests = self._started_requests()
                 if self._stop.is_set():
-                    self._requests.stop()
-                    self._requests.wait_all()
+                    requests.stop()
+                    requests.wait_all()
                 else:
-                    self._requests.stop_module(name)
-                    self._requests.wait(name)
+                    requests.stop_module(name)
+                    requests.wait(name)
                 if self._parent_exited and name not in self._failed:
                     module.parent_exited()
                 module.close(
@@ -267,7 +280,9 @@ class ServiceRuntime:
                     if self._shutdown_deadline is not None
                     else time.monotonic() + self.drain_seconds
                 )
-            except Exception as error:
+            # A failure while shutting the module down is kept the same way, for
+            # run to raise at shutdown.
+            except Exception as error:  # noqa: BLE001
                 self._worker_error = error
                 self._failed.add(name)
                 if len(self._failed) == len(self.modules):

@@ -46,6 +46,9 @@ from microcosm_emitter_interface.telemetry import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+# Each print in this module that suppresses Ruff's T201 writes one of its
+# messages to standard error on purpose; none is leftover debugging output.
+
 # Every public name, including those re-exported from the interface package,
 # so type checkers of this py.typed package treat them as exported.
 __all__ = [
@@ -117,9 +120,11 @@ class LocalTelemetryEmitter:
                 settings.configuration(Path(spool_path)),
                 startup_timeout=startup_timeout_seconds,
             )
-        except Exception as error:
+        # No call raises into the build: any failure gives a disabled adapter
+        # with a fixed startup reason.
+        except Exception as error:  # noqa: BLE001
             failure = safe_startup_error(error)
-            print(
+            print(  # noqa: T201
                 SERVICE_START_WARNING.format(error_type=str(failure)),
                 file=sys.stderr,
             )
@@ -145,12 +150,13 @@ class LocalTelemetryEmitter:
             return
         try:
             self._transport.send(telemetry_message(command))
-        except Exception as error:
+        # No call raises into the build; only the first failure prints a warning.
+        except Exception as error:  # noqa: BLE001
             self._warn(error)
 
     def _warn(self, error: Exception) -> None:
         if not self._warned:
-            print(
+            print(  # noqa: T201
                 QUEUE_WARNING.format(error_type=type(error).__name__), file=sys.stderr
             )
             self._warned = True
@@ -245,7 +251,9 @@ class LocalTelemetryEmitter:
         try:
             try:
                 message = str(error)
-            except Exception as formatting_error:
+            # An exception's __str__ can raise anything; the failure is then
+            # sent without text.
+            except Exception as formatting_error:  # noqa: BLE001
                 self._warn(formatting_error)
                 message = None
             self._request(
@@ -305,7 +313,8 @@ class LocalTelemetryEmitter:
                 self._handle.close()
             elif self._transport is not None:
                 self._transport.close()
-        except Exception as error:
+        # No call raises into the build; only the first failure prints a warning.
+        except Exception as error:  # noqa: BLE001
             self._warn(error)
         finally:
             self._closed = True

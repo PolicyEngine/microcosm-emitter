@@ -673,6 +673,44 @@ job = "quality"
 invocation = "tools/check-quality.sh"
 
 [[rule]]
+id = "emitter.quality.installed-smoke-ruff-exemptions"
+category = "quality"
+statement = "The two installed smoke checks, tools/installed-smoke.py and tools/installed-interface-smoke.py, read the clients' private members to check the processes they started (SLF001), as tests do."
+rationale = "docs/engineering/skills/rules-registry.md#file-level-exceptions"
+scope = ["tools/installed-smoke.py", "tools/installed-interface-smoke.py"]
+tier = "mechanical"
+status = "enforced"
+autofix = false
+[rule.enforcer]
+kind = "ruff"
+mode = "per-file-ignore"
+pattern = "tools/{installed-smoke,installed-interface-smoke}.py"
+codes = ["SLF001"]
+[[rule.ci]]
+workflow = ".github/workflows/ci.yml"
+job = "quality"
+invocation = "tools/check-quality.sh"
+
+[[rule]]
+id = "emitter.quality.program-ruff-exemptions"
+category = "quality"
+statement = "The modules that run as command-line programs, microcosm_emitter.cli and microcosm_emitter.host.__main__, may print their output (T201), as the Public API's modules that run as programs do; every other Ruff rule applies to them."
+rationale = "docs/engineering/skills/rules-registry.md#file-level-exceptions"
+scope = ["src/microcosm_emitter/cli.py", "src/microcosm_emitter/host/__main__.py"]
+tier = "mechanical"
+status = "enforced"
+autofix = false
+[rule.enforcer]
+kind = "ruff"
+mode = "per-file-ignore"
+pattern = "src/microcosm_emitter/{cli,host/__main__}.py"
+codes = ["T201"]
+[[rule.ci]]
+workflow = ".github/workflows/ci.yml"
+job = "quality"
+invocation = "tools/check-quality.sh"
+
+[[rule]]
 id = "emitter.quality.runtime-evaluated-models-resolve"
 category = "quality"
 statement = "Every SQLAlchemy model in microcosm_emitter is one Ruff treats as runtime-evaluated (a base resolves, through the import in its own module, to a name in runtime-evaluated-base-classes, or is a same-module class that does), and every mapper configures once the package is imported, as in the simulation API and the Public API."

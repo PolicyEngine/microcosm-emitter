@@ -118,7 +118,9 @@ def _user_name() -> str:
     """
     try:
         return getpass.getuser()
-    except Exception:
+    # Any failure of getuser gives the numeric user ID instead, so naming the
+    # caller never fails a release change.
+    except Exception:  # noqa: BLE001
         return str(os.getuid())
 
 
@@ -269,7 +271,9 @@ class HuggingFaceModule:
         The ``command`` field selects the request; an unsupported command raises
         ``ValueError``.
         """
-        assert self.queue is not None, "The host initializes modules first."
+        if self.queue is None:
+            error_message = "The host initializes modules first."
+            raise AssertionError(error_message)
         command = message.get("command")
         if command == "stage_run_files":
             return {"receipt": self._stage_run_files(message)}
@@ -300,7 +304,8 @@ class HuggingFaceModule:
         raise ValueError(error_message)
 
     def _stage_dataset_bundle(self, message: JsonObject) -> dict[str, Any]:
-        assert self.queue is not None
+        if self.queue is None:
+            raise AssertionError
         try:
             hand_over = parse_stage_dataset_bundle(message)
         except RequestRefusedError as refusal:
@@ -340,8 +345,9 @@ class HuggingFaceModule:
                 self.collector_delivery.enqueue_for_bundle(
                     hand_over.handover_id, hand_over.request, hand_over.copied
                 )
-            except Exception as error:
-                # The Hugging Face row is queued: answer with its receipt.
+            # The Hugging Face row is queued: any failure to queue the collector
+            # row only warns, and the request is answered with its receipt.
+            except Exception as error:  # noqa: BLE001
                 self.delivery.warn_once(
                     "collector queue",
                     COLLECTOR_QUEUE_ERROR_MESSAGE.format(
@@ -354,7 +360,8 @@ class HuggingFaceModule:
         return ReleaseCaller(user=_user_name(), parent_pid=self.context.parent_pid)
 
     def _release_change(self, message: JsonObject) -> dict[str, Any]:
-        assert self.queue is not None
+        if self.queue is None:
+            raise AssertionError
 
         def refused(
             code: str, handover_id: str = "", reason: str | None = None
@@ -402,7 +409,8 @@ class HuggingFaceModule:
         )
 
     def _handover_receipt(self, message: JsonObject) -> dict[str, Any] | None:
-        assert self.queue is not None
+        if self.queue is None:
+            raise AssertionError
         require_supported_version(message)
         handover_id = message.get("handover_id")
         if not isinstance(handover_id, str) or not handover_id:
@@ -440,17 +448,22 @@ class HuggingFaceModule:
         access["credential"] = "present"
         try:
             hub.head_revision()
-        except Exception as error:
+        # Any failure to reach the Hub is reported as unreachable, with only
+        # the exception's type name.
+        except Exception as error:  # noqa: BLE001
             # Only the type name: the Hub's message can carry request details.
             return {**access, "reachable": False, "error_type": type(error).__name__}
         try:
             can_write = hub.credential_can_write()
-        except Exception:
+        # Any failure leaves the token's write scope unknown (None); then only
+        # the upload itself proves it.
+        except Exception:  # noqa: BLE001
             can_write = None
         return {**access, "reachable": True, "can_write": can_write}
 
     def _stage_run_files(self, message: JsonObject) -> dict[str, Any]:
-        assert self.queue is not None
+        if self.queue is None:
+            raise AssertionError
         try:
             hand_over = parse_stage_run_files(message)
         except RequestRefusedError as refusal:
@@ -470,7 +483,8 @@ class HuggingFaceModule:
         }
 
     def _read_back_run_files(self, message: JsonObject) -> dict[str, Any]:
-        assert self.queue is not None
+        if self.queue is None:
+            raise AssertionError
         result: dict[str, Any] = {
             "status": "refused",
             "files": 0,
@@ -497,7 +511,9 @@ class HuggingFaceModule:
             for path_in_repo, digest in sorted(committed.items()):
                 if sha256_bytes(hub.download(path_in_repo)) != digest:
                     mismatched.append(path_in_repo)
-        except Exception:
+        # Any failure reading the Hub's copies fails the read-back with
+        # REPOSITORY_UNAVAILABLE.
+        except Exception:  # noqa: BLE001
             return {
                 **result,
                 "status": "failed",
@@ -519,21 +535,25 @@ class HuggingFaceModule:
         one-time warning (``warn_once``) instead of stopping the module. ``now``
         is not used.
         """
-        assert self.delivery is not None, "The host initializes modules first."
+        if self.delivery is None:
+            error_message = "The host initializes modules first."
+            raise AssertionError(error_message)
         try:
             if self.workers:
                 # Uploads that can take minutes run on the module's workers.
                 self.delivery.run_file_cycle()
             else:
                 self.delivery.run_cycle()
-        except Exception:
-            # The host stops a module whose tick raises; a local queue error
-            # leaves the work queued and must not end every later delivery.
+        # The host stops a module whose tick raises; a local queue error
+        # leaves the work queued and must not end every later delivery.
+        except Exception:  # noqa: BLE001
             self._worker_error()
         if self.collector_delivery is not None and not self.workers:
             try:
                 self.collector_delivery.run_cycle()
-            except Exception:
+            # The host stops a module whose tick raises; a failed collector
+            # cycle leaves the work queued and must not end every later one.
+            except Exception:  # noqa: BLE001
                 self._collector_error()
 
     def parent_exited(self) -> None:
@@ -575,7 +595,9 @@ class HuggingFaceModule:
                 min(deadline, time.monotonic() + COLLECTOR_SHUTDOWN_WAIT_SECONDS)
             )
             workers_stopped = hugging_face_stopped and collector_stopped
-        except Exception:
+        # A failure at shutdown warns and leaves the work queued for the next
+        # emitter.
+        except Exception:  # noqa: BLE001
             self._worker_error()
             workers_stopped = False
         finally:
