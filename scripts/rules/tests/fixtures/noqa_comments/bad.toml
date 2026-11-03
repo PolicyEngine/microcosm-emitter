@@ -1,0 +1,30 @@
+# Proof fixture for the noqa-comments guard: modules with inline suppressions
+# the baseline does not list. Python files with these comments would be
+# counted by the guard itself, so the proof test writes each file into a
+# temporary directory and runs the guard there.
+
+# The baseline lists one of the two BLE001 suppressions in the service module.
+baseline = ["pkg/service.py: BLE001"]
+
+[[file]]
+path = "pkg/service.py"
+text = '''
+def run(step):
+    try:
+        step()
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        step()
+    except Exception:  # noqa: BLE001
+        return None
+    return True
+'''
+
+# A second code, written without spaces, is still a suppression.
+[[file]]
+path = "pkg/cli.py"
+text = '''
+def report(message):
+    print(message)  # noqa:T201,E501
+'''

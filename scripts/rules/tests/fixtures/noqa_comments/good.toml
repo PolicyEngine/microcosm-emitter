@@ -1,0 +1,35 @@
+# Proof fixture for the noqa-comments guard: every inline suppression is listed
+# in the baseline, once per comment, and text that only mentions noqa is not
+# a suppression.
+
+baseline = [
+    "pkg/service.py: BLE001",
+    "pkg/service.py: BLE001",
+    "pkg/cli.py: E501, T201",
+]
+
+[[file]]
+path = "pkg/service.py"
+text = '''
+def run(step):
+    try:
+        step()
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        step()
+    except Exception:  # noqa: BLE001
+        return None
+    return True
+'''
+
+[[file]]
+path = "pkg/cli.py"
+text = '''
+HELP = "Append # noqa: T201 to keep a print."
+
+
+def report(message):
+    # A comment that names noqa without the directive is not one.
+    print(message)  # noqa:T201,E501
+'''
