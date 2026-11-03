@@ -328,6 +328,75 @@ class TestIsortDirectives(unittest.TestCase):
         )
 
 
+class TestIsortAsRuffReadsIt(unittest.TestCase):
+    """The isort comments are read exactly as Ruff 0.16.10 reads them.
+
+    Ruff takes a whole comment of skip_file, off or on, after "# isort: " or
+    "# ruff: isort: ", and otherwise any comment containing "isort: skip" or
+    "isort:skip", which leaves out of sorting the import that starts on the
+    same line. A skip on any other line, and an off written another way,
+    apply to nothing.
+    """
+
+    def test_skip_file_inside_a_longer_comment_skips_its_import(self) -> None:
+        source = "import sys  # keep first, isort: skip_file\nimport os\n"
+
+        self.assertEqual(
+            comment_entries("pkg/module.py", source),
+            ["pkg/module.py: I001 (isort: skip)"],
+        )
+
+    def test_skip_file_followed_by_more_comment_skips_its_import(self) -> None:
+        source = "import sys  # isort:skip_file  # keep first\nimport os\n"
+
+        self.assertEqual(
+            comment_entries("pkg/module.py", source),
+            ["pkg/module.py: I001 (isort: skip)"],
+        )
+
+    def test_skip_followed_by_more_letters_skips_its_import(self) -> None:
+        source = "import sys  # isort: skipped, it must load first\nimport os\n"
+
+        self.assertEqual(
+            comment_entries("pkg/module.py", source),
+            ["pkg/module.py: I001 (isort: skip)"],
+        )
+
+    def test_skip_followed_by_an_underscore_skips_its_import(self) -> None:
+        source = "import sys  # isort:skip_this\nimport os\n"
+
+        self.assertEqual(
+            comment_entries("pkg/module.py", source),
+            ["pkg/module.py: I001 (isort: skip)"],
+        )
+
+    def test_a_skip_on_its_own_line_applies_to_nothing(self) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# isort: skip\nimport sys\n"), []
+        )
+
+    def test_a_skip_after_code_that_is_not_an_import_applies_to_nothing(
+        self,
+    ) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "VALUE = 1  # isort: skip\n"), []
+        )
+
+    def test_an_off_without_the_space_after_the_hash_applies_to_nothing(
+        self,
+    ) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "#isort: off\nimport sys\n"), []
+        )
+
+    def test_an_off_without_the_space_after_the_colon_applies_to_nothing(
+        self,
+    ) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# isort:off\nimport sys\n"), []
+        )
+
+
 class TestCodesAsRuffReadsThem(unittest.TestCase):
     def test_codes_written_without_a_delimiter_are_separate_codes(self) -> None:
         self.assertEqual(
