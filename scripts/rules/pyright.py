@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from scripts.rules.baseline import baseline_lines
 from scripts.rules.load import load_registry
 from scripts.rules.model import (
     Kind,
@@ -148,11 +149,7 @@ def errors_in_report(report: Mapping[str, Any], root: Path) -> list[PyrightError
 
 def read_baseline(path: Path) -> list[str]:
     """Return a baseline's entries, skipping blank and ``#`` comment lines."""
-    return [
-        line.strip()
-        for line in path.read_text().splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    ]
+    return baseline_lines(path.read_text(encoding="utf-8"))
 
 
 def compare(errors: Sequence[PyrightError], baseline: Sequence[str]) -> Comparison:
@@ -354,7 +351,7 @@ def _baseline_header(rule: Rule, package: str) -> str:
 def _existing_header(path: Path) -> str:
     """Return the comment and blank lines that open an existing baseline file."""
     header = []
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip() and not line.lstrip().startswith("#"):
             break
         header.append(line)

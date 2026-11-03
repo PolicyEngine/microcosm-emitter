@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
+from scripts.rules.baseline import baseline_lines
 from scripts.rules.load import load_registry
 from scripts.rules.locked_installs import tracked_files
 from scripts.rules.model import Kind, Registry, Rule, Violation, normalized_package
@@ -124,11 +125,7 @@ def baseline_entries(root: Path, rule: Rule | None) -> set[str]:
     file = root / rule.baseline.file
     if not file.is_file():
         return set()
-    return {
-        line.strip()
-        for line in file.read_text().splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    }
+    return set(baseline_lines(file.read_text(encoding="utf-8")))
 
 
 def compare(
