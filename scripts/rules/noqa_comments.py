@@ -61,6 +61,15 @@ RUFF_BRACKETED = re.compile(
 FILE_NOQA_DIRECTIVE = re.compile(
     r"#\s*(?P<tool>ruff|flake8)\s*:\s*(?i:noqa)(?P<rest>.*)"
 )
+# The isort directives, which switch off Ruff's import sorting (I001): a whole
+# comment naming isort and one of the keywords skip_file, off or on, after an
+# optional "ruff:" prefix, or the skip keyword after isort anywhere else in a
+# comment.
+ISORT_COMMENT = re.compile(
+    r"#\s*(?P<prefix>ruff\s*:\s*)?isort\s*:\s*(?P<keyword>skip_file|off|on)\s*$"
+)
+ISORT_SKIP = re.compile(r"isort:\s?skip(?!_file)\b")
+ISORT_CODE = "I001"
 RULE_CODE = re.compile(r"[A-Z]+[0-9]+")
 CODE_SEPARATOR = re.compile(r"[\s,]*")
 NEW_SUPPRESSION_FIX = (
@@ -84,7 +93,8 @@ def codes_after(rest: str) -> list[str] | None:
         return [] if not rest or rest[0].isspace() or rest[0] == "#" else None
     text = stripped[1:].lstrip()
     codes = []
-    position = 0
+    # Ruff skips a comma before the first code, with a warning.
+    position = CODE_SEPARATOR.match(text).end()
     while code := RULE_CODE.match(text, position):
         codes.append(code.group())
         position = CODE_SEPARATOR.match(text, code.end()).end()
@@ -96,15 +106,39 @@ def _entry(path: str, codes: list[str], label: str = "") -> str:
     return f"{path}: {listed}{f' ({label})' if label else ''}"
 
 
-def _directive_entries(path: str, comment: str, *, own_line: bool) -> list[str]:
-    """Return the entries for the suppression directives in one comment."""
+def _file_level_entries(path: str, comment: str, *, own_line: bool) -> list[str]:
+    """Return the entry for a file-level noqa, which Ruff applies on its own line."""
     file_level = FILE_NOQA_DIRECTIVE.search(comment)
-    if file_level is not None:
-        codes = codes_after(file_level.group("rest"))
-        if not own_line or codes is None:
+    if file_level is None or not own_line:
+        return []
+    codes = codes_after(file_level.group("rest"))
+    if codes is None:
+        return []
+    return [_entry(path, codes, f"{file_level.group('tool')}: noqa")]
+
+
+def _isort_entries(path: str, comment: str) -> list[str]:
+    """Return the entry for an isort directive that switches sorting off."""
+    whole = ISORT_COMMENT.match(comment)
+    if whole is not None:
+        if whole.group("keyword") == "on":
             return []
-        return [_entry(path, codes, f"{file_level.group('tool')}: noqa")]
-    entries = [
+        prefix = "ruff: " if whole.group("prefix") else ""
+        return [_entry(path, [ISORT_CODE], f"{prefix}isort: {whole.group('keyword')}")]
+    if ISORT_SKIP.search(comment):
+        return [_entry(path, [ISORT_CODE], "isort: skip")]
+    return []
+
+
+def _directive_entries(path: str, comment: str, *, own_line: bool) -> list[str]:
+    """Return the entries for the suppression directives in one comment.
+
+    Ruff reads each kind of directive in a comment on its own, so a file-level
+    noqa that it does not apply hides none of the others.
+    """
+    entries = _file_level_entries(path, comment, own_line=own_line)
+    entries += _isort_entries(path, comment)
+    entries += [
         _entry(
             path, RULE_CODE.findall(form.group("codes")), f"ruff: {form.group('form')}"
         )
