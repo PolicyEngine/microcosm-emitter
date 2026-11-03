@@ -243,6 +243,91 @@ class TestRuffSuppressionComments(unittest.TestCase):
         )
 
 
+class TestDirectivesBesideAFileLevelNoqa(unittest.TestCase):
+    """A trailing file-level noqa, which Ruff does not apply, hides nothing else.
+
+    Ruff reads every directive in a comment on its own, so the others still
+    count.
+    """
+
+    def test_an_inline_noqa_before_a_trailing_file_level_noqa_counts(self) -> None:
+        self.assertEqual(
+            comment_entries(
+                "pkg/module.py", "print(1)  # noqa: T201  # ruff: noqa: E501\n"
+            ),
+            ["pkg/module.py: T201"],
+        )
+
+    def test_an_inline_noqa_after_a_trailing_file_level_noqa_counts(self) -> None:
+        self.assertEqual(
+            comment_entries(
+                "pkg/module.py", "print(1)  # ruff: noqa: E501  # noqa: T201\n"
+            ),
+            ["pkg/module.py: T201"],
+        )
+
+    def test_an_inline_noqa_before_a_trailing_flake8_noqa_counts(self) -> None:
+        self.assertEqual(
+            comment_entries(
+                "pkg/module.py", "print(1)  # noqa: T201  # flake8: noqa\n"
+            ),
+            ["pkg/module.py: T201"],
+        )
+
+    def test_a_ruff_ignore_after_a_trailing_flake8_noqa_counts(self) -> None:
+        self.assertEqual(
+            comment_entries(
+                "pkg/module.py",
+                "print(1)  # flake8: noqa: E501  # ruff: ignore[T201]\n",
+            ),
+            ["pkg/module.py: T201 (ruff: ignore)"],
+        )
+
+    def test_an_own_line_file_level_noqa_and_an_inline_noqa_both_count(
+        self,
+    ) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# ruff: noqa: E501  # noqa: T201\n"),
+            ["pkg/module.py: E501 (ruff: noqa)", "pkg/module.py: T201"],
+        )
+
+
+class TestIsortDirectives(unittest.TestCase):
+    """The isort directives switch off Ruff's import sorting (I001)."""
+
+    def test_an_isort_skip_anywhere_in_a_comment_is_an_entry(self) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "import sys  # keep first, isort:skip\n"),
+            ["pkg/module.py: I001 (isort: skip)"],
+        )
+
+    def test_an_isort_skip_file_is_an_entry(self) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# isort: skip_file\nimport sys\n"),
+            ["pkg/module.py: I001 (isort: skip_file)"],
+        )
+
+    def test_a_ruff_isort_skip_file_is_an_entry(self) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# ruff: isort: skip_file\nimport sys\n"),
+            ["pkg/module.py: I001 (ruff: isort: skip_file)"],
+        )
+
+    def test_an_isort_off_is_an_entry_and_its_on_none(self) -> None:
+        source = "# isort: off\nimport sys\nimport os\n# isort: on\n"
+
+        self.assertEqual(
+            comment_entries("pkg/module.py", source),
+            ["pkg/module.py: I001 (isort: off)"],
+        )
+
+    def test_a_ruff_isort_off_is_an_entry(self) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# ruff: isort: off\nimport sys\n"),
+            ["pkg/module.py: I001 (ruff: isort: off)"],
+        )
+
+
 class TestCodesAsRuffReadsThem(unittest.TestCase):
     def test_codes_written_without_a_delimiter_are_separate_codes(self) -> None:
         self.assertEqual(
@@ -254,6 +339,13 @@ class TestCodesAsRuffReadsThem(unittest.TestCase):
         self.assertEqual(
             comment_entries("pkg/module.py", "run()  # noqa : BLE001\n"),
             ["pkg/module.py: BLE001"],
+        )
+
+    def test_a_code_list_starting_with_a_comma_still_names_its_codes(self) -> None:
+        # Ruff skips the comma, with a warning, and applies the code.
+        self.assertEqual(
+            comment_entries("pkg/module.py", "print(1)  # noqa: ,T201\n"),
+            ["pkg/module.py: T201"],
         )
 
     def test_lowercase_codes_suppress_nothing_and_are_not_counted(self) -> None:
