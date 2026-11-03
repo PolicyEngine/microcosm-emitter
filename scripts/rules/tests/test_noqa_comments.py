@@ -1,4 +1,4 @@
-"""Tests for the noqa-comments guard: inline suppressions may only become fewer."""
+"""Tests for the noqa-comments guard: the number of inline suppressions may not grow."""
 
 from __future__ import annotations
 
@@ -106,14 +106,14 @@ class TestNoqaCommentsProof(unittest.TestCase):
                 (
                     "[registry] noqa-comments: inline suppression not in the "
                     "baseline: pkg/cli.py: E501, T201. Fix: fix the finding instead "
-                    "of suppressing it; rules/baselines/noqa-comments.txt may only "
-                    "shrink."
+                    "of suppressing it, or remove another suppression and list this "
+                    "one in rules/baselines/noqa-comments.txt: the total may not grow."
                 ),
                 (
                     "[registry] noqa-comments: inline suppression not in the "
                     "baseline: pkg/service.py: BLE001. Fix: fix the finding instead "
-                    "of suppressing it; rules/baselines/noqa-comments.txt may only "
-                    "shrink."
+                    "of suppressing it, or remove another suppression and list this "
+                    "one in rules/baselines/noqa-comments.txt: the total may not grow."
                 ),
             ],
         )
@@ -132,8 +132,8 @@ class TestNewAndRemovedSuppressions(unittest.TestCase):
                 (
                     "[registry] noqa-comments: inline suppression not in the "
                     "baseline: pkg/module.py: F401. Fix: fix the finding instead of "
-                    "suppressing it; rules/baselines/noqa-comments.txt may only "
-                    "shrink."
+                    "suppressing it, or remove another suppression and list this one "
+                    "in rules/baselines/noqa-comments.txt: the total may not grow."
                 )
             ],
         )
