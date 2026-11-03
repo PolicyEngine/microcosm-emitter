@@ -358,35 +358,64 @@ class TestCodesAsRuffReadsThem(unittest.TestCase):
 class TestTheTotalMayNotGrow(unittest.TestCase):
     """The base branch comparison counts comments only, as Anthony decided.
 
-    A pull request may add a suppression only by removing another, so the
-    same total passes even when a code is added to a comment, a code is
-    swapped for another or a file is renamed, as long as the baseline is
-    updated to match; a higher total fails.
+    Each test models a pull request as CI checks it: the base branch's files
+    and baseline, then the pull request's. The guard runs on the pull request,
+    and the baseline's total is compared with the base branch's. A pull
+    request may add a suppression only by removing another, so the same total
+    passes even when a code is added to a comment, a code is swapped for
+    another or a file is renamed, once the baseline lists the result; a higher
+    total fails. A later move to comparing entries would fail the first three.
     """
+
+    def check_pull_request(
+        self,
+        base: tuple[dict[str, str], list[str]],
+        head: tuple[dict[str, str], list[str]],
+    ) -> list[str]:
+        """Return CI's violations for a pull request from ``base`` to ``head``."""
+        base_files, base_baseline = base
+        head_files, head_baseline = head
+        self.assertEqual(violations_for(base_files, base_baseline), [])
+        self.assertNotEqual(Counter(base_baseline), Counter(head_baseline))
+        return violations_for(head_files, head_baseline) + base_branch_violations(
+            len(base_baseline), len(head_baseline)
+        )
 
     def test_a_code_added_to_an_existing_comment_passes_at_the_same_total(
         self,
     ) -> None:
-        files = {"pkg/module.py": "run()  # noqa: BLE001, S110\n"}
+        base = ({"pkg/module.py": "run()  # noqa: BLE001\n"}, ["pkg/module.py: BLE001"])
+        head = (
+            {"pkg/module.py": "run()  # noqa: BLE001, S110\n"},
+            ["pkg/module.py: BLE001, S110"],
+        )
 
-        self.assertEqual(violations_for(files, ["pkg/module.py: BLE001, S110"]), [])
-        self.assertEqual(base_branch_violations(1, 1), [])
+        self.assertEqual(self.check_pull_request(base, head), [])
 
     def test_a_swapped_code_passes_at_the_same_total(self) -> None:
-        files = {"pkg/module.py": "run()  # noqa: S110\n"}
+        base = ({"pkg/module.py": "run()  # noqa: BLE001\n"}, ["pkg/module.py: BLE001"])
+        head = ({"pkg/module.py": "run()  # noqa: S110\n"}, ["pkg/module.py: S110"])
 
-        self.assertEqual(violations_for(files, ["pkg/module.py: S110"]), [])
-        self.assertEqual(base_branch_violations(1, 1), [])
+        self.assertEqual(self.check_pull_request(base, head), [])
 
     def test_a_renamed_file_passes_at_the_same_total(self) -> None:
-        files = {"pkg/renamed.py": "run()  # noqa: BLE001\n"}
+        base = ({"pkg/module.py": "run()  # noqa: BLE001\n"}, ["pkg/module.py: BLE001"])
+        head = (
+            {"pkg/renamed.py": "run()  # noqa: BLE001\n"},
+            ["pkg/renamed.py: BLE001"],
+        )
 
-        self.assertEqual(violations_for(files, ["pkg/renamed.py: BLE001"]), [])
-        self.assertEqual(base_branch_violations(1, 1), [])
+        self.assertEqual(self.check_pull_request(base, head), [])
 
     def test_a_higher_total_fails_against_the_base_branch(self) -> None:
+        base = ({"pkg/module.py": "run()  # noqa: BLE001\n"}, ["pkg/module.py: BLE001"])
+        head = (
+            {"pkg/module.py": "run()  # noqa: BLE001\nprint(1)  # noqa: T201\n"},
+            ["pkg/module.py: BLE001", "pkg/module.py: T201"],
+        )
+
         self.assertEqual(
-            base_branch_violations(1, 2),
+            self.check_pull_request(base, head),
             [
                 (
                     "[ex.quality.inline-suppressions] baseline: baseline grew from 1 "
