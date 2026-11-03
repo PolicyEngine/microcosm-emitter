@@ -31,7 +31,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
 from microcosm_emitter.core.collector_origin import same_collector_origins
-from microcosm_emitter.huggingface.service.delivery import HeldLeases, never_stop
+from microcosm_emitter.huggingface.service.delivery import (
+    HeldLeases,
+    LeaseRenewal,
+    never_stop,
+)
 from microcosm_emitter.submissions.client import (
     AWAITING_FINAL_STATUS,
     FINAL_STATUSES,
@@ -232,10 +236,12 @@ class CollectorSubmissionDelivery:
             held = HeldLeases.for_job(
                 self.queue,
                 job,
-                clock=self.clock,
-                lease_seconds=SUBMISSION_LEASE_SECONDS,
-                renewal_seconds=SUBMISSION_LEASE_RENEWAL_SECONDS,
-                stop_requested=stop_requested,
+                renewal=LeaseRenewal(
+                    clock=self.clock,
+                    lease_seconds=SUBMISSION_LEASE_SECONDS,
+                    renewal_seconds=SUBMISSION_LEASE_RENEWAL_SECONDS,
+                    stop_requested=stop_requested,
+                ),
             ).start()
             try:
                 result = self._attempt(job)

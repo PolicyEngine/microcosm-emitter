@@ -41,6 +41,11 @@ def _jsonable(value: object) -> JsonValue:
         return [_jsonable(item) for item in value]
     if isinstance(value, Path):
         return str(value)
+    return _jsonable_scalar(value)
+
+
+def _jsonable_scalar(value: object) -> JsonValue:
+    """``_jsonable`` for a value that is not a dict, a list, a tuple or a path."""
     if isinstance(value, float):
         return value if math.isfinite(value) else None
     if isinstance(value, (str, int, bool)) or value is None:

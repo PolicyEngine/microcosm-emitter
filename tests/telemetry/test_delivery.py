@@ -541,6 +541,15 @@ def test_missing_credential_never_contacts_collector_and_stays_local_only(
     assert reopened.pending_runs() == []
 
 
+def _queue_a_pending_run(spool_path, run_id: str) -> None:
+    """Register ``run_id`` with one event in the event queue file, then close it."""
+    registration = _registration(run_id)
+    queue = EventSpool(spool_path)
+    queue.register(registration)
+    queue.append(registration, _event())
+    queue.close()
+
+
 @pytest.mark.parametrize(
     "unreadable_login",
     [
@@ -554,11 +563,7 @@ def test_an_unreadable_saved_login_keeps_runs_pending_until_it_can_be_read(
 ) -> None:
     # An earlier build's run, still pending in the event queue file.
     spool_path = tmp_path / "events.sqlite3"
-    earlier = _registration("run-earlier")
-    earlier_queue = EventSpool(spool_path)
-    earlier_queue.register(earlier)
-    earlier_queue.append(earlier, _event())
-    earlier_queue.close()
+    _queue_a_pending_run(spool_path, "run-earlier")
     # Neither HF_TOKEN nor HUGGINGFACE_TOKEN is set, so the emitter reads the
     # login saved by `hf auth login`.
     login_reads: list[str] = []
@@ -910,6 +915,50 @@ def test_permanent_collector_rejection_retains_only_rejected_producer(
         if endpoint == "events":
             assert f"HTTP {status}" in warning
             assert "will not be retried" in warning
+    finally:
+        spool.close()
+
+
+def test_a_refused_events_request_makes_only_that_run_local(tmp_path, monkeypatch):
+    """A 403 to the events request records the authorization refusal for the run.
+
+    The run keeps its events, the collector is not asked again, and an
+    unrelated producer still uploads.
+    """
+    spool = EventSpool(tmp_path / "refused.sqlite3")
+    refused = _registration()
+    unrelated = {**refused, "producer_id": "producer-unrelated"}
+    spool.register(refused)
+    spool.register(unrelated)
+    kept = spool.append(refused, _event())
+    spool.append(unrelated, _event())
+    requests = []
+    monkeypatch.setattr(collector_module, "huggingface_token", lambda: "hf_test_member")
+
+    def post(url, payload, token):
+        requests.append(url)
+        if url.endswith("/exchange"):
+            return 200, {"access_token": "synthetic", "expires_in": 3600}
+        if url.endswith("/v1/runs"):
+            return 201, {}
+        if payload["events"][0]["producer_id"] == refused["producer_id"]:
+            return 403, {}
+        return 202, {}
+
+    monkeypatch.setattr(collector_module, "_http_post", post)
+    delivery = CollectorDelivery(spool, development_collector_url="http://127.0.0.1:1")
+    try:
+        assert delivery.flush_once()
+        assert spool.batch(refused["run_id"], refused["producer_id"]) == [kept]
+        with Session(spool._engine) as session:
+            record = session.get(
+                TelemetryRunRecord, (refused["run_id"], refused["producer_id"])
+            )
+            assert record.upload_state == "local_only"
+            assert record.local_only_reason == "collector_authorization_rejected"
+        request_count = len(requests)
+        assert not delivery.flush_once()
+        assert len(requests) == request_count
     finally:
         spool.close()
 

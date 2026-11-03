@@ -230,18 +230,7 @@ class _RequestProcessor:
             COMMAND_CALIBRATION_PROGRESS,
             COMMAND_TRANSITION_CALIBRATION_PROGRESS,
         }:
-            event = _mapping(request.get("event"))
-            if event.get("kind") == CALIBRATION_EVENT_KIND:
-                if command == COMMAND_TRANSITION_CALIBRATION_PROGRESS and (
-                    self.state.transition_stage != STAGE_CALIBRATING
-                ):
-                    self.transition({"stage_id": STAGE_CALIBRATING})
-                self.add(
-                    EVENT_TYPE_CALIBRATION,
-                    STATUS_PROGRESS,
-                    STAGE_CALIBRATING,
-                    details=event,
-                )
+            self.calibration_progress(command, request)
         elif command == COMMAND_FAIL:
             self.fail(request)
         elif command == COMMAND_BLOCK:
@@ -257,6 +246,26 @@ class _RequestProcessor:
         else:
             error_message = "unsupported telemetry command"
             raise ValueError(error_message)
+
+    def calibration_progress(self, command: str, request: Mapping[str, Any]) -> None:
+        """Record a calibration progress event at ``STAGE_CALIBRATING``.
+
+        The transition command first makes ``STAGE_CALIBRATING`` the
+        transition stage, unless it already is. A request whose event is not
+        of ``CALIBRATION_EVENT_KIND`` records nothing.
+        """
+        event = _mapping(request.get("event"))
+        if event.get("kind") == CALIBRATION_EVENT_KIND:
+            if command == COMMAND_TRANSITION_CALIBRATION_PROGRESS and (
+                self.state.transition_stage != STAGE_CALIBRATING
+            ):
+                self.transition({"stage_id": STAGE_CALIBRATING})
+            self.add(
+                EVENT_TYPE_CALIBRATION,
+                STATUS_PROGRESS,
+                STAGE_CALIBRATING,
+                details=event,
+            )
 
     def add(
         self,

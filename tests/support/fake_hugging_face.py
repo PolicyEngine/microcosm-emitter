@@ -211,9 +211,9 @@ class FakeHuggingFaceApi:
         operations: Iterable[Any],
         *,
         commit_message: str,
-        repo_type: str | None = None,
         revision: str | None = None,
         parent_commit: str | None = None,
+        # repo_type and every other HfApi argument this fake ignores.
         **_: Any,
     ):
         operations = list(operations)

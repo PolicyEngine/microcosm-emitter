@@ -72,6 +72,38 @@ def _local_files_outcome(files: list[Mapping[str, Any]]) -> BundleOutcome | None
     return None
 
 
+def _staged_bundle_outcome(
+    repository: DatasetRepository, remote_inventory: str, outputs: Mapping[str, str]
+) -> BundleOutcome:
+    """Return the outcome for a bundle whose inventory the repository holds.
+
+    It is ``already_staged``, at the commit that added the folder, when the
+    outputs' digests match, and ``REMOTE_DIFFERS`` when they do not. It never
+    raises for the Hub.
+    """
+    try:
+        remote = json.loads(repository.download(remote_inventory))
+    # stage_bundle never raises for the Hub: any failure reading it leaves the
+    # bundle pending for a retry.
+    except Exception:  # noqa: BLE001
+        return BundleOutcome("pending", REPOSITORY_UNAVAILABLE, retry=True)
+    remote_files = remote.get("files") if isinstance(remote, Mapping) else None
+    if not _same_digests(remote_files, outputs):
+        return BundleOutcome("failed", REMOTE_DIFFERS)
+    # The commit that added the folder (a bundle is never rewritten, so it last
+    # changed the inventory), never a later head: the collector's provenance
+    # names it. Without it, ask again later.
+    try:
+        revision = repository.last_commit(remote_inventory)
+    # stage_bundle never raises for the Hub: any failure reading the commit
+    # counts as no revision, which leaves the bundle pending.
+    except Exception:  # noqa: BLE001
+        revision = None
+    if not revision:
+        return BundleOutcome("pending", REPOSITORY_UNAVAILABLE, retry=True)
+    return BundleOutcome("already_staged", revision=revision)
+
+
 def stage_bundle(
     repository: DatasetRepository,
     request: Mapping[str, Any],
@@ -109,27 +141,7 @@ def stage_bundle(
         except Exception:  # noqa: BLE001
             return BundleOutcome("pending", REPOSITORY_UNAVAILABLE, retry=True)
         if exists:
-            try:
-                remote = json.loads(repository.download(remote_inventory))
-            # stage_bundle never raises for the Hub: any failure reading it
-            # leaves the bundle pending for a retry.
-            except Exception:  # noqa: BLE001
-                return BundleOutcome("pending", REPOSITORY_UNAVAILABLE, retry=True)
-            remote_files = remote.get("files") if isinstance(remote, Mapping) else None
-            if not _same_digests(remote_files, outputs):
-                return BundleOutcome("failed", REMOTE_DIFFERS)
-            # The commit that added the folder (a bundle is never rewritten,
-            # so it last changed the inventory), never a later head: the
-            # collector's provenance names it. Without it, ask again later.
-            try:
-                revision = repository.last_commit(remote_inventory)
-            # stage_bundle never raises for the Hub: any failure reading the
-            # commit counts as no revision, which leaves the bundle pending.
-            except Exception:  # noqa: BLE001
-                revision = None
-            if not revision:
-                return BundleOutcome("pending", REPOSITORY_UNAVAILABLE, retry=True)
-            return BundleOutcome("already_staged", revision=revision)
+            return _staged_bundle_outcome(repository, remote_inventory, outputs)
         try:
             parent = repository.head_revision()
             revision = repository.commit(

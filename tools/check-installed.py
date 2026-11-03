@@ -17,6 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EMITTER_PREFIX = "microcosm_emitter-"
 INTERFACE_PREFIX = "microcosm_emitter_interface-"
+# The emitter and the interface: dist holds one wheel and one source archive of
+# each.
+DISTRIBUTION_COUNT = 2
 # Paths, relative to an archive's top directory, that no source archive may
 # hold; one ending in / is a directory. pyproject.toml excludes them.
 UNPUBLISHED_PATHS = (
@@ -78,7 +81,7 @@ def main() -> None:
         workspace = Path(directory)
         wheels = list((ROOT / "dist").glob("*.whl"))
         sources = list((ROOT / "dist").glob("*.tar.gz"))
-        assert len(wheels) == len(sources) == 2, (
+        assert len(wheels) == len(sources) == DISTRIBUTION_COUNT, (
             "Expected an emitter and an interface wheel and source archive"
         )
         for prefix in (EMITTER_PREFIX, INTERFACE_PREFIX):

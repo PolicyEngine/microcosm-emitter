@@ -238,28 +238,17 @@ def test_graph_never_retains_raw_startup_exception(monkeypatch, tmp_path):
     assert client.startup_error.__context__ is None
 
 
-@pytest.mark.parametrize("command", ["inventory", "enqueue"])
-def test_graph_file_work_does_not_block_telemetry_or_control(
-    tmp_path, monkeypatch, capsys, command
-):
-    """Graph file I/O must not consume another module's acknowledgement time."""
-    import os
-    import tempfile
-    import threading
-    import time
+def _telemetry_and_graph_modules(tmp_path, run):
+    """Return a telemetry module for ``run`` and a graph module, sharing a context.
 
-    from microcosm_emitter.host.client import SocketClient
+    Both use one event queue file in ``tmp_path`` and an unreachable collector.
+    """
+    import os
+
     from microcosm_emitter.host.contracts import ModuleContext
-    from microcosm_emitter.host.runtime import ServiceRuntime
     from microcosm_emitter.orrery.service import module as graph_module
-    from microcosm_emitter.orrery.service import queue as graph_queue
     from microcosm_emitter.telemetry.service.module import TelemetryModule
 
-    directory = graph_files(tmp_path)
-    inventory = graph_queue.publication_inventory(
-        directory, {"graph.orrery.json": "graph"}
-    )
-    run = TelemetryRun("concurrent-graph", "UK", "test")
     context = ModuleContext(os.getpid())
     settings = {
         "spool_path": str(tmp_path / "events.sqlite3"),
@@ -271,7 +260,39 @@ def test_graph_file_work_does_not_block_telemetry_or_control(
     graph = graph_module.OrreryModule(
         {**settings, "publication_origin": "http://127.0.0.1:1"}, context
     )
-    entered, release = threading.Event(), threading.Event()
+    return telemetry, graph
+
+
+def _run_keeping_errors(runtime, errors):
+    """Run ``runtime``, appending any exception it raises to ``errors``."""
+    try:
+        runtime.run()
+    # Keeps any exception this thread's call raises, for the test to check.
+    except Exception as error:  # noqa: BLE001
+        errors.append(error)
+
+
+def _wait_until_the_runtime_answers(client):
+    """Ping through ``client`` until the runtime answers, for up to 3 seconds."""
+    import time
+
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        try:
+            client.ping()
+            break
+        except LocalServiceError:
+            time.sleep(0.01)
+
+
+def _hold_publication_inventory(monkeypatch, patched_module, entered, release):
+    """Make ``publication_inventory`` on ``patched_module`` wait for ``release``.
+
+    The replacement sets ``entered``, waits up to 5 seconds for ``release`` and
+    then calls the graph queue's own ``publication_inventory``.
+    """
+    from microcosm_emitter.orrery.service import queue as graph_queue
+
     original_inventory = graph_queue.publication_inventory
 
     def delayed_inventory(*args, **kwargs):
@@ -281,10 +302,48 @@ def test_graph_file_work_does_not_block_telemetry_or_control(
             raise TimeoutError(error_message)
         return original_inventory(*args, **kwargs)
 
-    monkeypatch.setattr(
+    monkeypatch.setattr(patched_module, "publication_inventory", delayed_inventory)
+
+
+def _graph_request_thread(graph_client, command, directory, inventory, results):
+    """Return a thread that sends one ``command`` request and keeps its result."""
+    import threading
+
+    def graph_request():
+        results.append(
+            graph_client.inventory(directory, {"graph.orrery.json": "graph"})
+            if command == "inventory"
+            else graph_client.enqueue(directory, inventory)
+        )
+
+    return threading.Thread(target=graph_request)
+
+
+@pytest.mark.parametrize("command", ["inventory", "enqueue"])
+def test_graph_file_work_does_not_block_telemetry_or_control(
+    tmp_path, monkeypatch, capsys, command
+):
+    """Graph file I/O must not consume another module's acknowledgement time."""
+    import tempfile
+    import threading
+
+    from microcosm_emitter.host.client import SocketClient
+    from microcosm_emitter.host.runtime import ServiceRuntime
+    from microcosm_emitter.orrery.service import module as graph_module
+    from microcosm_emitter.orrery.service import queue as graph_queue
+
+    directory = graph_files(tmp_path)
+    inventory = graph_queue.publication_inventory(
+        directory, {"graph.orrery.json": "graph"}
+    )
+    run = TelemetryRun("concurrent-graph", "UK", "test")
+    telemetry, graph = _telemetry_and_graph_modules(tmp_path, run)
+    entered, release = threading.Event(), threading.Event()
+    _hold_publication_inventory(
+        monkeypatch,
         graph_module if command == "inventory" else graph_queue,
-        "publication_inventory",
-        delayed_inventory,
+        entered,
+        release,
     )
     errors, results = [], []
     with tempfile.TemporaryDirectory(prefix="pe-concurrency-", dir="/tmp") as raw:
@@ -295,37 +354,17 @@ def test_graph_file_work_does_not_block_telemetry_or_control(
             tick_seconds=100,
             drain_seconds=0,
         )
-
-        def serve():
-            try:
-                runtime.run()
-            # Keeps any exception this thread's call raises, for the test to check.
-            except Exception as error:  # noqa: BLE001
-                errors.append(error)
-
-        thread = threading.Thread(target=serve)
+        thread = threading.Thread(target=_run_keeping_errors, args=(runtime, errors))
         thread.start()
         client = SocketClient(runtime.socket_path)
         graph_client = GraphPublicationClient(client.for_module("orrery"))
         graph_thread = None
         try:
-            deadline = time.monotonic() + 3
-            while time.monotonic() < deadline:
-                try:
-                    client.ping()
-                    break
-                except LocalServiceError:
-                    time.sleep(0.01)
+            _wait_until_the_runtime_answers(client)
             assert not errors
-
-            def graph_request():
-                results.append(
-                    graph_client.inventory(directory, {"graph.orrery.json": "graph"})
-                    if command == "inventory"
-                    else graph_client.enqueue(directory, inventory)
-                )
-
-            graph_thread = threading.Thread(target=graph_request)
+            graph_thread = _graph_request_thread(
+                graph_client, command, directory, inventory, results
+            )
             graph_thread.start()
             assert entered.wait(3)
             emitter = LocalTelemetryEmitter(

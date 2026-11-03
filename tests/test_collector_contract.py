@@ -269,7 +269,9 @@ def test_blocked_run_projects_check_metadata_without_failure(
         ("oom", "BUILD_OUT_OF_MEMORY", MemoryError("Bearer hf_private_error")),
     ],
 )
-def test_supplied_failure_codes_survive_collector_storage_and_documents(
+# A pytest test function: pytest passes its three fixtures and
+# three parametrized values by name, so the parameters stay.
+def test_supplied_failure_codes_survive_collector_storage_and_documents(  # noqa: PLR0913, PLR0917
     tmp_path,
     monkeypatch,
     live_collector,

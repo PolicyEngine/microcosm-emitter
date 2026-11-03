@@ -15,7 +15,7 @@ import contextlib
 import sys
 import threading
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -78,6 +78,51 @@ def iso_timestamp(seconds: float) -> str:
     return datetime.fromtimestamp(seconds, UTC).replace(microsecond=0).isoformat()
 
 
+@dataclass(frozen=True)
+class LeaseRenewal:
+    """How ``HeldLeases`` keeps its leases renewed.
+
+    Every ``renewal_seconds`` each lease is extended to ``lease_seconds`` after
+    ``clock()``, until ``stop_requested`` turns true.
+    """
+
+    clock: Callable[[], float]
+    lease_seconds: float
+    renewal_seconds: float
+    stop_requested: Callable[[], bool] = never_stop
+
+
+@dataclass(frozen=True)
+class _DeliveryWork:
+    """The work one delivery may commit to a repository.
+
+    A due job of ``job_kinds`` comes first; otherwise, with ``run_files``, the
+    repository's pending run files, which ``at_shutdown`` commits whether or
+    not they are due.
+    """
+
+    job_kinds: frozenset[str]
+    run_files: bool
+    at_shutdown: bool = False
+
+
+@dataclass(frozen=True)
+class _JobResult:
+    """One attempt at a job, as its receipt and the queue record it.
+
+    ``revision`` is the attempt's commit; ``message`` and ``current`` are
+    recorded only for a release change.
+    """
+
+    status: str
+    error_code: str | None
+    retry: bool
+    committed: bool = False
+    revision: str | None = None
+    message: str | None = None
+    current: str | None = None
+
+
 class HeldLeases:
     """A repository lease, and the job lease once one is claimed, kept renewed.
 
@@ -95,10 +140,7 @@ class HeldLeases:
         repository: str | None,
         lease: float,
         *,
-        clock: Callable[[], float],
-        lease_seconds: float,
-        renewal_seconds: float,
-        stop_requested: Callable[[], bool] = never_stop,
+        renewal: LeaseRenewal,
     ) -> None:
         """Record the leases to renew; ``start`` runs the renewal thread.
 
@@ -108,9 +150,10 @@ class HeldLeases:
         self.queue, self.repository = queue, repository
         self.repository_lease = lease
         self.job: ClaimedJob | None = None
-        self.clock = clock
-        self.lease_seconds, self.renewal_seconds = lease_seconds, renewal_seconds
-        self.stop_requested = stop_requested
+        self.clock = renewal.clock
+        self.lease_seconds = renewal.lease_seconds
+        self.renewal_seconds = renewal.renewal_seconds
+        self.stop_requested = renewal.stop_requested
         self._lock = threading.Lock()
         self._stopped = threading.Event()
         self._thread = threading.Thread(target=self._renew_until_stopped, daemon=True)
@@ -121,21 +164,10 @@ class HeldLeases:
         queue: HandoverQueue,
         job: ClaimedJob,
         *,
-        clock: Callable[[], float],
-        lease_seconds: float,
-        renewal_seconds: float,
-        stop_requested: Callable[[], bool] = never_stop,
+        renewal: LeaseRenewal,
     ) -> HeldLeases:
         """``job``'s lease alone, with no repository lease."""
-        held = cls(
-            queue,
-            None,
-            0.0,
-            clock=clock,
-            lease_seconds=lease_seconds,
-            renewal_seconds=renewal_seconds,
-            stop_requested=stop_requested,
-        )
+        held = cls(queue, None, 0.0, renewal=renewal)
         held.hold_job(job)
         return held
 
@@ -268,16 +300,13 @@ class HuggingFaceDelivery:
         if not repositories:
             return 0
         api = self.api_factory()
+        work = _DeliveryWork(job_kinds=job_kinds, run_files=run_files)
         delivered = 0
         for repository in repositories:
             if stop_requested():
                 break
             delivered += self._deliver_repository(
-                repository,
-                api,
-                job_kinds=job_kinds,
-                run_files=run_files,
-                stop_requested=stop_requested,
+                repository, api, work=work, stop_requested=stop_requested
             )
         return delivered
 
@@ -289,26 +318,22 @@ class HuggingFaceDelivery:
         skipped. ``deadline`` is a ``time.monotonic`` value.
         """
         api = self.api_factory()
+        work = _DeliveryWork(job_kinds=frozenset(), run_files=True, at_shutdown=True)
         for repository in self.queue.repositories_with_pending_run_files():
             if time.monotonic() >= deadline:
                 return
-            self._deliver_repository(
-                repository, api, job_kinds=frozenset(), run_files=True, at_shutdown=True
-            )
+            self._deliver_repository(repository, api, work=work)
 
     def _deliver_repository(
         self,
         repository: str,
         api: HfApi | None,
         *,
-        job_kinds: frozenset[str],
-        run_files: bool,
-        at_shutdown: bool = False,
+        work: _DeliveryWork,
         stop_requested: Callable[[], bool] = never_stop,
     ) -> int:
-        """One commit to ``repository``: a job of ``job_kinds``, else run files.
+        """One commit to ``repository``: a job of ``work``'s kinds, else run files.
 
-        ``at_shutdown`` commits pending run files whether or not they are due.
         ``stop_requested`` is checked again once the repository is leased, and
         once more after a job is claimed, immediately before its upload
         begins; a job claimed after shutdown began is released unattempted.
@@ -322,39 +347,50 @@ class HuggingFaceDelivery:
             self.queue,
             repository,
             lease,
-            clock=self.clock,
-            lease_seconds=REPOSITORY_LEASE_SECONDS,
-            renewal_seconds=self.lease_renewal_seconds,
+            renewal=LeaseRenewal(
+                clock=self.clock,
+                lease_seconds=REPOSITORY_LEASE_SECONDS,
+                renewal_seconds=self.lease_renewal_seconds,
+            ),
         ).start()
         try:
-            if stop_requested():
-                return 0
-            if api is None:
-                self._credential_missing(
-                    held,
-                    job_kinds=job_kinds,
-                    run_files=run_files,
-                    at_shutdown=at_shutdown,
-                )
-                return 0
-            hub = DatasetRepository(repository, api)
-            job = self._claim_job(repository, job_kinds) if job_kinds else None
-            if job is not None:
-                if stop_requested():
-                    # Shutdown began while the job was being claimed: give it
-                    # back untouched instead of starting its upload.
-                    self.queue.release_job(job)
-                    return 0
-                held.hold_job(job)
-                return int(self._deliver_job(hub, held))
-            if not self._run_files_to_commit(
-                repository, run_files=run_files, at_shutdown=at_shutdown
-            ):
-                return 0
-            return int(self._deliver_run_files(hub))
+            return self._deliver_leased(
+                repository, api, held, work=work, stop_requested=stop_requested
+            )
         finally:
             held.stop()
             self.queue.release_repository(repository, held.repository_lease)
+
+    def _deliver_leased(
+        self,
+        repository: str,
+        api: HfApi | None,
+        held: HeldLeases,
+        *,
+        work: _DeliveryWork,
+        stop_requested: Callable[[], bool],
+    ) -> int:
+        """Make ``_deliver_repository``'s commit while ``held`` holds the lease."""
+        if stop_requested():
+            return 0
+        if api is None:
+            self._credential_missing(held, work)
+            return 0
+        hub = DatasetRepository(repository, api)
+        job = self._claim_job(repository, work.job_kinds) if work.job_kinds else None
+        if job is not None:
+            if stop_requested():
+                # Shutdown began while the job was being claimed: give it
+                # back untouched instead of starting its upload.
+                self.queue.release_job(job)
+                return 0
+            held.hold_job(job)
+            return int(self._deliver_job(hub, held))
+        if not self._run_files_to_commit(
+            repository, run_files=work.run_files, at_shutdown=work.at_shutdown
+        ):
+            return 0
+        return int(self._deliver_run_files(hub))
 
     def _run_files_to_commit(
         self,
@@ -384,41 +420,34 @@ class HuggingFaceDelivery:
             kinds=kinds,
         )
 
-    def _finish_job(
-        self,
-        job: ClaimedJob,
-        *,
-        status: str,
-        error_code: str | None,
-        retry: bool,
-        committed: bool = False,
-        revision: str | None = None,
-        message: str | None = None,
-        current: str | None = None,
-    ) -> None:
+    def _finish_job(self, job: ClaimedJob, result: _JobResult) -> None:
         receipt: dict[str, Any] = {
             "handover_id": job.handover_id,
-            "status": status,
-            "error_code": error_code,
+            "status": result.status,
+            "error_code": result.error_code,
             "attempts": job.attempts + 1,
             "repository": job.target,
         }
         if job.kind == RELEASE_CHANGE:
             receipt.update(
-                message=message,
-                commit=revision,
+                message=result.message,
+                commit=result.revision,
                 release=job.request["release"],
                 build=job.request["build"],
-                current=current,
+                current=result.current,
             )
         else:
             receipt.update(
-                revision=revision,
+                revision=result.revision,
                 prefix=f"{job.request['prefix']}/{job.request['run_id']}",
                 copied_files=sorted(job.files),
             )
         self.queue.finish_job(
-            job, receipt=receipt, retry=retry, now=self.clock(), committed=committed
+            job,
+            receipt=receipt,
+            retry=result.retry,
+            now=self.clock(),
+            committed=result.committed,
         )
 
     def _deliver_job(self, hub: DatasetRepository, held: HeldLeases) -> bool:
@@ -444,13 +473,15 @@ class HuggingFaceDelivery:
             raise AssertionError
         self._finish_job(
             held.job,
-            status=outcome.status,
-            error_code=outcome.error_code,
-            retry=outcome.retry,
-            committed=outcome.committed,
-            revision=revision,
-            message=message,
-            current=current,
+            _JobResult(
+                status=outcome.status,
+                error_code=outcome.error_code,
+                retry=outcome.retry,
+                committed=outcome.committed,
+                revision=revision,
+                message=message,
+                current=current,
+            ),
         )
         return outcome.committed
 
@@ -493,17 +524,10 @@ class HuggingFaceDelivery:
                 )
         return newest_requests
 
-    def _credential_missing(
-        self,
-        held: HeldLeases,
-        *,
-        job_kinds: frozenset[str],
-        run_files: bool,
-        at_shutdown: bool,
-    ) -> None:
+    def _credential_missing(self, held: HeldLeases, work: _DeliveryWork) -> None:
         repository = held.repository
         self.warn_once(CREDENTIAL_MISSING, CREDENTIAL_MISSING_MESSAGE)
-        job = self._claim_job(repository, job_kinds) if job_kinds else None
+        job = self._claim_job(repository, work.job_kinds) if work.job_kinds else None
         if job is not None:
             held.hold_job(job)
             held.stop()
@@ -519,18 +543,21 @@ class HuggingFaceDelivery:
                 # apply a change requested long before.
                 self._finish_job(
                     held.job,
-                    status=expired.status,
-                    error_code=expired.error_code,
-                    retry=False,
-                    message=expired.message,
+                    _JobResult(
+                        status=expired.status,
+                        error_code=expired.error_code,
+                        retry=False,
+                        message=expired.message,
+                    ),
                 )
                 return
             self._finish_job(
-                held.job, status="pending", error_code=CREDENTIAL_MISSING, retry=True
+                held.job,
+                _JobResult(status="pending", error_code=CREDENTIAL_MISSING, retry=True),
             )
             return
         if not self._run_files_to_commit(
-            repository, run_files=run_files, at_shutdown=at_shutdown
+            repository, run_files=work.run_files, at_shutdown=work.at_shutdown
         ):
             return
         entries = self.queue.pending_run_files(repository)

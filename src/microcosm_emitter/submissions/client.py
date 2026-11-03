@@ -19,6 +19,7 @@ import json
 import time
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 from urllib.parse import urlsplit
@@ -26,6 +27,10 @@ from urllib.parse import urlsplit
 import httpx
 
 from microcosm_emitter.core.constants import LOOPBACK_HOSTS
+from microcosm_emitter.core.http_status import (
+    RETRYABLE_CLIENT_ERRORS,
+    is_permanent_client_error,
+)
 from microcosm_emitter.huggingface.service.hub import (
     PRESERVED_BYTES_CHANGED,
     PRESERVED_FILES_MISSING,
@@ -59,7 +64,7 @@ UPLOAD_TIMEOUT: Final = httpx.Timeout(60.0)
 #: Small enough to keep that HTTPS minimum low; httpx reads files in pieces
 #: of the same size.
 UPLOAD_CHUNK_BYTES: Final = 64 * 1024
-RETRYABLE_STATUSES: Final = frozenset({408, 429})
+RETRYABLE_STATUSES: Final = RETRYABLE_CLIENT_ERRORS
 #: After the collector shows it has no intake, how long to wait before
 #: exchanging again; no submission request goes to it meanwhile.
 INTAKE_RETRY_SECONDS: Final = 3600.0
@@ -222,6 +227,25 @@ def _preserved_files_outcome(planned: PlannedSubmission) -> SubmissionOutcome | 
     return None
 
 
+def _final_receipt_outcome(receipt: Mapping[str, Any]) -> StatusCheckOutcome:
+    """Return the outcome of a valid final receipt: its status, and any rejection."""
+    final_status = receipt["status"]
+    if final_status == "succeeded":
+        return StatusCheckOutcome(
+            "succeeded", collector_status=final_status, receipt=dict(receipt)
+        )
+    rejection = receipt.get("rejection")
+    rejection = dict(rejection) if isinstance(rejection, Mapping) else None
+    code = None if rejection is None else rejection.get("code")
+    return StatusCheckOutcome(
+        final_status,
+        code if isinstance(code, str) and code else COLLECTOR_REJECTED,
+        final_status,
+        rejection,
+        dict(receipt),
+    )
+
+
 class _StepFailedError(Exception):
     def __init__(self, outcome: SubmissionOutcome) -> None:
         super().__init__(outcome.error_code)
@@ -231,7 +255,9 @@ class _StepFailedError(Exception):
 class CollectorSubmissionClient:
     """Deliver planned submissions to one collector origin."""
 
-    def __init__(
+    # The keyword-only parameters are the client's replaceable dependencies,
+    # which the Hugging Face module and the tests pass by name.
+    def __init__(  # noqa: PLR0913
         self,
         origin: str,
         *,
@@ -313,17 +339,17 @@ class CollectorSubmissionClient:
         means the collector has no intake.
         """
         status = response.status_code
-        if status == 404:
+        if status == HTTPStatus.NOT_FOUND:
             if (
                 names_submission
                 and self._error_code(response) == "submission_not_found"
             ):
                 return SubmissionOutcome("pending", SUBMISSION_NOT_FOUND)
             return self._intake_unavailable()
-        if status == 401:
+        if status == HTTPStatus.UNAUTHORIZED:
             self._invalidate_credential()
             return SubmissionOutcome("pending", COLLECTOR_UNAVAILABLE)
-        if 400 <= status < 500 and status not in RETRYABLE_STATUSES:
+        if is_permanent_client_error(status):
             return SubmissionOutcome("failed", f"COLLECTOR_REFUSED_{status}")
         return SubmissionOutcome("pending", COLLECTOR_UNAVAILABLE)
 
@@ -354,7 +380,10 @@ class CollectorSubmissionClient:
         ``submission_owned_by_another_user``) is final at once.
         """
         response = self._send(method, path, token, body)
-        if response.status_code == 403 and self._error_code(response) is None:
+        if (
+            response.status_code == HTTPStatus.FORBIDDEN
+            and self._error_code(response) is None
+        ):
             self._invalidate_credential()
             token = self._token()
             response = self._send(method, path, token, body)
@@ -417,7 +446,11 @@ class CollectorSubmissionClient:
                 SubmissionOutcome("pending", UPLOAD_FAILED)
             ) from None
         # 412: the object exists, and the bucket never replaces one.
-        if response.status_code not in {200, 201, 412}:
+        if response.status_code not in {
+            HTTPStatus.OK,
+            HTTPStatus.CREATED,
+            HTTPStatus.PRECONDITION_FAILED,
+        }:
             raise _StepFailedError(SubmissionOutcome("pending", UPLOAD_FAILED))
 
     def submit(self, planned: PlannedSubmission) -> SubmissionOutcome:
@@ -433,7 +466,7 @@ class CollectorSubmissionClient:
             created, token = self._send_in_scope(
                 "POST", SUBMISSIONS_PATH, token, planned.body
             )
-            if created.status_code not in {200, 201}:
+            if created.status_code not in {HTTPStatus.OK, HTTPStatus.CREATED}:
                 return self._settled_answer(created, names_submission=False)
             submission_id, uploads = self._uploads(created, planned)
             for upload in uploads:
@@ -446,10 +479,16 @@ class CollectorSubmissionClient:
             )
         except _StepFailedError as failure:
             return failure.outcome
-        if completed.status_code == 409:
+        return self._completion_outcome(completed, submission_id)
+
+    def _completion_outcome(
+        self, completed: httpx.Response, submission_id: str
+    ) -> SubmissionOutcome:
+        """Return what the collector's answer to completing a submission means."""
+        if completed.status_code == HTTPStatus.CONFLICT:
             # Something is not stored as declared: create again, upload again.
             return SubmissionOutcome("pending", FILES_INCOMPLETE, submission_id)
-        if completed.status_code not in {200, 202}:
+        if completed.status_code not in {HTTPStatus.OK, HTTPStatus.ACCEPTED}:
             answer = self._settled_answer(completed, names_submission=True)
             return SubmissionOutcome(
                 answer.status,
@@ -486,7 +525,7 @@ class CollectorSubmissionClient:
         try:
             token = self._token()
             answered, token = self._send_in_scope("GET", path, token)
-            if answered.status_code != 200:
+            if answered.status_code != HTTPStatus.OK:
                 return self._unanswered_check(answered, None)
             status = (_json_object(answered) or {}).get("status")
             if status not in SUBMISSION_STATUSES:
@@ -506,7 +545,19 @@ class CollectorSubmissionClient:
                 collector_status,
                 retry_after=failure.outcome.retry_after,
             )
-        if receipt_answer.status_code == 409:
+        return self._receipt_outcome(receipt_answer, submission_id, collector_status)
+
+    def _receipt_outcome(
+        self,
+        receipt_answer: httpx.Response,
+        submission_id: str,
+        collector_status: str,
+    ) -> StatusCheckOutcome:
+        """Return what the answer to a request for the final receipt means.
+
+        ``collector_status`` is the final status the status request reported.
+        """
+        if receipt_answer.status_code == HTTPStatus.CONFLICT:
             # ``submission_not_final``: reprocessing returned it to ``queued``.
             status = (_json_object(receipt_answer) or {}).get("status")
             return StatusCheckOutcome(
@@ -515,28 +566,14 @@ class CollectorSubmissionClient:
                 if status in SUBMISSION_STATUSES
                 else collector_status,
             )
-        if receipt_answer.status_code != 200:
+        if receipt_answer.status_code != HTTPStatus.OK:
             return self._unanswered_check(receipt_answer, collector_status)
         receipt = _json_object(receipt_answer)
         if receipt is None or not receipt_matches(receipt, submission_id):
             return StatusCheckOutcome(
                 AWAITING_FINAL_STATUS, INVALID_RESPONSE, collector_status
             )
-        final_status = receipt["status"]
-        if final_status == "succeeded":
-            return StatusCheckOutcome(
-                "succeeded", collector_status=final_status, receipt=dict(receipt)
-            )
-        rejection = receipt.get("rejection")
-        rejection = dict(rejection) if isinstance(rejection, Mapping) else None
-        code = None if rejection is None else rejection.get("code")
-        return StatusCheckOutcome(
-            final_status,
-            code if isinstance(code, str) and code else COLLECTOR_REJECTED,
-            final_status,
-            rejection,
-            dict(receipt),
-        )
+        return _final_receipt_outcome(receipt)
 
     def _unanswered_check(
         self, response: httpx.Response, collector_status: str | None
@@ -546,7 +583,7 @@ class CollectorSubmissionClient:
         if answer.error_code == SUBMISSION_NOT_FOUND:
             return StatusCheckOutcome("pending", SUBMISSION_NOT_FOUND)
         if (
-            response.status_code == 403
+            response.status_code == HTTPStatus.FORBIDDEN
             and self._error_code(response) == "submission_owned_by_another_user"
         ):
             # The collector has the submission, and only this token's Hugging

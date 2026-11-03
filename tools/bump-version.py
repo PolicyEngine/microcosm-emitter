@@ -18,6 +18,8 @@ FRAGMENT_HELP = (
     "Name each fragment changelog.d/<name>.<type>.md, where <type> is one of: "
     + ", ".join(FRAGMENT_TYPES)
 )
+# A fragment's name has at least three dot-separated parts: <name>.<type>.md.
+MIN_FRAGMENT_NAME_PARTS = 3
 VERSIONED_FILE = "pyproject.toml"
 INTERFACE_VERSIONED_FILE = "packages/microcosm-emitter-interface/pyproject.toml"
 VERSIONED_FILES = (VERSIONED_FILE, INTERFACE_VERSIONED_FILE)
@@ -40,7 +42,7 @@ def fragment_types(changelog_dir: Path) -> set[str]:
         parts = fragment.name.split(".")
         if (
             not fragment.is_file()
-            or len(parts) < 3
+            or len(parts) < MIN_FRAGMENT_NAME_PARTS
             or parts[-1] != "md"
             or parts[-2] not in FRAGMENT_TYPES
         ):

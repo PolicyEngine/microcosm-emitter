@@ -555,23 +555,13 @@ queue.close()
         queue.close()
 
 
-def test_status_file_lock_covers_read_through_replace_across_processes(
-    tmp_path, monkeypatch
-):
-    """A second process must wait while an older writer holds its status-copy lock."""
-    import subprocess
-    import sys
-    import threading
-    import time
+def _pause_status_writes(monkeypatch, entered, release):
+    """Make the queue's status copies set ``entered`` and wait for ``release``.
 
+    Each copy waits up to 5 seconds, then writes the status file as before.
+    """
     from microcosm_emitter.orrery.service import queue as queue_module
 
-    directory, inventory = source(tmp_path)
-    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
-    queue.enqueue(directory, inventory)
-    lease = queue.claim()
-    entered, release = threading.Event(), threading.Event()
-    errors = []
     original_write = queue_module._write_status
 
     def paused_write(path, receipt):
@@ -582,6 +572,24 @@ def test_status_file_lock_covers_read_through_replace_across_processes(
         original_write(path, receipt)
 
     monkeypatch.setattr(queue_module, "_write_status", paused_write)
+
+
+def test_status_file_lock_covers_read_through_replace_across_processes(
+    tmp_path, monkeypatch
+):
+    """A second process must wait while an older writer holds its status-copy lock."""
+    import subprocess
+    import sys
+    import threading
+    import time
+
+    directory, inventory = source(tmp_path)
+    queue = GraphPublicationQueue(tmp_path / "jobs.sqlite3")
+    queue.enqueue(directory, inventory)
+    lease = queue.claim()
+    entered, release = threading.Event(), threading.Event()
+    errors = []
+    _pause_status_writes(monkeypatch, entered, release)
 
     def old_attempt():
         try:

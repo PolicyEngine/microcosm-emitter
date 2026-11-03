@@ -11,17 +11,21 @@ from microcosm_emitter.huggingface.service import requests as request_module
 from microcosm_emitter_interface.staging import RunFile, StageRunFiles
 
 
-def hand_over(
-    controls,
-    run_id,
-    files,
-    *,
-    flush=True,
-    interval=30.0,
-    latest_pointer=None,
-    run_index_entry=None,
-    prefix="runs",
-):
+def hand_over(controls, run_id, files, *, latest_pointer=None, **options):
+    """Write ``files`` to a local run directory and hand them over.
+
+    ``options`` may give the request's ``flush`` (true), ``interval`` (30
+    seconds), ``run_index_entry`` (none) and ``prefix`` (``"runs"``), and
+    nothing else: another name raises ``TypeError``, as an unknown keyword
+    argument would.
+    """
+    prefix = options.pop("prefix", "runs")
+    run_index_entry = options.pop("run_index_entry", None)
+    flush = options.pop("flush", True)
+    interval = options.pop("interval", 30.0)
+    if options:
+        error_message = f"hand_over() got unexpected options: {sorted(options)}"
+        raise TypeError(error_message)
     directory = controls.tmp_path / "local" / run_id
     run_files = []
     for relative_path, content in files.items():

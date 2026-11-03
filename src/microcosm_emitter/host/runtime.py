@@ -45,6 +45,16 @@ def _read_request(connection: socket.socket) -> Mapping[str, Any]:
     return request
 
 
+def _send_reply(connection: socket.socket, response: bytes) -> None:
+    """Send ``response`` and close the connection; a send that fails is dropped."""
+    try:
+        connection.sendall(response)
+    except OSError:
+        pass
+    finally:
+        connection.close()
+
+
 def _encode_reply(value: object, too_large_message: str) -> bytes:
     response = json.dumps(value, allow_nan=False).encode() + DELIMITER
     if len(response) > MAX_MESSAGE_BYTES:
@@ -60,7 +70,9 @@ class ServiceRuntime:
     ``is_parent_alive`` returns false, or when every module's thread has failed.
     """
 
-    def __init__(
+    # The host's entry point and many tests build the runtime with these
+    # settings, passed by name, so the signature stays as they call it.
+    def __init__(  # noqa: PLR0913
         self,
         socket_path: Path,
         module: ServiceModule | None = None,
@@ -109,13 +121,11 @@ class ServiceRuntime:
         and close, then removes the socket file. Raises ``LocalServiceError``
         when a module's thread failed or shutdown timed out.
         """
-        workers = {}
-        initialized = []
+        workers: dict[str, threading.Thread] = {}
+        initialized: list[ServiceModule] = []
         bound = False
         try:
-            for module in self.modules.values():
-                initialized.append(module)
-                module.initialize()
+            self._initialize_modules(initialized)
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                 # The launcher owns a fresh private directory. Never unlink an
                 # existing socket which might belong to another running host.
@@ -124,59 +134,82 @@ class ServiceRuntime:
                 self.socket_path.chmod(0o600)
                 server.listen(16)
                 server.settimeout(SOCKET_TIMEOUT)
-                self._requests = ModuleRequestDispatcher(
-                    self.modules, max_pending_requests=MAX_PENDING_REQUESTS
-                )
-                self._requests.start()
-                for name, module in self.modules.items():
-                    worker = threading.Thread(
-                        target=self._work, args=(name, module), daemon=True
-                    )
-                    worker.start()
-                    workers[name] = worker
-                while not self._stop.is_set():
-                    if not self.is_parent_alive():
-                        self._parent_exited = True
-                        break
-                    try:
-                        connection, _ = server.accept()
-                    except TimeoutError:
-                        continue
-                    connection.settimeout(SOCKET_TIMEOUT)
-                    response = self._respond(connection)
-                    if response is not None:
-                        try:
-                            connection.sendall(response)
-                        except OSError:
-                            pass
-                        finally:
-                            connection.close()
+                self._start_workers(workers)
+                self._serve(server)
         finally:
-            deadline = time.monotonic() + self.drain_seconds
-            join_deadline = deadline + SOCKET_TIMEOUT
-            self._shutdown_deadline = deadline
-            self.stop()
-            if self._requests is not None:
-                self._requests.stop()
-            for worker in workers.values():
-                worker.join(timeout=max(0, join_deadline - time.monotonic()))
-                if worker.is_alive():
-                    self._worker_error = TimeoutError("Service shutdown timed out.")
-            for name, module in self.modules.items():
-                if module in initialized and name not in workers:
-                    if self._requests is None or self._requests.wait(
-                        name, timeout=max(0, join_deadline - time.monotonic())
-                    ):
-                        module.close(deadline)
-                    else:
-                        self._worker_error = TimeoutError("Service shutdown timed out.")
-            if bound:
-                self.socket_path.unlink(missing_ok=True)
+            self._shut_down(workers, initialized, bound=bound)
         if self._worker_error is not None:
             error_message = (
                 f"Service worker failed ({type(self._worker_error).__name__})."
             )
             raise LocalServiceError(error_message) from self._worker_error
+
+    def _initialize_modules(self, initialized: list[ServiceModule]) -> None:
+        """Initialize each module, listing it in ``initialized`` first."""
+        for module in self.modules.values():
+            initialized.append(module)
+            module.initialize()
+
+    def _start_workers(self, workers: dict[str, threading.Thread]) -> None:
+        """Start the request dispatcher, then each module's thread, into ``workers``."""
+        self._requests = ModuleRequestDispatcher(
+            self.modules, max_pending_requests=MAX_PENDING_REQUESTS
+        )
+        self._requests.start()
+        for name, module in self.modules.items():
+            worker = threading.Thread(
+                target=self._work, args=(name, module), daemon=True
+            )
+            worker.start()
+            workers[name] = worker
+
+    def _serve(self, server: socket.socket) -> None:
+        """Answer connections until stopped or until the parent process exits."""
+        while not self._stop.is_set():
+            if not self.is_parent_alive():
+                self._parent_exited = True
+                return
+            try:
+                connection, _ = server.accept()
+            except TimeoutError:
+                continue
+            connection.settimeout(SOCKET_TIMEOUT)
+            response = self._respond(connection)
+            if response is not None:
+                _send_reply(connection, response)
+
+    def _shut_down(
+        self,
+        workers: Mapping[str, threading.Thread],
+        initialized: list[ServiceModule],
+        *,
+        bound: bool,
+    ) -> None:
+        """Stop the threads, close the modules that have none, remove the socket file.
+
+        A module with a thread closes itself when that thread ends. The socket
+        file is removed only when ``run`` bound it.
+        """
+        deadline = time.monotonic() + self.drain_seconds
+        join_deadline = deadline + SOCKET_TIMEOUT
+        self._shutdown_deadline = deadline
+        self.stop()
+        if self._requests is not None:
+            self._requests.stop()
+        for worker in workers.values():
+            worker.join(timeout=max(0, join_deadline - time.monotonic()))
+            if worker.is_alive():
+                self._worker_error = TimeoutError("Service shutdown timed out.")
+        for name, module in self.modules.items():
+            if module in initialized and name not in workers:
+                if self._requests is None or self._requests.wait(
+                    name, timeout=max(0, join_deadline - time.monotonic())
+                ):
+                    module.close(deadline)
+                else:
+                    self._worker_error = TimeoutError("Service shutdown timed out.")
+        if bound:
+            self.socket_path.unlink(missing_ok=True)
 
     def _respond(self, connection: socket.socket) -> bytes | None:
         try:

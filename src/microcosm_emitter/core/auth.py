@@ -74,7 +74,9 @@ NETWORK_FAILURES = (OSError, TimeoutError, HTTPException)
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Keep bearer credentials on the explicitly configured origin."""
 
-    def redirect_request(
+    # HTTPRedirectHandler.redirect_request fixes these six positional
+    # parameters, and urllib passes each of them by position.
+    def redirect_request(  # noqa: PLR0913, PLR0917
         self,
         # urllib calls this override of HTTPRedirectHandler.redirect_request with
         # these six arguments; it refuses every redirect, so it reads none of them.
@@ -354,6 +356,22 @@ def exchange_huggingface_credential(
         )
     except NETWORK_FAILURES:
         return ExchangeFailure("unavailable")
+    return _exchange_answer(
+        status, answer, scope=scope, lifetime_seconds=lifetime_seconds
+    )
+
+
+def _exchange_answer(
+    status: int,
+    answer: Mapping[str, Any],
+    *,
+    scope: str | None,
+    lifetime_seconds: int | None,
+) -> TokenExchange:
+    """Return what the collector's answer to an exchange means.
+
+    ``scope`` and ``lifetime_seconds`` are those the exchange asked for.
+    """
     if status in {HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN}:
         return ExchangeFailure("rejected", status)
     if lifetime_seconds is not None and status == HTTPStatus.UNPROCESSABLE_ENTITY:

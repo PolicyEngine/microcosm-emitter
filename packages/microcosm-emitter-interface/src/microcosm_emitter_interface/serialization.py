@@ -22,6 +22,11 @@ def wire_value(value: object) -> JsonValue:
         return [wire_value(item) for item in value]
     if isinstance(value, Path):
         return str(value)
+    return _scalar_wire_value(value)
+
+
+def _scalar_wire_value(value: object) -> JsonValue:
+    """Convert a value that is not a mapping, a list, a tuple or a path."""
     if isinstance(value, float):
         return value if math.isfinite(value) else None
     if isinstance(value, (str, int, bool)) or value is None:

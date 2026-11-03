@@ -73,7 +73,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from microcosm_emitter.huggingface.service.hub import (
     MAX_PARENT_CONFLICT_ATTEMPTS,
@@ -105,6 +105,9 @@ from microcosm_emitter_interface.releases import (
     make_current,
     withdraw_build,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 PARENT_CONFLICT = "PARENT_CONFLICT"
 #: A change to the same release's ``current``, requested after this one, has
@@ -372,6 +375,47 @@ def _refused_for(violations: Sequence[Violation]) -> ReleaseOutcome:
     return _refused(violations[0].code, "; ".join(item.message for item in violations))
 
 
+@dataclass(frozen=True)
+class _ReleaseWrite:
+    """A release change being applied, and what every attempt at it shares."""
+
+    change: ReleaseChange
+    published_at: str
+    #: When the change was handed over, as a commit title records it.
+    requested: float
+    newest_local_requests: Mapping[str, float] | None
+    #: The build's folder, ``releases/<release>/<build>``.
+    folder: str
+    #: Each file a publication adds to that folder, with its local path.
+    new_files: dict[str, Path]
+
+
+@dataclass(frozen=True)
+class _HeadState:
+    """What one attempt read at ``main``'s head."""
+
+    head: str
+    files: list[str]
+    record_bytes: bytes | None
+    before: ReleasesRecord | None
+
+
+@dataclass(frozen=True)
+class _ReleaseOrder:
+    """Where a change stands among the changes to ``current`` that landed.
+
+    ``newest_requests`` is each release's newest request time so far. The
+    order is never changed: the commit's message uses a copy that adds this
+    change's time.
+    """
+
+    newest_requests: Mapping[str, float]
+    record_committed_at: float | None
+    changes_current: bool
+    overtaken: bool
+    makes_current: bool
+
+
 def apply_release_change(
     repository: DatasetRepository,
     change: ReleaseChange,
@@ -392,133 +436,248 @@ def apply_release_change(
         preserved = _preserved_files(change)
         if preserved is not None:
             return preserved
-    release, build = change.release, change.build
-    folder = build_folder(release, build)
-    new_files = {
-        f"{folder}/{item.name}": item.local_path
-        for item in (change.files if isinstance(change, PublishRelease) else ())
-    }
+    folder = build_folder(change.release, change.build)
+    write = _ReleaseWrite(
+        change=change,
+        published_at=published_at,
+        requested=requested,
+        newest_local_requests=newest_local_requests,
+        folder=folder,
+        new_files={
+            f"{folder}/{item.name}": item.local_path
+            for item in (change.files if isinstance(change, PublishRelease) else ())
+        },
+    )
     for _ in range(MAX_PARENT_CONFLICT_ATTEMPTS):
-        try:
-            head = repository.head_revision()
-            files = repository.list_files(revision=head)
-            record_bytes = (
-                repository.download(RELEASES_RECORD_PATH, revision=head)
-                if RELEASES_RECORD_PATH in files
-                else None
-            )
-            before = (
-                None if record_bytes is None else ReleasesRecord.parse(record_bytes)
-            )
-        except ReleaseRecordError as error:
-            return _refused_for(error.violations)
-        # Any other failure reading the Hub leaves the change pending for a
-        # retry.
-        except Exception:  # noqa: BLE001
-            return _pending(REPOSITORY_UNAVAILABLE)
-        record = before or ReleasesRecord.empty()
-        if isinstance(change, PublishRelease) and any(
-            path.startswith(folder + "/") for path in files
-        ):
-            return _already_published(repository, change, record, head)
-        try:
-            on_record, record_committed_at = _newest_requests_on_record(
-                repository, head, files
-            )
-        # Any failure reading the Hub leaves the change pending for a retry.
-        except Exception:  # noqa: BLE001
-            return _pending(REPOSITORY_UNAVAILABLE)
-        newest_requests = _newest_per_release(on_record, newest_local_requests or {})
-        newest_for_release = newest_requests.get(release)
-        changes_current = sets_current(change)
-        overtaken = (
-            changes_current
-            and newest_for_release is not None
-            and newest_for_release > requested
-        )
-        if overtaken and isinstance(change, PromoteBuild):
-            return _refused(
-                NEWER_CHANGE_LANDED,
-                f"A change to {release} requested after this one has already "
-                "landed; request this change again, as a new request, if it is "
-                "still wanted.",
-            )
-        makes_current = (
-            isinstance(change, PublishRelease) and change.make_current and not overtaken
-        )
-        try:
-            if isinstance(change, PublishRelease):
-                after = add_build(
-                    record,
-                    release=release,
-                    build=build,
-                    release_role=change.release_role,
-                    published_at=published_at,
-                    make_current=makes_current,
-                )
-            elif isinstance(change, PromoteBuild):
-                after = make_current(record, release=release, build=build)
-            else:
-                after = withdraw_build(record, release=release, build=build)
-        except ReleaseRecordError as error:
-            return _refused_for(error.violations)
-        added_paths = [*new_files, RELEASES_RECORD_PATH]
-
-        def read_file(path: str, revision: str = head) -> bytes:
-            local = new_files.get(path)
-            if local is not None:
-                return local.read_bytes()
-            return repository.download(path, revision=revision)
-
-        try:
-            violations = [
-                *check_change(before, after),
-                *check_commit(
-                    before_files=files,
-                    added_paths=added_paths,
-                    deleted_paths=[],
-                    before=before,
-                    after=after,
-                ),
-                *check_repository(after, [*files, *added_paths], read_file),
-            ]
-        # Any failure while the checks read files leaves the change pending for
-        # a retry.
-        except Exception:  # noqa: BLE001
-            return _pending(REPOSITORY_UNAVAILABLE)
-        if violations:
-            return _refused_for(violations)
-        current = after.releases[release].current
-        if not new_files and record_bytes == after.serialize():
-            # Nothing to write (the build is already current, for example):
-            # the Hub would skip an empty commit and answer with its head.
-            return ReleaseOutcome("published", commit=head, current=current)
-        operations = [add_operation(path, local) for path, local in new_files.items()]
-        operations.append(add_operation(RELEASES_RECORD_PATH, after.serialize()))
-        if changes_current and not overtaken:
-            newest_requests[release] = requested
-        message = _commit_message(
-            change,
-            _within_order_window(newest_requests, record_committed_at),
-            makes_current=makes_current,
-        )
-        try:
-            commit = repository.commit(operations, message=message, parent_commit=head)
-        # A failed commit is tried again after a parent conflict, and otherwise
-        # leaves the change pending for a retry.
-        except Exception as error:  # noqa: BLE001
-            if is_parent_conflict(error):
-                continue
-            return _pending(UPLOAD_FAILED)
-        note = (
-            _not_made_current(change, after)
-            if overtaken and isinstance(change, PublishRelease)
-            else None
-        )
-        return ReleaseOutcome(
-            "published", message=note, commit=commit, committed=True, current=current
-        )
+        outcome = _attempt_release_change(repository, write)
+        if outcome is not None:
+            return outcome
     return _pending(PARENT_CONFLICT)
+
+
+def _attempt_release_change(
+    repository: DatasetRepository, write: _ReleaseWrite
+) -> ReleaseOutcome | None:
+    """Apply the change once, at ``main``'s head as it is now.
+
+    Returns ``None`` when another commit landed first, so that the change is
+    applied again at the new head.
+    """
+    try:
+        state = _read_head_state(repository)
+    except ReleaseRecordError as error:
+        return _refused_for(error.violations)
+    # Any other failure reading the Hub leaves the change pending for a retry.
+    except Exception:  # noqa: BLE001
+        return _pending(REPOSITORY_UNAVAILABLE)
+    record = state.before or ReleasesRecord.empty()
+    if isinstance(write.change, PublishRelease) and any(
+        path.startswith(write.folder + "/") for path in state.files
+    ):
+        return _already_published(repository, write.change, record, state.head)
+    try:
+        on_record, record_committed_at = _newest_requests_on_record(
+            repository, state.head, state.files
+        )
+    # Any failure reading the Hub leaves the change pending for a retry.
+    except Exception:  # noqa: BLE001
+        return _pending(REPOSITORY_UNAVAILABLE)
+    order = _release_order(write, on_record, record_committed_at)
+    after = _checked_record(repository, write, state, record, order)
+    if isinstance(after, ReleaseOutcome):
+        return after
+    return _commit_release_record(repository, write, state, after, order)
+
+
+def _read_head_state(repository: DatasetRepository) -> _HeadState:
+    """Read ``main``'s head, its files and its parsed ``releases.json``, if any.
+
+    Raises ``ReleaseRecordError`` for a record that breaks the rules.
+    """
+    head = repository.head_revision()
+    files = repository.list_files(revision=head)
+    record_bytes = (
+        repository.download(RELEASES_RECORD_PATH, revision=head)
+        if RELEASES_RECORD_PATH in files
+        else None
+    )
+    before = None if record_bytes is None else ReleasesRecord.parse(record_bytes)
+    return _HeadState(head, files, record_bytes, before)
+
+
+def _release_order(
+    write: _ReleaseWrite,
+    on_record: Mapping[str, float],
+    record_committed_at: float | None,
+) -> _ReleaseOrder:
+    """Compare the change with the newest landed changes to its release."""
+    change = write.change
+    newest_requests = _newest_per_release(on_record, write.newest_local_requests or {})
+    newest_for_release = newest_requests.get(change.release)
+    changes_current = sets_current(change)
+    overtaken = (
+        changes_current
+        and newest_for_release is not None
+        and newest_for_release > write.requested
+    )
+    makes_current = (
+        isinstance(change, PublishRelease) and change.make_current and not overtaken
+    )
+    return _ReleaseOrder(
+        newest_requests=newest_requests,
+        record_committed_at=record_committed_at,
+        changes_current=changes_current,
+        overtaken=overtaken,
+        makes_current=makes_current,
+    )
+
+
+def _checked_record(
+    repository: DatasetRepository,
+    write: _ReleaseWrite,
+    state: _HeadState,
+    record: ReleasesRecord,
+    order: _ReleaseOrder,
+) -> ReleasesRecord | ReleaseOutcome:
+    """Return the record after the change, or the outcome that stops it.
+
+    The change is refused when a newer change overtook a promotion, or when
+    the new record or the commit would break a rule; it stays pending when
+    the checks could not read the files they need.
+    """
+    change = write.change
+    if order.overtaken and isinstance(change, PromoteBuild):
+        return _refused(
+            NEWER_CHANGE_LANDED,
+            f"A change to {change.release} requested after this one has already "
+            "landed; request this change again, as a new request, if it is "
+            "still wanted.",
+        )
+    try:
+        after = _changed_record(
+            record,
+            change,
+            published_at=write.published_at,
+            makes_current=order.makes_current,
+        )
+    except ReleaseRecordError as error:
+        return _refused_for(error.violations)
+    added_paths = [*write.new_files, RELEASES_RECORD_PATH]
+    try:
+        violations = _commit_violations(
+            repository, state, after, added_paths, write.new_files
+        )
+    # Any failure while the checks read files leaves the change pending for a retry.
+    except Exception:  # noqa: BLE001
+        return _pending(REPOSITORY_UNAVAILABLE)
+    if violations:
+        return _refused_for(violations)
+    return after
+
+
+def _changed_record(
+    record: ReleasesRecord,
+    change: ReleaseChange,
+    *,
+    published_at: str,
+    makes_current: bool,
+) -> ReleasesRecord:
+    """Return ``record`` with the change applied.
+
+    Raises ``ReleaseRecordError`` when the record's rules refuse the change.
+    """
+    release, build = change.release, change.build
+    if isinstance(change, PublishRelease):
+        return add_build(
+            record,
+            release=release,
+            build=build,
+            release_role=change.release_role,
+            published_at=published_at,
+            make_current=makes_current,
+        )
+    if isinstance(change, PromoteBuild):
+        return make_current(record, release=release, build=build)
+    return withdraw_build(record, release=release, build=build)
+
+
+def _commit_violations(
+    repository: DatasetRepository,
+    state: _HeadState,
+    after: ReleasesRecord,
+    added_paths: list[str],
+    new_files: Mapping[str, Path],
+) -> list[Violation]:
+    """Run the shared checks on the commit that would write ``after``."""
+
+    def read_file(path: str, revision: str = state.head) -> bytes:
+        local = new_files.get(path)
+        if local is not None:
+            return local.read_bytes()
+        return repository.download(path, revision=revision)
+
+    return [
+        *check_change(state.before, after),
+        *check_commit(
+            before_files=state.files,
+            added_paths=added_paths,
+            deleted_paths=[],
+            before=state.before,
+            after=after,
+        ),
+        *check_repository(after, [*state.files, *added_paths], read_file),
+    ]
+
+
+def _commit_release_record(
+    repository: DatasetRepository,
+    write: _ReleaseWrite,
+    state: _HeadState,
+    after: ReleasesRecord,
+    order: _ReleaseOrder,
+) -> ReleaseOutcome | None:
+    """Commit the new build folder and ``releases.json`` on ``state.head``.
+
+    Returns ``None`` when the Hub refused the parent because another commit
+    landed first.
+    """
+    change = write.change
+    release = change.release
+    current = after.releases[release].current
+    if not write.new_files and state.record_bytes == after.serialize():
+        # Nothing to write (the build is already current, for example):
+        # the Hub would skip an empty commit and answer with its head.
+        return ReleaseOutcome("published", commit=state.head, current=current)
+    operations = [add_operation(path, local) for path, local in write.new_files.items()]
+    operations.append(add_operation(RELEASES_RECORD_PATH, after.serialize()))
+    newest_requests = (
+        {**order.newest_requests, release: write.requested}
+        if order.changes_current and not order.overtaken
+        else order.newest_requests
+    )
+    message = _commit_message(
+        change,
+        _within_order_window(newest_requests, order.record_committed_at),
+        makes_current=order.makes_current,
+    )
+    try:
+        commit = repository.commit(
+            operations, message=message, parent_commit=state.head
+        )
+    # A failed commit is tried again after a parent conflict, and otherwise
+    # leaves the change pending for a retry.
+    except Exception as error:  # noqa: BLE001
+        if is_parent_conflict(error):
+            return None
+        return _pending(UPLOAD_FAILED)
+    note = (
+        _not_made_current(change, after)
+        if order.overtaken and isinstance(change, PublishRelease)
+        else None
+    )
+    return ReleaseOutcome(
+        "published", message=note, commit=commit, committed=True, current=current
+    )
 
 
 def _already_published(

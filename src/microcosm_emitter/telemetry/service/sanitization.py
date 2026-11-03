@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -44,23 +45,33 @@ def sanitize_json(value: object, *, depth: int = 0) -> JsonValue:
     if depth >= MAX_TELEMETRY_DETAILS_DEPTH:
         return _MAXIMUM_DEPTH_VALUE
     if isinstance(value, Mapping):
-        result = {}
-        for key, item in list(value.items())[:MAX_TELEMETRY_COLLECTION_ITEMS]:
-            name = str(key)
-            if any(part in name.lower() for part in _SENSITIVE_KEY_PARTS):
-                result[name] = _REDACTED_VALUE
-            else:
-                result[name] = sanitize_json(item, depth=depth + 1)
-        return result
+        return _sanitize_mapping(value, depth=depth)
     if isinstance(value, (list, tuple)):
         return [
             sanitize_json(item, depth=depth + 1)
             for item in value[:MAX_TELEMETRY_COLLECTION_ITEMS]
         ]
+    return _sanitize_scalar(value)
+
+
+def _sanitize_mapping(value: Mapping[object, object], *, depth: int) -> JsonValue:
+    """Redact the values of sensitive keys and sanitize the others, one level down."""
+    result = {}
+    for key, item in list(value.items())[:MAX_TELEMETRY_COLLECTION_ITEMS]:
+        name = str(key)
+        if any(part in name.lower() for part in _SENSITIVE_KEY_PARTS):
+            result[name] = _REDACTED_VALUE
+        else:
+            result[name] = sanitize_json(item, depth=depth + 1)
+    return result
+
+
+def _sanitize_scalar(value: object) -> JsonValue:
+    """Sanitize a value that is not a mapping, a list or a tuple."""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, float):
-        return value if value == value and abs(value) != float("inf") else None
+        return value if math.isfinite(value) else None
     if isinstance(value, str):
         return sanitize_text(value)
     if isinstance(value, (int, bool)) or value is None:

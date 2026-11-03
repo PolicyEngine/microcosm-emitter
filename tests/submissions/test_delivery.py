@@ -802,7 +802,9 @@ ANOTHER_TRUSTED_ORIGIN = "https://another-collector.example"
     [(CLOUD_RUN_COLLECTOR_URL, True), (ANOTHER_TRUSTED_ORIGIN, False)],
     ids=["cloud run address", "another trusted origin"],
 )
-def test_a_default_emitter_takes_only_rows_queued_for_its_own_collector(
+# A pytest test function: pytest passes its four fixtures and
+# two parametrized values by name, so the parameters stay.
+def test_a_default_emitter_takes_only_rows_queued_for_its_own_collector(  # noqa: PLR0913, PLR0917
     module_factory, collector, capsys, monkeypatch, queued_origin, delivered_by_default
 ):
     from microcosm_emitter.core import collector_origin as collector_origin_module

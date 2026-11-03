@@ -54,7 +54,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 #: Anonymous key exchange only: no certificate on either side.
 ANONYMOUS_CIPHERS = "aNULL:@SECLEVEL=0"
@@ -72,6 +72,151 @@ def anonymous_tls_context(purpose: int) -> ssl.SSLContext:
     context.maximum_version = ssl.TLSVersion.TLSv1_2
     context.set_ciphers(ANONYMOUS_CIPHERS)
     return context
+
+
+class _CollectorRequestHandler(BaseHTTPRequestHandler):
+    """Answer intake and upload requests from one ``FakeCollector``'s state."""
+
+    #: The fake whose state the requests read and change; each fake sets it on
+    #: a subclass of its own.
+    collector: ClassVar[FakeCollector]
+
+    def log_message(self, *arguments: Any) -> None:
+        pass
+
+    def _body(self) -> bytes:
+        return self.rfile.read(int(self.headers.get("Content-Length", "0")))
+
+    def _paced_body(self) -> bytes:
+        remaining = int(self.headers.get("Content-Length", "0"))
+        pace = self.collector.upload_read_pace
+        if pace is None:
+            return self.rfile.read(remaining)
+        bytes_per_read, pause_seconds = pace
+        pieces = []
+        while remaining > 0:
+            piece = self.rfile.read(min(bytes_per_read, remaining))
+            if not piece:
+                break
+            pieces.append(piece)
+            remaining -= len(piece)
+            time.sleep(pause_seconds)
+        return b"".join(pieces)
+
+    def _json(self, status: int, payload: dict[str, Any]) -> None:
+        encoded = json.dumps(payload).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def _token_scope(self) -> str | None:
+        token = self.headers.get("Authorization", "").removeprefix("Bearer ")
+        if self.collector._token_expiry.get(token, float("inf")) <= time.monotonic():
+            return None
+        return self.collector._tokens.get(token)
+
+    def _refuse_unless_allowed(self) -> bool:
+        """Answer 404, 401 or 403 unless intake and the token allow the request.
+
+        Returns whether it answered.
+        """
+        if self.collector.intake != "on":
+            self.collector._intake_not_available(self)
+            return True
+        scope = self._token_scope()
+        if scope is None:
+            self._json(401, {"detail": "invalid"})
+            return True
+        if scope != "artifacts:submit":
+            # The token's scope does not allow the request.
+            self._json(403, {"detail": "scope"})
+            return True
+        return False
+
+    def do_POST(self) -> None:
+        body = self._body()
+        with self.collector._lock:
+            if self.path == "/v1/auth/huggingface/exchange":
+                return self.collector._exchange(self, body)
+            if self._refuse_unless_allowed():
+                return None
+            if self.path == "/v1/submissions":
+                return self.collector._create(self, json.loads(body))
+            if self.path.endswith("/complete"):
+                return self.collector._complete(self, self.path.split("/")[3])
+        self._json(404, {"detail": "Not Found"})
+        return None
+
+    def do_GET(self) -> None:
+        if self.path.startswith("/v1/submissions/"):
+            self.collector.status_check_started.set()
+            self.collector.status_checks_released.wait(30)
+        with self.collector._lock:
+            if self._refuse_unless_allowed():
+                return None
+            parts = self.path.split("/")
+            if len(parts) == 4 and parts[1:3] == ["v1", "submissions"]:
+                return self.collector._status(self, parts[3])
+            if len(parts) == 5 and parts[4] == "receipt":
+                return self.collector._receipt(self, parts[3])
+        self._json(404, {"detail": "Not Found"})
+        return None
+
+    def do_PUT(self) -> None:
+        self.collector.upload_started.set()
+        self.collector.uploads_released.wait(30)
+        body = self._paced_body()
+        with self.collector._lock:
+            self.collector._store(self, self.path.removeprefix("/storage/"), body)
+
+
+def _loopback_server(
+    handler_class: type[BaseHTTPRequestHandler], receive_buffer_bytes: int | None
+) -> ThreadingHTTPServer:
+    """Return an HTTP server bound to a free loopback port, not yet serving."""
+    server = ThreadingHTTPServer(
+        ("127.0.0.1", 0), handler_class, bind_and_activate=False
+    )
+    if receive_buffer_bytes is not None:
+        # Accepted connections inherit the listening socket's buffer.
+        server.socket.setsockopt(
+            socket.SOL_SOCKET, socket.SO_RCVBUF, receive_buffer_bytes
+        )
+    server.server_bind()
+    server.server_activate()
+    return server
+
+
+class _UnixTlsServer(socketserver.ThreadingUnixStreamServer):
+    """Serve TLS on a Unix socket, each connection with the receive buffer given."""
+
+    daemon_threads = True
+
+    def __init__(
+        self,
+        socket_path: str,
+        handler_class: type[BaseHTTPRequestHandler],
+        *,
+        receive_buffer_bytes: int | None,
+        tls_context: ssl.SSLContext,
+    ) -> None:
+        self._receive_buffer_bytes = receive_buffer_bytes
+        self._tls_context = tls_context
+        super().__init__(socket_path, handler_class)
+
+    def get_request(self) -> tuple[ssl.SSLSocket, tuple[str, int]]:
+        connection, _ = self.socket.accept()
+        if self._receive_buffer_bytes is not None:
+            connection.setsockopt(
+                socket.SOL_SOCKET, socket.SO_RCVBUF, self._receive_buffer_bytes
+            )
+        # The handler expects a (host, port) client address.
+        return (
+            self._tls_context.wrap_socket(connection, server_side=True),
+            ("127.0.0.1", 0),
+        )
 
 
 class FakeCollector:
@@ -132,123 +277,12 @@ class FakeCollector:
         #: ``(bytes per read, pause in seconds)``: read upload bodies slowly.
         self.upload_read_pace: tuple[int, float] | None = None
         self._lock = threading.Lock()
-        collector = self
 
-        class Handler(BaseHTTPRequestHandler):
-            def log_message(self, *arguments: Any) -> None:
-                pass
-
-            def _body(self) -> bytes:
-                return self.rfile.read(int(self.headers.get("Content-Length", "0")))
-
-            def _paced_body(self) -> bytes:
-                remaining = int(self.headers.get("Content-Length", "0"))
-                pace = collector.upload_read_pace
-                if pace is None:
-                    return self.rfile.read(remaining)
-                bytes_per_read, pause_seconds = pace
-                pieces = []
-                while remaining > 0:
-                    piece = self.rfile.read(min(bytes_per_read, remaining))
-                    if not piece:
-                        break
-                    pieces.append(piece)
-                    remaining -= len(piece)
-                    time.sleep(pause_seconds)
-                return b"".join(pieces)
-
-            def _json(self, status: int, payload: dict[str, Any]) -> None:
-                encoded = json.dumps(payload).encode()
-                self.send_response(status)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(encoded)))
-                self.end_headers()
-                self.wfile.write(encoded)
-
-            def _token_scope(self) -> str | None:
-                token = self.headers.get("Authorization", "").removeprefix("Bearer ")
-                if collector._token_expiry.get(token, float("inf")) <= time.monotonic():
-                    return None
-                return collector._tokens.get(token)
-
-            def do_POST(self) -> None:
-                body = self._body()
-                with collector._lock:
-                    if self.path == "/v1/auth/huggingface/exchange":
-                        return collector._exchange(self, body)
-                    if collector.intake != "on":
-                        return collector._intake_not_available(self)
-                    scope = self._token_scope()
-                    if scope is None:
-                        return self._json(401, {"detail": "invalid"})
-                    if scope != "artifacts:submit":
-                        # The token's scope does not allow the request.
-                        return self._json(403, {"detail": "scope"})
-                    if self.path == "/v1/submissions":
-                        return collector._create(self, json.loads(body))
-                    if self.path.endswith("/complete"):
-                        return collector._complete(self, self.path.split("/")[3])
-                self._json(404, {"detail": "Not Found"})
-                return None
-
-            def do_GET(self) -> None:
-                if self.path.startswith("/v1/submissions/"):
-                    collector.status_check_started.set()
-                    collector.status_checks_released.wait(30)
-                with collector._lock:
-                    if collector.intake != "on":
-                        return collector._intake_not_available(self)
-                    scope = self._token_scope()
-                    if scope is None:
-                        return self._json(401, {"detail": "invalid"})
-                    if scope != "artifacts:submit":
-                        return self._json(403, {"detail": "scope"})
-                    parts = self.path.split("/")
-                    if len(parts) == 4 and parts[1:3] == ["v1", "submissions"]:
-                        return collector._status(self, parts[3])
-                    if len(parts) == 5 and parts[4] == "receipt":
-                        return collector._receipt(self, parts[3])
-                self._json(404, {"detail": "Not Found"})
-                return None
-
-            def do_PUT(self) -> None:
-                collector.upload_started.set()
-                collector.uploads_released.wait(30)
-                body = self._paced_body()
-                with collector._lock:
-                    collector._store(self, self.path.removeprefix("/storage/"), body)
-
-        def loopback_server() -> ThreadingHTTPServer:
-            server = ThreadingHTTPServer(
-                ("127.0.0.1", 0), Handler, bind_and_activate=False
-            )
-            if receive_buffer_bytes is not None:
-                # Accepted connections inherit the listening socket's buffer.
-                server.socket.setsockopt(
-                    socket.SOL_SOCKET, socket.SO_RCVBUF, receive_buffer_bytes
-                )
-            server.server_bind()
-            server.server_activate()
-            return server
+        class Handler(_CollectorRequestHandler):
+            collector = self
 
         server_tls_context = anonymous_tls_context(ssl.PROTOCOL_TLS_SERVER)
-
-        class UnixTlsServer(socketserver.ThreadingUnixStreamServer):
-            daemon_threads = True
-
-            def get_request(self) -> tuple[ssl.SSLSocket, tuple[str, int]]:
-                connection, _ = self.socket.accept()
-                if receive_buffer_bytes is not None:
-                    connection.setsockopt(
-                        socket.SOL_SOCKET, socket.SO_RCVBUF, receive_buffer_bytes
-                    )
-                # The handler expects a (host, port) client address.
-                return (
-                    server_tls_context.wrap_socket(connection, server_side=True),
-                    ("127.0.0.1", 0),
-                )
-
-        self._server = loopback_server()
+        self._server = _loopback_server(Handler, receive_buffer_bytes)
         self.origin = f"http://127.0.0.1:{self._server.server_address[1]}"
         self._servers: list[socketserver.BaseServer] = [self._server]
         #: The client side of ``tls_uploads``; ``None`` without it.
@@ -257,15 +291,9 @@ class FakeCollector:
         self.upload_socket_path: str | None = None
         self._socket_directory: str | None = None
         if tls_uploads:
-            # A short path: Unix socket paths are limited to about 100 bytes.
-            self._socket_directory = tempfile.mkdtemp(
-                prefix="fake-storage-", dir="/tmp"
+            self._add_tls_upload_server(
+                Handler, server_tls_context, receive_buffer_bytes
             )
-            # A str: httpx's uds option takes the socket path as a str.
-            self.upload_socket_path = str(Path(self._socket_directory) / "tls.sock")
-            self._servers.append(UnixTlsServer(self.upload_socket_path, Handler))
-            self.upload_origin = "https://127.0.0.1"
-            self.client_tls_context = anonymous_tls_context(ssl.PROTOCOL_TLS_CLIENT)
         self._threads = [
             threading.Thread(
                 target=server.serve_forever,
@@ -274,6 +302,28 @@ class FakeCollector:
             )
             for server in self._servers
         ]
+
+    def _add_tls_upload_server(
+        self,
+        handler_class: type[BaseHTTPRequestHandler],
+        server_tls_context: ssl.SSLContext,
+        receive_buffer_bytes: int | None,
+    ) -> None:
+        """Add the TLS upload server on a new Unix socket, and its client context."""
+        # A short path: Unix socket paths are limited to about 100 bytes.
+        self._socket_directory = tempfile.mkdtemp(prefix="fake-storage-", dir="/tmp")
+        # A str: httpx's uds option takes the socket path as a str.
+        self.upload_socket_path = str(Path(self._socket_directory) / "tls.sock")
+        self._servers.append(
+            _UnixTlsServer(
+                self.upload_socket_path,
+                handler_class,
+                receive_buffer_bytes=receive_buffer_bytes,
+                tls_context=server_tls_context,
+            )
+        )
+        self.upload_origin = "https://127.0.0.1"
+        self.client_tls_context = anonymous_tls_context(ssl.PROTOCOL_TLS_CLIENT)
 
     def hold_uploads(self) -> None:
         """Make every upload wait until ``release_uploads``."""
@@ -331,19 +381,27 @@ class FakeCollector:
         handler._json(404, {"detail": "Not Found"})
         return None
 
+    def _chosen_exchange_answer(self, handler: Any) -> bool:
+        """Send the exchange answer a test chose, if any; return whether it did."""
+        if self.malformed_exchange_answer:
+            handler.wfile.write(b"not an HTTP answer\r\n")
+            return True
+        if self.exchange_status != 200:
+            handler._json(self.exchange_status, {"detail": "refused"})
+            return True
+        if self.exchange_answer is not None:
+            handler._json(200, self.exchange_answer)
+            return True
+        return False
+
     def _exchange(self, handler: Any, body: bytes) -> None:
         request = json.loads(body) if body else {}
         self.exchange_requests.append(request)
         self.exchange_credentials.append(
             handler.headers.get("Authorization", "").removeprefix("Bearer ")
         )
-        if self.malformed_exchange_answer:
-            handler.wfile.write(b"not an HTTP answer\r\n")
+        if self._chosen_exchange_answer(handler):
             return None
-        if self.exchange_status != 200:
-            return handler._json(self.exchange_status, {"detail": "refused"})
-        if self.exchange_answer is not None:
-            return handler._json(200, self.exchange_answer)
         scope = request.get("scope", "telemetry:write")
         lifetime_seconds = self.token_lifetime_seconds
         if "lifetime_seconds" in request:
@@ -558,12 +616,23 @@ class FakeCollector:
         handler._json(200, {})
         return None
 
+    def _chosen_completion_answer(self, handler: Any) -> bool:
+        """Send the next completion answer or status a test chose, if any.
+
+        Returns whether it sent one.
+        """
+        if self.complete_answers:
+            handler._json(*self.complete_answers.pop(0))
+            return True
+        if self.complete_statuses:
+            self._chosen(handler, self.complete_statuses.pop(0))
+            return True
+        return False
+
     def _complete(self, handler: Any, submission_id: str) -> None:
         self.completed.append(submission_id)
-        if self.complete_answers:
-            return handler._json(*self.complete_answers.pop(0))
-        if self.complete_statuses:
-            return self._chosen(handler, self.complete_statuses.pop(0))
+        if self._chosen_completion_answer(handler):
+            return None
         submission = self.submissions.get(submission_id)
         if submission is None:
             return handler._json(

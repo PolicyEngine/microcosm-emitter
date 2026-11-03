@@ -51,6 +51,9 @@ _UNREADABLE_JSON_ERRORS: Final = (ValueError, UnicodeDecodeError, RecursionError
 _RECORD_KEYS: Final = {"schema_version", "default", "releases"}
 _RELEASE_KEYS: Final = {"role", "current", "builds"}
 _BUILD_KEYS: Final = {"published_at", "withdrawn"}
+#: A file inside a build folder has at least four path segments:
+#: ``releases/<release>/<build>/<name>``.
+_BUILD_FILE_MIN_SEGMENTS: Final = 4
 
 
 @dataclass(frozen=True)
@@ -132,68 +135,28 @@ class ReleasesRecord:
 
     @classmethod
     def _from_document(cls, document: object) -> ReleasesRecord:
-        def invalid(message: str) -> ReleaseRecordError:
-            return _refuse("INVALID_RECORD", message)
-
         if not isinstance(document, dict) or set(document) != _RECORD_KEYS:
             error_message = f"releases.json must have exactly {sorted(_RECORD_KEYS)}."
-            raise invalid(error_message)
+            raise _invalid_record(error_message)
         version = document["schema_version"]
         # ``True`` and ``1.0`` equal 1 in Python; only the integer is the version.
         if type(version) is not int or version != RELEASES_SCHEMA_VERSION:
             error_message = (
                 f"releases.json schema_version must be {RELEASES_SCHEMA_VERSION}."
             )
-            raise invalid(error_message)
+            raise _invalid_record(error_message)
         releases_document = document["releases"]
         if not isinstance(releases_document, dict):
             error_message = "releases must be an object."
-            raise invalid(error_message)
-        releases = {}
-        for release, entry in releases_document.items():
-            try:
-                safe_identifier(release, label="release")
-            except ValueError:
-                error_message = "A release name is not a safe identifier."
-                raise invalid(error_message) from None
-            if not isinstance(entry, dict) or set(entry) != _RELEASE_KEYS:
-                error_message = f"Release {release} must have {sorted(_RELEASE_KEYS)}."
-                raise invalid(error_message)
-            try:
-                role_identifier(entry["role"], label="release role")
-            except ValueError:
-                error_message = f"Release {release} has an invalid role."
-                raise invalid(error_message) from None
-            if entry["current"] is not None and not isinstance(entry["current"], str):
-                error_message = f"Release {release} current must be a build or null."
-                raise invalid(error_message)
-            if not isinstance(entry["builds"], dict):
-                error_message = f"Release {release} builds must be an object."
-                raise invalid(error_message)
-            builds = {}
-            for build, build_entry in entry["builds"].items():
-                try:
-                    safe_identifier(build, label="build")
-                except ValueError:
-                    error_message = "A build name is not a safe identifier."
-                    raise invalid(error_message) from None
-                if (
-                    not isinstance(build_entry, dict)
-                    or set(build_entry) != _BUILD_KEYS
-                    or not isinstance(build_entry["published_at"], str)
-                    or not build_entry["published_at"]
-                    or not isinstance(build_entry["withdrawn"], bool)
-                ):
-                    error_message = f"Build {build} of {release} is malformed."
-                    raise invalid(error_message)
-                builds[build] = BuildEntry(
-                    build_entry["published_at"], build_entry["withdrawn"]
-                )
-            releases[release] = ReleaseEntry(entry["role"], entry["current"], builds)
+            raise _invalid_record(error_message)
+        releases = {
+            release: _release_from_document(release, entry)
+            for release, entry in releases_document.items()
+        }
         default = document["default"]
         if default is not None and not isinstance(default, str):
             error_message = "default must be a release name or null."
-            raise invalid(error_message)
+            raise _invalid_record(error_message)
         return cls(default=default, releases=releases)
 
     def to_document(self) -> dict[str, Any]:
@@ -222,6 +185,60 @@ class ReleasesRecord:
         return (json.dumps(self.to_document(), indent=2) + "\n").encode()
 
 
+def _invalid_record(message: str) -> ReleaseRecordError:
+    """Return the ``INVALID_RECORD`` refusal of a record of the wrong shape."""
+    return _refuse("INVALID_RECORD", message)
+
+
+def _release_from_document(release: object, entry: object) -> ReleaseEntry:
+    """Check one release's name and entry, then return the entry parsed."""
+    try:
+        safe_identifier(release, label="release")
+    except ValueError:
+        error_message = "A release name is not a safe identifier."
+        raise _invalid_record(error_message) from None
+    if not isinstance(entry, dict) or set(entry) != _RELEASE_KEYS:
+        error_message = f"Release {release} must have {sorted(_RELEASE_KEYS)}."
+        raise _invalid_record(error_message)
+    try:
+        role_identifier(entry["role"], label="release role")
+    except ValueError:
+        error_message = f"Release {release} has an invalid role."
+        raise _invalid_record(error_message) from None
+    if entry["current"] is not None and not isinstance(entry["current"], str):
+        error_message = f"Release {release} current must be a build or null."
+        raise _invalid_record(error_message)
+    if not isinstance(entry["builds"], dict):
+        error_message = f"Release {release} builds must be an object."
+        raise _invalid_record(error_message)
+    builds = {
+        build: _build_from_document(release, build, build_entry)
+        for build, build_entry in entry["builds"].items()
+    }
+    return ReleaseEntry(entry["role"], entry["current"], builds)
+
+
+def _build_from_document(
+    release: object, build: object, build_entry: object
+) -> BuildEntry:
+    """Check one build's name and entry, then return the entry parsed."""
+    try:
+        safe_identifier(build, label="build")
+    except ValueError:
+        error_message = "A build name is not a safe identifier."
+        raise _invalid_record(error_message) from None
+    if (
+        not isinstance(build_entry, dict)
+        or set(build_entry) != _BUILD_KEYS
+        or not isinstance(build_entry["published_at"], str)
+        or not build_entry["published_at"]
+        or not isinstance(build_entry["withdrawn"], bool)
+    ):
+        error_message = f"Build {build} of {release} is malformed."
+        raise _invalid_record(error_message)
+    return BuildEntry(build_entry["published_at"], build_entry["withdrawn"])
+
+
 def build_folder(release: str, build: str) -> str:
     """Return a build's folder in the repository, ``releases/<release>/<build>``."""
     return f"{RELEASES_FOLDER}/{release}/{build}"
@@ -235,7 +252,9 @@ def is_pointer_file(path: str) -> bool:
 # Changes -----------------------------------------------------------------
 
 
-def add_build(
+# Part of the published interface package: its callers, the emitter's release
+# writer among them, pass these arguments by name, so its signature stays.
+def add_build(  # noqa: PLR0913
     record: ReleasesRecord,
     *,
     release: str,
@@ -433,7 +452,7 @@ def check_repository(
 
 def _build_folder_of(path: str) -> str | None:
     parts = path.split("/")
-    if len(parts) >= 4 and parts[0] == RELEASES_FOLDER:
+    if len(parts) >= _BUILD_FILE_MIN_SEGMENTS and parts[0] == RELEASES_FOLDER:
         return "/".join(parts[:3])
     return None
 

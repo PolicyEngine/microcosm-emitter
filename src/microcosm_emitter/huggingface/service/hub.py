@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -112,7 +113,7 @@ def is_absent(error: BaseException) -> bool:
     return (
         _NO_ANSWER_ERROR_NAME not in names
         and bool(names & _MISSING_FILE_ERROR_NAMES)
-        and status_code(error) == 404
+        and status_code(error) == HTTPStatus.NOT_FOUND
     )
 
 
@@ -281,6 +282,14 @@ class DatasetRepository:
             return True
         if role != "fineGrained":
             return None
+        return self._fine_grained_token_can_write(token)
+
+    def _fine_grained_token_can_write(self, token: Mapping[str, Any]) -> bool:
+        """Whether a fine-grained token may write this repository.
+
+        Its global permissions, or those it has on this repository or on the
+        user or organization that owns it, must include ``repo.write``.
+        """
         fine = token.get("fineGrained")
         fine = fine if isinstance(fine, Mapping) else {}
         if "repo.write" in (fine.get("global") or []):

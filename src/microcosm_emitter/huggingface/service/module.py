@@ -139,7 +139,9 @@ class HuggingFaceModule:
     collector. Collector submissions are off by default.
     """
 
-    def __init__(
+    # The keyword-only parameters are the module's replaceable dependencies and
+    # worker settings, which the tests set by name, one or two at a time.
+    def __init__(  # noqa: PLR0913
         self,
         configuration: JsonObject,
         context: ModuleContext,
@@ -277,33 +279,43 @@ class HuggingFaceModule:
             error_message = "The host initializes modules first."
             raise AssertionError(error_message)
         command = message.get("command")
-        if command == "stage_run_files":
-            return {"receipt": self._stage_run_files(message)}
-        if command == "run_files_receipt":
-            try:
-                repository, run_id = run_reference(message)
-            except RequestRefusedError as refusal:
-                return {"receipt": _refused_run_files_receipt(message, refusal.code)}
-            return {
-                "receipt": {
-                    "status": "recorded",
-                    **self.queue.run_receipt(repository, run_id),
-                }
-            }
-        if command == "read_back_run_files":
-            return {"read_back": self._read_back_run_files(message)}
-        if command == "stage_dataset_bundle":
-            return {"receipt": self._stage_dataset_bundle(message)}
-        if command == "handover_receipt":
-            return {"receipt": self._handover_receipt(message)}
-        if command == "collector_submission_receipt":
-            return {"receipt": self._collector_submission_receipt(message)}
-        if command == "check_write_access":
-            return {"access": self._check_write_access(message)}
-        if command in {"publish_release", "promote_build", "withdraw_build"}:
-            return {"receipt": self._release_change(message)}
-        error_message = "unsupported Hugging Face hand-over command"
-        raise ValueError(error_message)
+        handler = self._query_handlers().get(command)
+        if handler is None:
+            error_message = "unsupported Hugging Face hand-over command"
+            raise ValueError(error_message)
+        answer_key, compute_answer = handler
+        return {answer_key: compute_answer(message)}
+
+    def _query_handlers(
+        self,
+    ) -> dict[str, tuple[str, Callable[[JsonObject], Any]]]:
+        """Map each command to its answer's key and the method that computes it."""
+        release_change = ("receipt", self._release_change)
+        return {
+            "stage_run_files": ("receipt", self._stage_run_files),
+            "run_files_receipt": ("receipt", self._run_files_receipt),
+            "read_back_run_files": ("read_back", self._read_back_run_files),
+            "stage_dataset_bundle": ("receipt", self._stage_dataset_bundle),
+            "handover_receipt": ("receipt", self._handover_receipt),
+            "collector_submission_receipt": (
+                "receipt",
+                self._collector_submission_receipt,
+            ),
+            "check_write_access": ("access", self._check_write_access),
+            "publish_release": release_change,
+            "promote_build": release_change,
+            "withdraw_build": release_change,
+        }
+
+    def _run_files_receipt(self, message: JsonObject) -> dict[str, Any]:
+        """Return the receipt of a run's staging files, or why it was refused."""
+        if self.queue is None:
+            raise AssertionError
+        try:
+            repository, run_id = run_reference(message)
+        except RequestRefusedError as refusal:
+            return _refused_run_files_receipt(message, refusal.code)
+        return {"status": "recorded", **self.queue.run_receipt(repository, run_id)}
 
     def _stage_dataset_bundle(self, message: JsonObject) -> dict[str, Any]:
         if self.queue is None:

@@ -562,7 +562,7 @@ kind = "none"
 [[rule]]
 id = "emitter.quality.ruff-lint"
 category = "quality"
-statement = "All Python passes ruff check with every Ruff rule selected (ALL), as in the simulation API and the Public API, except COM812 and ISC001, which conflict with ruff format, D203 and D213, which conflict with D211 and D212, CPY, which Ruff 0.16 makes stable but their Ruff 0.15 keeps in preview, the registered per-file ignores, and, until the pull requests stacked on #55 fix them, the families pyproject.toml lists as not fixed yet."
+statement = "All Python passes ruff check with every Ruff rule selected (ALL), as in the simulation API and the Public API, except COM812 and ISC001, which conflict with ruff format, D203 and D213, which conflict with D211 and D212, CPY, which Ruff 0.16 makes stable but their Ruff 0.15 keeps in preview, and the registered per-file ignores."
 rationale = "README.md#development"
 scope = ["**/*.py"]
 tier = "mechanical"

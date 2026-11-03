@@ -332,7 +332,9 @@ class HandoverQueue(HandoverJobs):
             session.flush()
         return delivery
 
-    def stage_run_files(
+    # Each keyword-only parameter is one field of the hand-over, which the
+    # module and the tests pass by name.
+    def stage_run_files(  # noqa: PLR0913
         self,
         *,
         repository: str,

@@ -146,8 +146,10 @@ class EmitterClient:
         self.last_failure: RequestFailure | None = None
         self.telemetry = TelemetryRecorder(self)
 
+    # The published interface's entry point: builds call it with these
+    # keyword arguments, so its signature stays as released.
     @classmethod
-    def start(
+    def start(  # noqa: PLR0913
         cls,
         *,
         telemetry: TelemetrySettings | None = None,

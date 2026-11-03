@@ -78,6 +78,51 @@ def telemetry_token(collector_url: str, lifetime_seconds: int) -> int:
         return usage_error.code
 
 
+#: The exchange status the fake collector answers for each failure.
+EXCHANGE_STATUSES = {
+    "credential refused with 401": 401,
+    "not an organization member (403)": 403,
+    "collector answers 503": 503,
+}
+#: The collector URL requested in place of the fake collector's.
+REQUESTED_COLLECTOR_URLS = {
+    "collector unreachable": UNREACHABLE_COLLECTOR_URL,
+    "development collector that is not loopback": "https://collector.example",
+}
+
+
+def _arrange_failure(failure, collector, monkeypatch) -> tuple[str, int]:
+    """Bring about ``failure``; return the collector URL and lifetime to request."""
+    collector_url = collector.origin
+    lifetime_seconds = STAGE_LIFETIME_SECONDS
+    if failure == "no Hugging Face login":
+        monkeypatch.delenv("HF_TOKEN")
+    elif failure in EXCHANGE_STATUSES:
+        collector.exchange_status = EXCHANGE_STATUSES[failure]
+    elif failure in REQUESTED_COLLECTOR_URLS:
+        collector_url = REQUESTED_COLLECTOR_URLS[failure]
+    elif failure == "collector answer that is not HTTP":
+        collector.malformed_exchange_answer = True
+    elif failure == "lifetime below 1":
+        lifetime_seconds = 0
+    elif failure == "credential with a line break":
+        monkeypatch.setenv("HF_TOKEN", f"{SYNTHETIC_HUGGING_FACE_TOKEN}\nsecond-part")
+    elif failure == "unreadable saved login":
+        monkeypatch.delenv("HF_TOKEN")
+        monkeypatch.setattr(auth_module, "get_token", unreadable_saved_login)
+    elif failure == "OIDC token exchange that fails":
+        monkeypatch.delenv("HF_TOKEN")
+        monkeypatch.setenv("HF_OIDC_RESOURCE", "datasets/policyengine/synthetic")
+        monkeypatch.setattr(auth_module, "get_token", failed_oidc_exchange)
+    elif failure == "unexpected error":
+        monkeypatch.setattr(
+            auth_module, "exchange_huggingface_credential", unexpected_error
+        )
+    else:
+        collector.accepts_lifetime_seconds = False
+    return collector_url, lifetime_seconds
+
+
 def test_prints_a_telemetry_token_for_the_requested_lifetime(
     collector, operator_login, capsys
 ) -> None:
@@ -125,42 +170,12 @@ def test_prints_a_telemetry_token_for_the_requested_lifetime(
         ("unexpected error", 7),
     ],
 )
-def test_each_failure_has_its_own_exit_code_and_prints_nothing(
+# A pytest test function: pytest passes its four fixtures and
+# two parametrized values by name, so the parameters stay.
+def test_each_failure_has_its_own_exit_code_and_prints_nothing(  # noqa: PLR0913, PLR0917
     collector, operator_login, monkeypatch, capsys, failure, expected_exit_code
 ) -> None:
-    collector_url = collector.origin
-    lifetime_seconds = STAGE_LIFETIME_SECONDS
-    if failure == "no Hugging Face login":
-        monkeypatch.delenv("HF_TOKEN")
-    elif failure == "credential refused with 401":
-        collector.exchange_status = 401
-    elif failure == "not an organization member (403)":
-        collector.exchange_status = 403
-    elif failure == "collector unreachable":
-        collector_url = UNREACHABLE_COLLECTOR_URL
-    elif failure == "collector answers 503":
-        collector.exchange_status = 503
-    elif failure == "collector answer that is not HTTP":
-        collector.malformed_exchange_answer = True
-    elif failure == "lifetime below 1":
-        lifetime_seconds = 0
-    elif failure == "development collector that is not loopback":
-        collector_url = "https://collector.example"
-    elif failure == "credential with a line break":
-        monkeypatch.setenv("HF_TOKEN", f"{SYNTHETIC_HUGGING_FACE_TOKEN}\nsecond-part")
-    elif failure == "unreadable saved login":
-        monkeypatch.delenv("HF_TOKEN")
-        monkeypatch.setattr(auth_module, "get_token", unreadable_saved_login)
-    elif failure == "OIDC token exchange that fails":
-        monkeypatch.delenv("HF_TOKEN")
-        monkeypatch.setenv("HF_OIDC_RESOURCE", "datasets/policyengine/synthetic")
-        monkeypatch.setattr(auth_module, "get_token", failed_oidc_exchange)
-    elif failure == "unexpected error":
-        monkeypatch.setattr(
-            auth_module, "exchange_huggingface_credential", unexpected_error
-        )
-    else:
-        collector.accepts_lifetime_seconds = False
+    collector_url, lifetime_seconds = _arrange_failure(failure, collector, monkeypatch)
 
     exit_code = telemetry_token(collector_url, lifetime_seconds)
 

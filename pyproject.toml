@@ -96,10 +96,6 @@ ignore = [
     # rule in the Ruff 0.15 the simulation API and the Public API run, so neither
     # enforces it; this repository leaves it off too.
     "CPY",
-    # Not fixed yet: the pull requests stacked on #55 fix these families,
-    # one group each, and remove them here. None stays.
-    # Complexity.
-    "C90", "PLR",
 ]
 
 [tool.ruff.lint.per-file-ignores]

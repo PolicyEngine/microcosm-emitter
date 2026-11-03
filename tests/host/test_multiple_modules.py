@@ -148,10 +148,62 @@ class RequestModule(Module):
         self.closed.set()
 
 
+def _run_keeping_errors(runtime, errors):
+    """Run ``runtime``, appending any exception it raises to ``errors``."""
+    try:
+        runtime.run()
+    # Keeps any exception this thread's call raises, for the test to check.
+    except Exception as error:  # noqa: BLE001
+        errors.append(error)
+
+
+def _wait_until_the_runtime_answers(client):
+    """Ping through ``client`` until the runtime answers, for up to 3 seconds."""
+    from microcosm_emitter.host.errors import LocalServiceError
+
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        try:
+            client.ping()
+            break
+        except LocalServiceError:
+            time.sleep(0.01)
+
+
+def _send_query_on_a_new_connection(socket_path, module_name, value):
+    """Open a connection to ``socket_path``, send one query on it and return it."""
+    import json
+    import socket
+
+    peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    peer.settimeout(3)
+    peer.connect(str(socket_path))
+    peer.sendall(
+        json.dumps(
+            {
+                "action": "query",
+                "module": module_name,
+                "message": {"value": value},
+            }
+        ).encode()
+        + b"\n"
+    )
+    return peer
+
+
+def _wait_for_queued_requests(runtime, module_name, target_size):
+    """Wait up to 3 seconds for the module's queue to hold ``target_size``."""
+    deadline = time.monotonic() + 3
+    while (
+        runtime._requests._queues[module_name].qsize() < target_size
+        and time.monotonic() < deadline
+    ):
+        time.sleep(0.01)
+
+
 def test_bounded_module_queue_preserves_order_and_other_module_control(monkeypatch):
     """A full graph request queue cannot consume telemetry or control capacity."""
     import json
-    import socket
     import tempfile
     from pathlib import Path
 
@@ -172,50 +224,21 @@ def test_bounded_module_queue_preserves_order_and_other_module_control(monkeypat
             tick_seconds=100,
             drain_seconds=1,
         )
-
-        def serve():
-            try:
-                runtime.run()
-            # Keeps any exception this thread's call raises, for the test to check.
-            except Exception as error:  # noqa: BLE001
-                errors.append(error)
-
-        thread = threading.Thread(target=serve)
+        thread = threading.Thread(target=_run_keeping_errors, args=(runtime, errors))
         thread.start()
         client = SocketClient(runtime.socket_path)
         try:
-            deadline = time.monotonic() + 3
-            while time.monotonic() < deadline:
-                try:
-                    client.ping()
-                    break
-                except LocalServiceError:
-                    time.sleep(0.01)
+            _wait_until_the_runtime_answers(client)
             for value in ("hold", "second", "third"):
-                peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                peer.settimeout(3)
-                peer.connect(str(runtime.socket_path))
-                peer.sendall(
-                    json.dumps(
-                        {
-                            "action": "query",
-                            "module": "slow",
-                            "message": {"value": value},
-                        }
-                    ).encode()
-                    + b"\n"
+                peer = _send_query_on_a_new_connection(
+                    runtime.socket_path, "slow", value
                 )
                 queued.append(peer)
                 if value == "hold":
                     assert slow.callback_entered.wait(3)
                 else:
                     target_size = len(queued) - 1
-                    deadline = time.monotonic() + 3
-                    while (
-                        runtime._requests._queues["slow"].qsize() < target_size
-                        and time.monotonic() < deadline
-                    ):
-                        time.sleep(0.01)
+                    _wait_for_queued_requests(runtime, "slow", target_size)
                     assert runtime._requests._queues["slow"].qsize() == target_size
             with pytest.raises(LocalServiceError):
                 client.for_module("slow").request({"value": "overflow"})

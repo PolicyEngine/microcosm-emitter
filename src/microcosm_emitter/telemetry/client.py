@@ -95,8 +95,10 @@ class LocalTelemetryEmitter:
         self._warned = False
         self.startup_error: ServiceStartupError | None = None
 
+    # Microcosm builds start telemetry through this method with these keyword
+    # arguments, so its signature stays as they call it.
     @classmethod
-    def start(
+    def start(  # noqa: PLR0913
         cls,
         *,
         run: TelemetryRun,

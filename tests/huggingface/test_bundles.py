@@ -501,6 +501,15 @@ def test_write_access_check_reports_reach_and_scope(
     assert access["error_type"] == ("FakeHubHTTPError" if fail_head else None)
 
 
+def test_an_unknown_command_is_refused(hugging_face_module):
+    with pytest.raises(
+        ValueError, match=r"^unsupported Hugging Face hand-over command$"
+    ):
+        hugging_face_module.module.query(
+            {"protocol_version": 1, "command": "rename_repository"}
+        )
+
+
 def test_write_access_check_without_a_credential(hugging_face_module):
     controls = hugging_face_module
     controls.remove_credential()

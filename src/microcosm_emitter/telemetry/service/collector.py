@@ -37,6 +37,7 @@ from microcosm_emitter.core.constants import (
     UNREADABLE_LOGIN_WAITING_MESSAGE,
     UNSENDABLE_CREDENTIAL_MESSAGE,
 )
+from microcosm_emitter.core.http_status import is_permanent_client_error
 from microcosm_emitter.telemetry.constants import (
     LOCAL_ONLY_REJECTED_EVENTS,
     REJECTED_EVENTS_MESSAGE,
@@ -50,19 +51,12 @@ if TYPE_CHECKING:
 # Each print in this module that suppresses Ruff's T201 writes one of its
 # messages to standard error on purpose; none is leftover debugging output.
 
-_RETRYABLE_CLIENT_ERRORS = frozenset(
-    {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS}
-)
 #: Session answers for a given token that can no longer be used, and the
 #: reason each pending run records.
 _UNUSABLE_GIVEN_TOKEN_REASONS: dict[SessionResult, str] = {
     "token_expired": PENDING_GIVEN_TOKEN_EXPIRED,
     "token_rejected": PENDING_GIVEN_TOKEN_REJECTED,
 }
-
-
-def _permanent_client_error(status: int) -> bool:
-    return 400 <= int(status) < 500 and status not in _RETRYABLE_CLIENT_ERRORS
 
 
 def _registration_key(registration: Mapping[str, Any]) -> str:
@@ -132,38 +126,46 @@ class CollectorDelivery:
                 registration, token
             ):
                 continue
-            events = self.spool.batch(run_id, str(registration["producer_id"]))
-            if not events:
-                continue
-            try:
-                status, _ = _http_post(
-                    self.collector_url + RUN_EVENTS_PATH_TEMPLATE.format(run_id=run_id),
-                    {"events": events},
-                    token,
-                )
-            except NETWORK_FAILURES:
-                self._defer_retry()
-                continue
-            if status == HTTPStatus.ACCEPTED:
-                self.spool.acknowledge([event["event_id"] for event in events])
+            if self._deliver_events(registration, run_id, token):
                 made_progress = True
-                self._retry_seconds = INITIAL_RETRY_SECONDS
-            elif status == HTTPStatus.UNAUTHORIZED:
-                self.session.invalidate()
-            elif status == HTTPStatus.FORBIDDEN:
-                self._make_local_only(
-                    registration,
-                    LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
-                )
-            elif _permanent_client_error(status):
-                self._make_local_only(
-                    registration,
-                    LOCAL_ONLY_REJECTED_EVENTS,
-                    message=REJECTED_EVENTS_MESSAGE.format(status=int(status)),
-                )
-            else:
-                self._defer_retry()
         return made_progress
+
+    def _deliver_events(
+        self, registration: Mapping[str, Any], run_id: str, token: str
+    ) -> bool:
+        """Send the run's next batch of events; return whether it was accepted."""
+        events = self.spool.batch(run_id, str(registration["producer_id"]))
+        if not events:
+            return False
+        try:
+            status, _ = _http_post(
+                self.collector_url + RUN_EVENTS_PATH_TEMPLATE.format(run_id=run_id),
+                {"events": events},
+                token,
+            )
+        except NETWORK_FAILURES:
+            self._defer_retry()
+            return False
+        if status == HTTPStatus.ACCEPTED:
+            self.spool.acknowledge([event["event_id"] for event in events])
+            self._retry_seconds = INITIAL_RETRY_SECONDS
+            return True
+        if status == HTTPStatus.UNAUTHORIZED:
+            self.session.invalidate()
+        elif status == HTTPStatus.FORBIDDEN:
+            self._make_local_only(
+                registration,
+                LOCAL_ONLY_REJECTED_COLLECTOR_AUTHORIZATION,
+            )
+        elif is_permanent_client_error(status):
+            self._make_local_only(
+                registration,
+                LOCAL_ONLY_REJECTED_EVENTS,
+                message=REJECTED_EVENTS_MESSAGE.format(status=int(status)),
+            )
+        else:
+            self._defer_retry()
+        return False
 
     def _collector_token(self, registration: Mapping[str, Any]) -> str | None:
         try:
@@ -265,7 +267,7 @@ class CollectorDelivery:
         elif status in {
             HTTPStatus.FORBIDDEN,
             HTTPStatus.CONFLICT,
-        } or _permanent_client_error(status):
+        } or is_permanent_client_error(status):
             self._make_local_only(registration, LOCAL_ONLY_REJECTED_REGISTRATION)
         else:
             self._defer_retry()

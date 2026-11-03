@@ -12,6 +12,7 @@ import json
 import re
 import time
 import uuid
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urlsplit
@@ -41,6 +42,8 @@ if TYPE_CHECKING:
 
 MAX_GRAPH_FILE_BYTES = 64 * 1024 * 1024
 MAX_GRAPH_TOTAL_BYTES = 512 * 1024 * 1024
+#: The most files one graph publication may list.
+MAX_GRAPH_FILES = 256
 GRAPH_PUBLICATION_ACTION = "graph_publication"
 GRAPH_PUBLICATION_WAIT_SECONDS = 30.0
 GRAPH_PUBLICATION_LEASE_SECONDS = 300.0
@@ -118,7 +121,7 @@ def publication_inventory(
         )
     if (
         not files
-        or len(files) > 256
+        or len(files) > MAX_GRAPH_FILES
         or sum(f["bytes"] for f in files) > MAX_GRAPH_TOTAL_BYTES
         or sum(f["role"] == "graph" for f in files) != 1
     ):
@@ -475,24 +478,7 @@ class GraphPublicationDelivery:
             )
             response.raise_for_status()
             body = response.json()
-            uploads = _upload_list(body.get("uploads"))
-            files = {f["name"]: f for f in inventory["files"]}
-            for upload in uploads:
-                name = upload.get("name")
-                _check_listed_name(name, files)
-                if upload.get("already_uploaded"):
-                    continue
-                _check_upload_url(urlsplit(upload["url"]))
-                with (directory / name).open("rb") as stream:
-                    result = self.client.put(
-                        upload["url"],
-                        content=stream,
-                        headers={
-                            "Content-Type": "application/json",
-                            "Content-Length": str(files[name]["bytes"]),
-                        },
-                    )
-                result.raise_for_status()
+            self._upload_files(directory, inventory, _upload_list(body.get("uploads")))
             response = self.client.post(
                 self.origin + "/api/publications/", json=inventory, headers=headers
             )
@@ -509,7 +495,10 @@ class GraphPublicationDelivery:
             )
         except httpx.HTTPStatusError as exception:
             error = f"publication_http_{exception.response.status_code}"
-            if exception.response.status_code == 401 and self.invalidate_credential:
+            if (
+                exception.response.status_code == HTTPStatus.UNAUTHORIZED
+                and self.invalidate_credential
+            ):
                 self.invalidate_credential()
         except httpx.HTTPError:
             error = "publication_network_error"
@@ -519,3 +508,32 @@ class GraphPublicationDelivery:
             return True
         self.queue.finish(id_, error_code=error, expected_lease=lease)
         return False
+
+    def _upload_files(
+        self,
+        directory: Path,
+        inventory: PublicationInventory,
+        uploads: list[Any],
+    ) -> None:
+        """Upload each listed file the publication API does not have yet.
+
+        Raises for a name the inventory does not list, a refused upload URL or
+        a failed upload.
+        """
+        files = {listed["name"]: listed for listed in inventory["files"]}
+        for upload in uploads:
+            name = upload.get("name")
+            _check_listed_name(name, files)
+            if upload.get("already_uploaded"):
+                continue
+            _check_upload_url(urlsplit(upload["url"]))
+            with (directory / name).open("rb") as stream:
+                result = self.client.put(
+                    upload["url"],
+                    content=stream,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Content-Length": str(files[name]["bytes"]),
+                    },
+                )
+            result.raise_for_status()

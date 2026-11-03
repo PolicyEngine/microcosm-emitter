@@ -86,7 +86,9 @@ class HandoverJobs:
 
     _sessions: sessionmaker[Session]
 
-    def enqueue_job(
+    # Each keyword-only parameter is one field of the job's row, which the
+    # modules and the tests pass by name.
+    def enqueue_job(  # noqa: PLR0913
         self,
         *,
         handover_id: str,
@@ -154,7 +156,9 @@ class HandoverJobs:
             )
             return {row.name: row.content for row in rows}
 
-    def claim_job(
+    # Each keyword-only parameter narrows or times the claim on its own; the
+    # deliveries and the tests pass them by name.
+    def claim_job(  # noqa: PLR0913
         self,
         target: str,
         *,
@@ -256,7 +260,9 @@ class HandoverJobs:
                 .values(lease_until=0.0)
             )
 
-    def finish_job(
+    # Each keyword-only parameter is one part of the attempt's record, which the
+    # deliveries and the tests pass by name.
+    def finish_job(  # noqa: PLR0913
         self,
         job: ClaimedJob,
         *,
