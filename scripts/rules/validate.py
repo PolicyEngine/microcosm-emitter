@@ -6,6 +6,7 @@ import re
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
+from scripts.rules.baseline import baseline_lines
 from scripts.rules.model import (
     Kind,
     Registry,
@@ -64,11 +65,7 @@ PROOF_FILE_FIELDS = (
 
 def baseline_entries(path: Path) -> int:
     """Count the entries in a baseline file, skipping blank and ``#`` comment lines."""
-    return sum(
-        1
-        for line in path.read_text().splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    )
+    return len(baseline_lines(path.read_text(encoding="utf-8")))
 
 
 def _check_fields(

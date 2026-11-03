@@ -124,13 +124,22 @@ def check_baselines(
     return violations, notes
 
 
-def _entries(text: str) -> int:
-    """Count a baseline's entries: lines that are neither blank nor comments."""
-    return sum(
-        1
+def baseline_lines(text: str) -> list[str]:
+    """Return a baseline file's entries: its lines that are not blank or comments.
+
+    Each entry is stripped. Every reader of a baseline file counts its entries
+    with this function.
+    """
+    return [
+        line.strip()
         for line in text.splitlines()
         if line.strip() and not line.lstrip().startswith("#")
-    )
+    ]
+
+
+def _entries(text: str) -> int:
+    """Count a baseline's entries."""
+    return len(baseline_lines(text))
 
 
 def check_ci_scripts_baselines(
@@ -152,7 +161,7 @@ def check_ci_scripts_baselines(
         config.shellcheck_baseline,
     ):
         file = root / path
-        count = _entries(file.read_text()) if file.is_file() else 0
+        count = _entries(file.read_text(encoding="utf-8")) if file.is_file() else 0
         shown = subprocess.run(
             ["git", "show", f"{ref}:{path}"],
             cwd=root,
