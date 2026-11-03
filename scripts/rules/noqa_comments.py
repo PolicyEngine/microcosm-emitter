@@ -31,6 +31,7 @@ the baseline lists the result.
 
 from __future__ import annotations
 
+import ast
 import io
 import re
 import tokenize
@@ -61,14 +62,21 @@ RUFF_BRACKETED = re.compile(
 FILE_NOQA_DIRECTIVE = re.compile(
     r"#\s*(?P<tool>ruff|flake8)\s*:\s*(?i:noqa)(?P<rest>.*)"
 )
-# The isort directives, which switch off Ruff's import sorting (I001): a whole
-# comment naming isort and one of the keywords skip_file, off or on, after an
-# optional "ruff:" prefix, or the skip keyword after isort anywhere else in a
-# comment.
-ISORT_COMMENT = re.compile(
-    r"#\s*(?P<prefix>ruff\s*:\s*)?isort\s*:\s*(?P<keyword>skip_file|off|on)\s*$"
+# The isort comments, which switch off Ruff's import sorting (I001), as Ruff
+# 0.16.10's extract_isort_directives reads them: each whole comment below, with
+# trailing space removed, or else any comment containing one of SKIP_MARKERS.
+ISORT_SPLIT = frozenset({"# isort: split", "# ruff: isort: split"})
+ISORT_SKIP_FILE = frozenset(
+    {
+        "# isort: skip_file",
+        "# isort:skip_file",
+        "# ruff: isort: skip_file",
+        "# ruff: isort:skip_file",
+    }
 )
-ISORT_SKIP = re.compile(r"isort:\s?skip(?!_file)\b")
+ISORT_OFF = frozenset({"# isort: off", "# ruff: isort: off"})
+ISORT_ON = frozenset({"# isort: on", "# ruff: isort: on"})
+ISORT_SKIP_MARKERS = ("isort: skip", "isort:skip")
 ISORT_CODE = "I001"
 RULE_CODE = re.compile(r"[A-Z]+[0-9]+")
 CODE_SEPARATOR = re.compile(r"[\s,]*")
@@ -117,17 +125,54 @@ def _file_level_entries(path: str, comment: str, *, own_line: bool) -> list[str]
     return [_entry(path, codes, f"{file_level.group('tool')}: noqa")]
 
 
-def _isort_entries(path: str, comment: str) -> list[str]:
-    """Return the entry for an isort directive that switches sorting off."""
-    whole = ISORT_COMMENT.match(comment)
-    if whole is not None:
-        if whole.group("keyword") == "on":
-            return []
-        prefix = "ruff: " if whole.group("prefix") else ""
-        return [_entry(path, [ISORT_CODE], f"{prefix}isort: {whole.group('keyword')}")]
-    if ISORT_SKIP.search(comment):
-        return [_entry(path, [ISORT_CODE], "isort: skip")]
-    return []
+class _IsortReader:
+    """Read a file's isort comments in order, as Ruff does.
+
+    A whole comment of skip_file applies to the file, and one of off starts a
+    range that a whole comment of on ends; inside that range Ruff reads no
+    other isort comment. Any other comment containing a skip marker leaves out
+    of sorting only the import that starts on the comment's line, so it
+    applies to nothing on any other line. A split is not a suppression.
+    """
+
+    def __init__(self, import_lines: set[int]) -> None:
+        self.import_lines = import_lines
+        self.off = False
+
+    def entries(self, path: str, comment: str, line_number: int) -> list[str]:
+        """Return the entry for one comment, if Ruff applies it as a suppression."""
+        label = self._label(comment.rstrip(), line_number)
+        return [] if label is None else [_entry(path, [ISORT_CODE], label)]
+
+    def _label(self, text: str, line_number: int) -> str | None:
+        """Return the entry's label for an applied isort comment, or None."""
+        prefix = "ruff: " if text.startswith("# ruff:") else ""
+        if text in ISORT_SPLIT:
+            return None
+        if text in ISORT_SKIP_FILE:
+            return f"{prefix}isort: skip_file"
+        if self.off:
+            self.off = text not in ISORT_ON
+            return None
+        if any(marker in text for marker in ISORT_SKIP_MARKERS):
+            return "isort: skip" if line_number in self.import_lines else None
+        if text in ISORT_OFF:
+            self.off = True
+            return f"{prefix}isort: off"
+        return None
+
+
+def _import_lines(source: str) -> set[int]:
+    """Return the lines on which an import statement starts."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    return {
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+    }
 
 
 def _directive_entries(path: str, comment: str, *, own_line: bool) -> list[str]:
@@ -137,7 +182,6 @@ def _directive_entries(path: str, comment: str, *, own_line: bool) -> list[str]:
     noqa that it does not apply hides none of the others.
     """
     entries = _file_level_entries(path, comment, own_line=own_line)
-    entries += _isort_entries(path, comment)
     entries += [
         _entry(
             path, RULE_CODE.findall(form.group("codes")), f"ruff: {form.group('form')}"
@@ -156,10 +200,12 @@ def _directive_entries(path: str, comment: str, *, own_line: bool) -> list[str]:
 def comment_entries(path: str, source: str) -> list[str]:
     """Return one entry for each suppression directive Ruff applies in ``source``."""
     entries = []
+    isort = _IsortReader(_import_lines(source))
     for token in tokenize.generate_tokens(io.StringIO(source).readline):
         if token.type != tokenize.COMMENT:
             continue
         own_line = not token.line[: token.start[1]].strip()
+        entries.extend(isort.entries(path, token.string, token.start[0]))
         entries.extend(_directive_entries(path, token.string, own_line=own_line))
     return entries
 
