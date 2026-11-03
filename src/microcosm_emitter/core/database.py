@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import URL, create_engine
-from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from microcosm_emitter.core.constants import (
     DATABASE_TIMEOUT_SECONDS,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
 
 
 def sqlite_database_url(path: Path | str) -> URL:

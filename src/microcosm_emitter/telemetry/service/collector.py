@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import sys
 import time
-from collections.abc import Mapping
 from http import HTTPStatus
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from microcosm_emitter.core.auth import (
     NETWORK_FAILURES,
@@ -39,7 +38,11 @@ from microcosm_emitter.telemetry.constants import (
     LOCAL_ONLY_REJECTED_EVENTS,
     REJECTED_EVENTS_MESSAGE,
 )
-from microcosm_emitter.telemetry.service.spool import EventSpool
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from microcosm_emitter.telemetry.service.spool import EventSpool
 
 _RETRYABLE_CLIENT_ERRORS = frozenset(
     {HTTPStatus.REQUEST_TIMEOUT, HTTPStatus.TOO_MANY_REQUESTS}

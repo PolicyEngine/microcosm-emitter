@@ -87,14 +87,14 @@ def heartbeat_event(state: LifecycleState) -> dict[str, Any]:
     return _event(EVENT_TYPE_HEARTBEAT, STATUS_PROGRESS, state.last_stage)
 
 
-def _mapping(value: Any) -> Mapping[str, Any]:
+def _mapping(value: object) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         error_message = "telemetry details must be an object"
         raise TypeError(error_message)
     return value
 
 
-def _optional_text(value: Any) -> str | None:
+def _optional_text(value: object) -> str | None:
     if value is not None and not isinstance(value, str):
         error_message = "telemetry text must be a string or null"
         raise TypeError(error_message)
@@ -109,7 +109,7 @@ def _stage_id(request: Mapping[str, Any]) -> str:
     return value
 
 
-def _optional_stage_id(value: Any) -> str | None:
+def _optional_stage_id(value: object) -> str | None:
     """Preserve stage identities and reject values the collector cannot accept."""
     if value is not None and (
         not isinstance(value, str)

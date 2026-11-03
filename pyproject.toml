@@ -98,8 +98,6 @@ ignore = [
     "CPY",
     # Not fixed yet: the pull requests stacked on #55 fix these families,
     # one group each, and remove them here. None stays.
-    # Typing-only imports, annotations and in-function imports.
-    "ANN", "PLC", "TC",
     # Broad excepts, security findings, prints and private access.
     "BLE", "S", "SLF", "T20",
     # Smaller rules.
@@ -147,13 +145,15 @@ known-first-party = ["microcosm_emitter", "microcosm_emitter_interface"]
 # level (TID253 enforces it; TYPE_CHECKING imports are fine), as in the
 # simulation API and the Public API. The telemetry and Hugging Face entry
 # points (the service packages) import their module's implementation only when
-# create_module runs, and the Hub client's HfApi and CommitOperationAdd are
-# imported only by the functions in huggingface/service/hub.py that build them.
+# create_module runs, the Hub client's HfApi and CommitOperationAdd are
+# imported only by the functions in huggingface/service/hub.py that build them,
+# and the CLI imports the host's entry point only for `microcosm-emitter host`.
 # Ruff's PLC0415 accepts in-function imports of these without a suppression. A
 # module belongs here only if no application module imports it at module level.
 banned-module-level-imports = [
     "huggingface_hub.CommitOperationAdd",
     "huggingface_hub.HfApi",
+    "microcosm_emitter.host.__main__",
     "microcosm_emitter.huggingface.service.module",
     "microcosm_emitter.telemetry.service.module",
 ]

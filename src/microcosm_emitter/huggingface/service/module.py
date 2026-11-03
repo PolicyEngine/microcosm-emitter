@@ -15,9 +15,8 @@ from __future__ import annotations
 import getpass
 import os
 import time
-from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from microcosm_emitter.core.auth import CollectorSession, huggingface_token
 from microcosm_emitter.core.collector_origin import (
@@ -25,7 +24,6 @@ from microcosm_emitter.core.collector_origin import (
     configured_collector_origin,
 )
 from microcosm_emitter.host.constants import TICK_SECONDS
-from microcosm_emitter.host.contracts import JsonObject, ModuleContext
 from microcosm_emitter.huggingface.service.delivery import (
     CREDENTIAL_MISSING,
     DATASET_BUNDLE,
@@ -62,6 +60,11 @@ from microcosm_emitter.submissions.delivery import (
 from microcosm_emitter.submissions.planning import wants_collector_submission
 from microcosm_emitter_interface.identifiers import repository_identifier
 from microcosm_emitter_interface.publication import RELEASE_CHANGE
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from microcosm_emitter.host.contracts import JsonObject, ModuleContext
 
 #: A read-back of a run with no file this emitter committed: nothing to compare.
 NO_COMMITTED_FILES = "NO_COMMITTED_FILES"

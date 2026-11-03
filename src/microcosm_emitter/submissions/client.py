@@ -32,10 +32,11 @@ from microcosm_emitter.huggingface.service.hub import (
     UPLOAD_FAILED,
 )
 from microcosm_emitter.huggingface.service.queue import sha256_file
-from microcosm_emitter.submissions.planning import PlannedSubmission
 
 if TYPE_CHECKING:
     from microcosm_emitter.core.auth import SessionCredential
+    from microcosm_emitter.submissions.planning import PlannedSubmission
+    from microcosm_emitter_interface.serialization import JsonValue
 
 SUBMIT_SCOPE: Final = "artifacts:submit"
 SUBMISSIONS_PATH: Final = "/v1/submissions"
@@ -138,7 +139,7 @@ class StatusCheckOutcome:
     retry_after: float | None = None
 
 
-def canonical_sha256(value: Any) -> str:
+def canonical_sha256(value: JsonValue) -> str:
     """Return the hex SHA-256 digest of ``value`` in the contract's canonical JSON.
 
     That JSON has its keys sorted, no whitespace and non-ASCII characters
@@ -150,7 +151,7 @@ def canonical_sha256(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def receipt_matches(receipt: Any, submission_id: str) -> bool:
+def receipt_matches(receipt: object, submission_id: str) -> bool:
     """Return whether a receipt is a valid final receipt for ``submission_id``.
 
     It must be a mapping with a final ``status``, that ``submission_id``, and a
@@ -327,7 +328,7 @@ class CollectorSubmissionClient:
         return SubmissionOutcome("pending", COLLECTOR_UNAVAILABLE)
 
     def _send(
-        self, method: str, path: str, token: str, body: Any = None
+        self, method: str, path: str, token: str, body: dict[str, Any] | None = None
     ) -> httpx.Response:
         try:
             return self._http.request(
@@ -343,7 +344,7 @@ class CollectorSubmissionClient:
             ) from None
 
     def _send_in_scope(
-        self, method: str, path: str, token: str, body: Any = None
+        self, method: str, path: str, token: str, body: dict[str, Any] | None = None
     ) -> tuple[httpx.Response, str]:
         """Send, and once more with a fresh token after a 403 without a code.
 

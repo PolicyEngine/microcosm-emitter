@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 import socket
 import time
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from microcosm_emitter_interface.protocol import (
     ACK_OK,
@@ -15,6 +14,9 @@ from microcosm_emitter_interface.protocol import (
     DELIMITER,
     MAX_MESSAGE_BYTES,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 class LocalEmitterError(RuntimeError):
@@ -93,12 +95,14 @@ class SocketTransport:
         except (OSError, ValueError, TypeError) as error:
             raise LocalEmitterError(type(error).__name__) from error
 
-    def _acknowledged(self, payload: Mapping[str, Any], **limits: Any) -> None:
+    def _acknowledged(self, payload: Mapping[str, Any], **limits: float | None) -> None:
         if self._exchange(payload, **limits) != ACK_OK:
             error_message = "emitter refused the request"
             raise LocalEmitterError(error_message)
 
-    def _answered(self, payload: Mapping[str, Any], **limits: Any) -> dict[str, Any]:
+    def _answered(
+        self, payload: Mapping[str, Any], **limits: float | None
+    ) -> dict[str, Any]:
         response = self._exchange(payload, **limits)
         try:
             result = json.loads(response.removesuffix(DELIMITER))

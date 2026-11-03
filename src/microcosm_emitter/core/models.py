@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     Float,
@@ -20,6 +20,9 @@ from microcosm_emitter.core.constants import (
     UPLOAD_STATE_PENDING,
 )
 
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Dialect
+
 
 class JsonObjectText(TypeDecorator[dict[str, Any]]):
     """Store JSON objects in the spool's existing text-column format."""
@@ -30,7 +33,7 @@ class JsonObjectText(TypeDecorator[dict[str, Any]]):
     def process_bind_param(
         self,
         value: dict[str, Any] | None,
-        dialect,
+        dialect: Dialect,
     ) -> str | None:
         """Serialize ``value`` as compact, key-sorted JSON text, or keep ``None``."""
         if value is None:
@@ -40,7 +43,7 @@ class JsonObjectText(TypeDecorator[dict[str, Any]]):
     def process_result_value(
         self,
         value: str | None,
-        dialect,
+        dialect: Dialect,
     ) -> dict[str, Any] | None:
         """Decode the stored JSON text, or keep ``None``.
 

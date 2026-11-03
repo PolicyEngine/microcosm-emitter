@@ -13,12 +13,14 @@ import hashlib
 import tempfile
 import threading
 import uuid
-from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable, Mapping
 
 STAGING_REPOSITORY = "policyengine/fixture-staging"
 PRIVATE_REPOSITORY = "policyengine/fixture-private"

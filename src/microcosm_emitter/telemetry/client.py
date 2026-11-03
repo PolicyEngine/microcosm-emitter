@@ -10,9 +10,8 @@ and the build continues.
 from __future__ import annotations
 
 import sys
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from microcosm_emitter.host.constants import STARTUP_TIMEOUT
 from microcosm_emitter.host.errors import ServiceStartupError, safe_startup_error
@@ -39,10 +38,21 @@ from microcosm_emitter_interface.telemetry import (
     StageProgress,
     StageTransition,
     TelemetryCommand,
+    TelemetryRun,
     TelemetrySettings,
     telemetry_message,
 )
-from microcosm_emitter_interface.telemetry import TelemetryRun as TelemetryRun
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+# Every public name, including those re-exported from the interface package,
+# so type checkers of this py.typed package treat them as exported.
+__all__ = [
+    "LocalTelemetryEmitter",
+    "TelemetryRun",
+    "Transport",
+]
 
 
 class Transport(Protocol):
@@ -171,7 +181,7 @@ class LocalTelemetryEmitter:
         *,
         status: TelemetryStatus = STATUS_STARTED,
         message: str | None = None,
-        **details: Any,
+        **details: object,
     ) -> None:
         """Send one stage event; the service does not finish the previous stage."""
         self._request(StageEvent(stage_id, status, message, details))
@@ -182,7 +192,7 @@ class LocalTelemetryEmitter:
         *,
         status: str = "running",
         message: str | None = None,
-        **details: Any,
+        **details: object,
     ) -> None:
         """Send a sequential stage update for ``stage_id``.
 
@@ -198,7 +208,7 @@ class LocalTelemetryEmitter:
         done: int,
         total: int,
         unit: str | None = None,
-        **details: Any,
+        **details: object,
     ) -> None:
         """Send progress for ``stage_id``: ``done`` of ``total``, in ``unit``."""
         self._request(StageProgress(stage_id, done, total, unit, details))

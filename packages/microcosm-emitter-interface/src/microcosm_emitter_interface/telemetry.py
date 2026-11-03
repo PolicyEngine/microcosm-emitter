@@ -9,14 +9,15 @@ this package, timestamps, sanitizes, persists and delivers the events.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from microcosm_emitter_interface.serialization import wire_value
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+    from pathlib import Path
+
     from microcosm_emitter_interface.client import EmitterClient
 
 type TelemetryEventType = Literal[
@@ -67,14 +68,17 @@ class TelemetrySettings:
 
         The values are converted with ``wire_value``.
         """
-        return wire_value(
-            {
-                "registration": self.run.as_registration(),
-                "spool_path": str(spool_path),
-                "identity": dict(self.identity),
-                "development_collector_url": self.development_collector_url,
-                "heartbeat_seconds": self.heartbeat_seconds,
-            }
+        return cast(
+            "dict[str, Any]",
+            wire_value(
+                {
+                    "registration": self.run.as_registration(),
+                    "spool_path": str(spool_path),
+                    "identity": dict(self.identity),
+                    "development_collector_url": self.development_collector_url,
+                    "heartbeat_seconds": self.heartbeat_seconds,
+                }
+            ),
         )
 
 
@@ -261,7 +265,7 @@ def telemetry_message(command: TelemetryCommand) -> dict[str, Any]:
         case _:
             error_message = f"Unsupported telemetry command {type(command).__name__}."
             raise TypeError(error_message)
-    return wire_value(message)
+    return cast("dict[str, Any]", wire_value(message))
 
 
 class TelemetryRecorder:
@@ -301,7 +305,7 @@ class TelemetryRecorder:
         *,
         status: TelemetryStatus = "started",
         message: str | None = None,
-        **details: Any,
+        **details: object,
     ) -> bool:
         """Send one stage event; True once committed.
 
@@ -318,7 +322,7 @@ class TelemetryRecorder:
         *,
         status: str = "running",
         message: str | None = None,
-        **details: Any,
+        **details: object,
     ) -> bool:
         """Send a sequential stage update for ``stage_id``.
 
@@ -342,7 +346,7 @@ class TelemetryRecorder:
         done: int,
         total: int,
         unit: str | None = None,
-        **details: Any,
+        **details: object,
     ) -> bool:
         """Send ``done`` of ``total`` progress within a stage; True once committed.
 

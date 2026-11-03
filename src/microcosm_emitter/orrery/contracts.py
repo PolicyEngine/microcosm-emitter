@@ -8,16 +8,22 @@ definition.
 from dataclasses import dataclass
 from pathlib import Path
 
-from microcosm_emitter_interface.orrery import PublicationFile as PublicationFile
 from microcosm_emitter_interface.orrery import (
-    PublicationFileRole as PublicationFileRole,
+    PublicationFile,
+    PublicationFileRole,
+    PublicationInventory,
+    PublicationReceipt,
 )
-from microcosm_emitter_interface.orrery import (
-    PublicationInventory as PublicationInventory,
-)
-from microcosm_emitter_interface.orrery import (
-    PublicationReceipt as PublicationReceipt,
-)
+
+# Every public name, including those re-exported from the interface package,
+# so type checkers of this py.typed package treat them as exported.
+__all__ = [
+    "ClaimedGraphPublication",
+    "PublicationFile",
+    "PublicationFileRole",
+    "PublicationInventory",
+    "PublicationReceipt",
+]
 
 
 @dataclass(frozen=True)

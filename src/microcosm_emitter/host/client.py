@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import socket
 import time
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from microcosm_emitter.host.constants import (
     ACK_OK,
@@ -13,8 +13,12 @@ from microcosm_emitter.host.constants import (
     MAX_MESSAGE_BYTES,
     SEND_TIMEOUT,
 )
-from microcosm_emitter.host.contracts import JsonObject
 from microcosm_emitter.host.errors import LocalServiceError
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from microcosm_emitter.host.contracts import JsonObject
 
 
 def _encode_request(payload: JsonObject) -> bytes:
@@ -53,7 +57,7 @@ class SocketClient:
     Socket, encoding and decoding errors are raised as ``LocalServiceError``.
     """
 
-    def __init__(self, socket_path: Path, *, timeout: float = SEND_TIMEOUT):
+    def __init__(self, socket_path: Path, *, timeout: float = SEND_TIMEOUT) -> None:
         """Hold the socket path and the default timeout of each socket operation."""
         self.socket_path = socket_path
         self.timeout = timeout
@@ -70,7 +74,7 @@ class SocketClient:
             data = _encode_request(payload)
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
 
-                def bound_operation():
+                def bound_operation() -> None:
                     remaining = self.timeout if timeout is None else timeout
                     if deadline is not None:
                         remaining = min(remaining, deadline - time.monotonic())
@@ -145,7 +149,7 @@ class SocketClient:
 class ModuleClient:
     """One selected module's transport; the enclosing ServiceHandle owns shutdown."""
 
-    def __init__(self, client: SocketClient, name: str):
+    def __init__(self, client: SocketClient, name: str) -> None:
         """Hold the shared client and the name of the module that messages go to."""
         self.client, self.name = client, name
 

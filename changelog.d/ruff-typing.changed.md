@@ -1,0 +1,1 @@
+Imports used only in annotations move under `TYPE_CHECKING`, modules that re-export interface names list their public names in `__all__`, every function is annotated (the interface's `serialization` module gains a `JsonValue` type alias for JSON values), the root `conftest.py` moves to `tests/conftest.py`, and Ruff no longer ignores `TC`, `ANN` and `PLC`. Behaviour is unchanged.

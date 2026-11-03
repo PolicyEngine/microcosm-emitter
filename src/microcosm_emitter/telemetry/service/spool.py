@@ -5,13 +5,11 @@ from __future__ import annotations
 import threading
 import time
 import uuid
-from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
 
 from microcosm_emitter.core.constants import (
     BATCH_SIZE,
@@ -35,6 +33,11 @@ from microcosm_emitter.core.models import (
 )
 from microcosm_emitter.telemetry.protocol import TELEMETRY_SCHEMA_VERSION
 from microcosm_emitter.telemetry.service.timestamps import utc_now
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from sqlalchemy.orm import Session
 
 
 class EventSpool:

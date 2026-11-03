@@ -12,15 +12,15 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
 from http.client import HTTPException
-from typing import Any, Literal, NamedTuple
+from typing import IO, TYPE_CHECKING, Any, Literal, NamedTuple
 from urllib.parse import urlsplit
 
 from huggingface_hub import get_token
@@ -49,6 +49,10 @@ from microcosm_emitter.core.constants import (
     UNSENDABLE_CREDENTIAL_ERROR,
 )
 
+if TYPE_CHECKING:
+    import email.message
+    from collections.abc import Callable, Mapping
+
 #: Visible ASCII (letters, digits and punctuation), the only characters of a
 #: Hugging Face credential or a collector token. Any other value is refused
 #: before it is sent: a bearer token (RFC 6750) has no spaces, tabs, line
@@ -67,7 +71,15 @@ NETWORK_FAILURES = (OSError, TimeoutError, HTTPException)
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Keep bearer credentials on the explicitly configured origin."""
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: email.message.Message,
+        newurl: str,
+    ) -> urllib.request.Request | None:
         return None
 
 
@@ -436,11 +448,11 @@ class CollectorSession:
         self,
         origin: str,
         *,
-        post=None,
-        credential=None,
-        scope=None,
+        post: Callable[..., tuple[int, dict[str, Any]]] | None = None,
+        credential: Callable[[], str | None] | None = None,
+        scope: str | None = None,
         destination: str | None = None,
-    ):
+    ) -> None:
         """Hold the session's settings and read any given token from ``os.environ``.
 
         ``post`` defaults to ``_http_post`` and ``credential`` to
@@ -448,8 +460,6 @@ class CollectorSession:
         ``GivenCollectorTokenError`` when the given-token variables cannot be used
         or name another collector than ``origin``.
         """
-        import threading
-
         self.origin = origin
         self.scope = scope
         self._destination = origin if destination is None else destination.rstrip("/")

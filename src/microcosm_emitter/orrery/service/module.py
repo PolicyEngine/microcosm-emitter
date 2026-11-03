@@ -2,12 +2,11 @@
 
 import sys
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from microcosm_emitter.core.auth import shared_session
 from microcosm_emitter.core.collector_origin import configured_collector_origin
 from microcosm_emitter.host.contracts import JsonObject, ModuleContext
-from microcosm_emitter.orrery.contracts import PublicationInventory
 from microcosm_emitter.orrery.service.queue import (
     DEFAULT_GRAPH_PUBLICATION_ORIGIN,
     GRAPH_WORKER_ERROR_MESSAGE,
@@ -16,11 +15,14 @@ from microcosm_emitter.orrery.service.queue import (
     publication_inventory,
 )
 
+if TYPE_CHECKING:
+    from microcosm_emitter.orrery.contracts import PublicationInventory
+
 
 class OrreryModule:
     """Queue graph publications on request and deliver them on each tick."""
 
-    def __init__(self, configuration: JsonObject, context: ModuleContext):
+    def __init__(self, configuration: JsonObject, context: ModuleContext) -> None:
         """Hold the configuration and context; ``initialize`` opens the queue."""
         self.configuration, self.context = configuration, context
         self.queue: GraphPublicationQueue | None = None
@@ -64,7 +66,7 @@ class OrreryModule:
         assert self.queue is not None, "The host initializes modules first."
         # enqueue() recomputes the inventory from the files and rejects any
         # message whose inventory differs, so this boundary is validated.
-        inventory = cast(PublicationInventory, dict(message["inventory"]))
+        inventory = cast("PublicationInventory", dict(message["inventory"]))
         self.queue.enqueue(Path(message["directory"]), inventory)
 
     def query(self, message: JsonObject) -> dict:

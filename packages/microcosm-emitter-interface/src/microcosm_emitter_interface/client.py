@@ -10,14 +10,13 @@ accepted, records why in ``EmitterClient.last_failure``, and the build continues
 
 from __future__ import annotations
 
-import os
 import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from microcosm_emitter_interface.bundles import (
     DatasetBundleReceipt,
@@ -76,13 +75,17 @@ from microcosm_emitter_interface.staging import (
     unavailable_read_back,
     unavailable_run_files_receipt,
 )
-from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 from microcosm_emitter_interface.telemetry import (
     TelemetryCommand,
     TelemetryRecorder,
     TelemetrySettings,
     telemetry_message,
 )
+
+if TYPE_CHECKING:
+    import os
+
+    from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 
 STARTUP_WARNING = (
     "Local Microcosm emitter failed to start ({reason}); the build will continue."
@@ -395,7 +398,7 @@ class EmitterClient:
         )
         value = None if response is None else response.get("receipt")
         if isinstance(value, dict):
-            return cast(RunFilesReceipt, value)
+            return cast("RunFilesReceipt", value)
         return unavailable_run_files_receipt(request.repository, request.run_id)
 
     def run_files_receipt(self, repository: str, run_id: str) -> RunFilesReceipt:
@@ -411,7 +414,7 @@ class EmitterClient:
         )
         value = None if response is None else response.get("receipt")
         if isinstance(value, dict):
-            return cast(RunFilesReceipt, value)
+            return cast("RunFilesReceipt", value)
         return unavailable_run_files_receipt(repository, run_id)
 
     def read_back_run_files(
@@ -447,7 +450,7 @@ class EmitterClient:
         )
         value = None if response is None else response.get("read_back")
         if isinstance(value, dict):
-            return cast(ReadBackResult, value)
+            return cast("ReadBackResult", value)
         return unavailable_read_back()
 
     def _handover_receipt(self, handover_id: str) -> dict[str, Any] | None:
@@ -501,11 +504,13 @@ class EmitterClient:
         value = None if response is None else response.get("receipt")
         if not isinstance(value, dict):
             return unavailable_bundle_receipt(request)
-        return cast(DatasetBundleReceipt, self._wait_until_settled(value, wait_seconds))
+        return cast(
+            "DatasetBundleReceipt", self._wait_until_settled(value, wait_seconds)
+        )
 
     def dataset_bundle_receipt(self, handover_id: str) -> DatasetBundleReceipt | None:
         """Return a bundle hand-over's latest receipt, or None without an answer."""
-        return cast(DatasetBundleReceipt | None, self._handover_receipt(handover_id))
+        return cast("DatasetBundleReceipt | None", self._handover_receipt(handover_id))
 
     def collector_submission_receipt(
         self, handover_id: str
@@ -532,7 +537,9 @@ class EmitterClient:
         )
         value = None if response is None else response.get("receipt")
         return (
-            cast(CollectorSubmissionReceipt, value) if isinstance(value, dict) else None
+            cast("CollectorSubmissionReceipt", value)
+            if isinstance(value, dict)
+            else None
         )
 
     def check_write_access(self, repository: str) -> WriteAccess:
@@ -549,7 +556,7 @@ class EmitterClient:
         )
         value = None if response is None else response.get("access")
         if isinstance(value, dict):
-            return cast(WriteAccess, value)
+            return cast("WriteAccess", value)
         return unavailable_write_access()
 
     def _release_change(
@@ -564,7 +571,7 @@ class EmitterClient:
         value = None if response is None else response.get("receipt")
         if not isinstance(value, dict):
             return unavailable_release_receipt(request)
-        return cast(ReleaseReceipt, self._wait_until_settled(value, wait_seconds))
+        return cast("ReleaseReceipt", self._wait_until_settled(value, wait_seconds))
 
     def publish_release(
         self, request: PublishRelease, *, wait_seconds: float = 300.0
@@ -608,7 +615,7 @@ class EmitterClient:
 
     def release_receipt(self, handover_id: str) -> ReleaseReceipt | None:
         """Return a release change's latest receipt, or None without an answer."""
-        return cast(ReleaseReceipt | None, self._handover_receipt(handover_id))
+        return cast("ReleaseReceipt | None", self._handover_receipt(handover_id))
 
     def close(self) -> None:
         """Ask the emitter to drain and stop; repeated calls do nothing."""
@@ -633,7 +640,7 @@ def _receipt_error_code(failure: RequestFailureReason | None) -> str:
     return "local_service_unavailable"
 
 
-def _wait_seconds(value: Any) -> float:
+def _wait_seconds(value: object) -> float:
     """Return ``value`` as seconds to wait, or 0.0 if it is not a positive number."""
     try:
         seconds = float(value)

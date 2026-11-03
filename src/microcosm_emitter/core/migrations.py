@@ -14,20 +14,24 @@ The emitter keeps two SQLite databases, each with its own migration history:
 from __future__ import annotations
 
 import fcntl
-from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib.resources import as_file, files
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from alembic import command
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
-from sqlalchemy.engine import Connection, Engine
 
 from microcosm_emitter.core.database import create_spool_engine
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from sqlalchemy.engine import Connection, Engine
 
 _MIGRATION_TARGET = "head"
 
