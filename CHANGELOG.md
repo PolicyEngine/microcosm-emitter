@@ -1,3 +1,10 @@
+## [0.12.3] - 2026-11-03
+
+### Changed
+
+- Complex functions are split into helpers and magic values in comparisons are named constants. Fifteen definitions keep a `# noqa` for too many arguments, with its reason: eleven signatures whose keyword arguments callers pass by name or that the standard library fixes, and four pytest test functions. Ruff no longer ignores `C90` and `PLR`, so it now ignores only `COM812`, `ISC001`, `D203`, `D213` and `CPY`, plus the registered per-file ignores. Behaviour is unchanged.
+
+
 ## [0.12.2] - 2026-11-03
 
 ### Changed
