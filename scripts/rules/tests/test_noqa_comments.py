@@ -147,7 +147,7 @@ class TestNewAndRemovedSuppressions(unittest.TestCase):
                 (
                     "[registry] noqa-comments: baseline entry no longer applies: "
                     "pkg/module.py: F401 is listed 2 times, but the file has 1 such "
-                    "comment. Fix: remove the extra entry from "
+                    "directive. Fix: remove the extra entry from "
                     "rules/baselines/noqa-comments.txt and lower the rule's baseline "
                     "count."
                 )
@@ -425,7 +425,7 @@ class TestCodesAsRuffReadsThem(unittest.TestCase):
 
 
 class TestTheTotalMayNotGrow(unittest.TestCase):
-    """The base branch comparison counts comments only, as Anthony decided.
+    """The base branch comparison counts directives only, as Anthony decided.
 
     Each test models a pull request as CI checks it: the base branch's files
     and baseline, then the pull request's. The guard runs on the pull request,
@@ -433,7 +433,7 @@ class TestTheTotalMayNotGrow(unittest.TestCase):
     request may add a suppression only by removing another, so the same total
     passes even when a code is added to a comment, a code is swapped for
     another or a file is renamed, once the baseline lists the result; a higher
-    total fails. A later move to comparing entries would fail the first three.
+    total fails. The base-branch comparison receives only the two totals.
     """
 
     def check_pull_request(
