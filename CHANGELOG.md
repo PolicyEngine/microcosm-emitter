@@ -1,3 +1,10 @@
+## [0.11.11] - 2026-11-02
+
+### Changed
+
+- Docstrings follow Ruff's `D` rules: every public module, class, function and method has one, every summary fits on the first line, and function and method summaries are in the imperative mood. Ruff no longer ignores the family. Behaviour is unchanged.
+
+
 ## [0.11.10] - 2026-11-02
 
 ### Changed
