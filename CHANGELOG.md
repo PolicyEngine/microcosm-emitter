@@ -1,3 +1,10 @@
+## [0.12.1] - 2026-11-03
+
+### Changed
+
+- Broad excepts, prints and the other kept security findings carry a `# noqa` with their reason. All 21 asserts in package code become explicit checks that raise the same `AssertionError`, so they also hold under `python -O`. The two modules that run as programs may print, and Ruff no longer ignores `BLE`, `S`, `T20` and `SLF`.
+
+
 ## [0.12.0] - 2026-11-03
 
 ### Added
