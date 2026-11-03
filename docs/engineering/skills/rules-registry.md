@@ -147,16 +147,23 @@ fail the guard yet.
   `# noqa: CODE  # reason`.
 - **The number of inline suppressions may not grow.** The ratcheted rule
   `emitter.quality.inline-suppressions-only-shrink` lists every suppression
-  comment Ruff applies (`# noqa`, Ruff's `ruff: ignore`, `disable` and
-  `file-ignore` forms, and a file-level `ruff: noqa` or `flake8: noqa`) in
-  `rules/baselines/noqa-comments.txt`, one entry per comment. A pull request
-  that needs a new justified suppression removes another in the same pull
-  request and updates the baseline to list the result. Raising the total is a
-  person's decision: the guard refuses a baseline count that grows against the
-  base branch, with or without a `[rule.downgrade]`, so it takes a change to
-  the rule itself. The comparison counts comments only, so a swap at the same
-  total, a rename or a code added to an existing comment passes once the
-  baseline lists it.
+  directive Ruff applies in `rules/baselines/noqa-comments.txt`, one entry per
+  directive: a `# noqa`; Ruff's `ruff: ignore`, `disable` and `file-ignore`
+  forms; a file-level `ruff: noqa` or `flake8: noqa` on its own line; and the
+  isort directives that switch off import sorting. The guard compares the
+  baseline's total with the base branch's, so the total may not grow. It
+  counts directives only, so a swap at the same total, a rename or a code
+  added to an existing comment passes once the baseline lists the result.
+  - An agent may remove suppressions and shrink the baseline.
+  - A new suppression, even one that replaces a removed one at the same total,
+    adds an entry to the baseline, so a person approves that entry in review
+    (see the person-only list below).
+  - Raising the total is a person's decision. The guard refuses a count that
+    grows against the base branch, with or without a `[rule.downgrade]`.
+  - The comparison matches rules by id, so renaming a ratcheted rule's id
+    makes it a new rule and restarts its comparison: a renamed rule with a
+    higher count passes with notes only. Review catches an id change; #79
+    tracks closing this in the tool.
 - Other enforcers (mypy, Pyright, Import Linter, custom guards) may start
   `ratcheted` with a baseline file of tolerated violations. A new rule that
   starts ratcheted with a count above 0 needs a `[rule.downgrade]` section,
@@ -194,7 +201,10 @@ fail the guard yet.
   packages and new ratcheted rules. Review catches the rest.
 - **Weakening a rule is a decision for a person, not an agent.** Agents don't
   downgrade a rule, add a `[rule.downgrade]` section, create a baseline or add
-  entries to one, or move a package or path out of a rule's scope. When a rule
+  entries to one, or move a package or path out of a rule's scope. An entry an
+  agent adds to a baseline in its pull request, such as a new inline
+  suppression in place of a removed one, waits for a person's approval in
+  review. When a rule
   reports violations an agent can't fix in its pull request, the agent stops
   and reports them, with what it tried. Fixing violations and shrinking a
   baseline is fine.

@@ -1,9 +1,9 @@
-# Every suppression comment Ruff applies in a tracked Python file, one entry
-# per comment: <path>: <codes>, sorted, with Ruff's own forms labelled. Rule
-# emitter.quality.inline-suppressions-only-shrink: the noqa-comments guard
-# fails on a comment not listed here and on an entry with no comment left,
-# and the count may not grow against the base branch. Remove an entry when
-# its comment goes.
+# Every suppression directive Ruff applies in a tracked Python file, one entry
+# per directive: <path>: <codes>, sorted, with Ruff's own forms and the isort
+# directives labelled. Rule emitter.quality.inline-suppressions-only-shrink:
+# the noqa-comments guard fails on a directive not listed here and on an entry
+# with no directive left, and the total may not grow against the base branch.
+# Remove an entry when its directive goes.
 packages/microcosm-emitter-interface/src/microcosm_emitter_interface/bundles.py: BLE001
 packages/microcosm-emitter-interface/src/microcosm_emitter_interface/client.py: BLE001
 packages/microcosm-emitter-interface/src/microcosm_emitter_interface/client.py: BLE001

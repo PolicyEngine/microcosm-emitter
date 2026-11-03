@@ -1,0 +1,1 @@
+The inline-suppression guard also counts a directive beside a trailing file-level `ruff: noqa` or `flake8: noqa`, a code list that starts with a comma, and the isort directives that switch off import sorting, and the rule says plainly that the total may not grow, one entry per directive. The baseline stays at 140. The wheels are unchanged.
