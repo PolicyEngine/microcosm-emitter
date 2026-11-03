@@ -1,3 +1,14 @@
+## [0.12.0] - 2026-11-03
+
+### Added
+
+- The interface's `serialization` module exports `JsonValue`, the type of a JSON value (null, a boolean, a number, a string, an array or an object), which `wire_value` returns.
+
+### Changed
+
+- Imports used only in annotations move under `TYPE_CHECKING`, modules that re-export interface names list their public names in `__all__`, every function is annotated (the interface's `serialization` module gains a `JsonValue` type alias for JSON values), the root `conftest.py` moves to `tests/conftest.py`, and Ruff no longer ignores `TC`, `ANN` and `PLC`. Behaviour is unchanged.
+
+
 ## [0.11.11] - 2026-11-02
 
 ### Changed
