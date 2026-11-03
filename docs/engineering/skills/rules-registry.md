@@ -150,14 +150,16 @@ fail the guard yet.
   directive Ruff applies in `rules/baselines/noqa-comments.txt`, one entry per
   directive: a `# noqa`; Ruff's `ruff: ignore`, `disable` and `file-ignore`
   forms; a file-level `ruff: noqa` or `flake8: noqa` on its own line; and the
-  isort directives that switch off import sorting. The guard compares the
+  isort comments that switch off import sorting, read as Ruff 0.16.10 reads
+  them. The guard compares the
   baseline's total with the base branch's, so the total may not grow. It
   counts directives only, so a swap at the same total, a rename or a code
   added to an existing comment passes once the baseline lists the result.
   - An agent may remove suppressions and shrink the baseline.
   - A new suppression, even one that replaces a removed one at the same total,
-    adds an entry to the baseline, so a person approves that entry in review
-    (see the person-only list below).
+    adds an entry to the baseline, which only a swap allows and a person
+    approves in review (see the person-only list below). Otherwise, an agent
+    that can't fix a finding without a new suppression stops and reports it.
   - Raising the total is a person's decision. The guard refuses a count that
     grows against the base branch, with or without a `[rule.downgrade]`.
   - The comparison matches rules by id, so renaming a ratcheted rule's id
@@ -200,11 +202,13 @@ fail the guard yet.
   and "rule ... is new", except that the checks above still cover Pyright
   packages and new ratcheted rules. Review catches the rest.
 - **Weakening a rule is a decision for a person, not an agent.** Agents don't
-  downgrade a rule, add a `[rule.downgrade]` section, create a baseline or add
-  entries to one, or move a package or path out of a rule's scope. An entry an
-  agent adds to a baseline in its pull request, such as a new inline
-  suppression in place of a removed one, waits for a person's approval in
-  review. When a rule
+  downgrade a rule, add a `[rule.downgrade]` section, create a baseline, or
+  move a package or path out of a rule's scope. An agent adds an entry to a
+  baseline only as part of a swap at the same total, such as a new inline
+  suppression in place of one it removes, and that entry needs a person's
+  approval in review. Nothing enforces that approval today: `main` requires
+  no approving review and the repository has no code-owners file, so it is a
+  review practice. When a rule
   reports violations an agent can't fix in its pull request, the agent stops
   and reports them, with what it tried. Fixing violations and shrinking a
   baseline is fine.

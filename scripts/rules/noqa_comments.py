@@ -1,7 +1,7 @@
 """The noqa-comments quality guard: the number of inline suppressions may not grow.
 
-Every suppression comment Ruff applies in a tracked Python file is one entry,
-``<path>: <codes>``, with the codes sorted and joined by ", ", or
+Every suppression directive Ruff 0.16.10 applies in a tracked Python file is
+one entry, ``<path>: <codes>``, with the codes sorted and joined by ", ", or
 ``<path>: (all)`` for a blanket one:
 
 - an inline ``noqa`` directive, with no label;
@@ -9,24 +9,28 @@ Every suppression comment Ruff applies in a tracked Python file is one entry,
   labelled ``(ruff: ignore)``, ``(ruff: disable)`` and ``(ruff: file-ignore)``
   (an ``enable[...]`` ends a disabled range and is not one);
 - a file-level ``ruff: noqa`` or ``flake8: noqa`` on its own line, labelled
-  ``(ruff: noqa)`` or ``(flake8: noqa)``.
+  ``(ruff: noqa)`` or ``(flake8: noqa)``;
+- the isort comments that switch off import sorting, as code ``I001``: a
+  whole ``skip_file`` or ``off`` comment, with or without ``ruff:``, and a
+  comment containing the skip marker after an import on the same line.
 
 Codes are read as Ruff reads them: uppercase letters then digits, with or
-without commas or spaces between codes, and a space is allowed before the
-colon. A directive whose codes Ruff rejects, such as lowercase ones, applies
-nothing and is not counted, and neither is a file-level directive after code.
-Only comments count: text in a string, or a comment that names noqa without
-the directive, does not. The rule's baseline file lists each entry once per
-comment, so moving a comment within its file changes nothing.
+without commas or spaces between codes, a comma allowed before the first, and
+a space allowed before the colon. A directive Ruff does not apply is not
+counted: codes it rejects, such as lowercase ones, a file-level noqa after
+code, and an isort comment Ruff ignores. Only comments count: text in a
+string, or a comment that names noqa without the directive, does not. The
+rule's baseline file lists each entry once per directive, so moving a
+directive within its file changes nothing.
 
-The guard compares the counts per entry. It fails on a comment the baseline
-does not list, and on a listed entry with fewer comments left than it lists,
-so the baseline has to change with the comments. The baseline's total may
-only fall against the base branch, which the rules guard checks as for every
+The guard compares the counts per entry. It fails on a directive the baseline
+does not list, and on a listed entry with fewer directives left than it lists,
+so the baseline has to change with the directives. The baseline's total may
+not grow against the base branch, which the rules guard checks as for every
 ratcheted rule: a pull request may add a suppression only by removing another.
-That comparison counts comments only, so swapping one for another at the same
-total, renaming a file or adding a code to an existing comment passes, once
-the baseline lists the result.
+That comparison counts directives only, so swapping one for another at the
+same total, renaming a file or adding a code to an existing comment passes,
+once the baseline lists the result.
 """
 
 from __future__ import annotations
@@ -253,7 +257,7 @@ def compare(
     rule: Rule | None,
     baseline_file: str,
 ) -> list[Violation]:
-    """Report each comment the baseline doesn't list, and each entry left over."""
+    """Report each directive the baseline doesn't list, and each entry left over."""
     rule_id = rule.id if rule is not None else None
     violations = []
     for entry in sorted(found):
@@ -273,7 +277,7 @@ def compare(
             (
                 f"baseline entry no longer applies: {entry} is listed "
                 f"{_plural(baseline[entry], 'time')}, but the file has "
-                f"{_plural(found[entry], 'such comment')}"
+                f"{_plural(found[entry], 'such directive')}"
             ),
             REMOVED_SUPPRESSION_FIX.format(file=baseline_file),
         )
