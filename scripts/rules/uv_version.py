@@ -69,7 +69,9 @@ PACKAGE_INSTALL = "install of the uv package"
 SELF_UPDATE = "uv self update"
 
 _HOW_TO_PIN = {
-    SETUP_UV_STEP: f"set with: version-file: {VERSION_FILE} on the step, and no version:",
+    SETUP_UV_STEP: (
+        f"set with: version-file: {VERSION_FILE} on the step, and no version:"
+    ),
     UV_IMAGE: "use the tag ghcr.io/astral-sh/uv:{version}",
     MODAL_UV: 'pass uv_version="{version}"',
     DOWNLOAD_URL: "name {version} in the URL (https://astral.sh/uv/{version}/install.sh)",

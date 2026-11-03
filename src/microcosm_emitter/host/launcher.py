@@ -1,5 +1,6 @@
 """Start a module in the current interpreter, without installing anything."""
 
+import contextlib
 import json
 import math
 import os
@@ -217,8 +218,6 @@ def terminate_process(process: subprocess.Popen) -> None:
 
 def _remove_runtime_directory(directory: Path) -> None:
     (directory / SOCKET_FILENAME).unlink(missing_ok=True)
-    try:
+    # The child removes its own directory on a normal or failed exit.
+    with contextlib.suppress(FileNotFoundError):
         directory.rmdir()
-    except FileNotFoundError:
-        # The child removes its own directory on a normal or failed exit.
-        pass

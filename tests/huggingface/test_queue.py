@@ -176,7 +176,8 @@ def test_a_failed_commit_backs_off_before_the_repository_is_due_again(queue):
     assert queue.due_repositories(1002) == [REPOSITORY]
     receipt = queue.run_receipt(REPOSITORY, "run-1")
     assert receipt["last_error_code"] == "UPLOAD_FAILED"
-    assert receipt["commit_attempts"] == 1 and receipt["commits"] == 0
+    assert receipt["commit_attempts"] == 1
+    assert receipt["commits"] == 0
     assert receipt["pending_files"] == 1
 
 
@@ -334,15 +335,18 @@ def test_jobs_are_idempotent_by_hand_over_and_survive_a_restart(tmp_path):
     restarted = HandoverQueue(path)
     try:
         job = restarted.claim_job(REPOSITORY, now=1003, lease_seconds=60)
-        assert job is not None and job.handover_id == "bundle-1"
-        assert job.request == request and job.kind == "dataset_bundle"
+        assert job is not None
+        assert job.handover_id == "bundle-1"
+        assert job.request == request
+        assert job.kind == "dataset_bundle"
         assert restarted.claim_job(REPOSITORY, now=1004, lease_seconds=60) is None
         restarted.finish_job(
             job, receipt={"status": "pending", "error_code": "X"}, retry=True, now=1005
         )
         assert restarted.claim_job(REPOSITORY, now=1005, lease_seconds=60) is None
         retried = restarted.claim_job(REPOSITORY, now=1007, lease_seconds=60)
-        assert retried is not None and retried.attempts == 1
+        assert retried is not None
+        assert retried.attempts == 1
         restarted.finish_job(
             retried, receipt={"status": "uploaded"}, retry=False, now=1008
         )

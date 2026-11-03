@@ -135,7 +135,8 @@ def test_socket_request_has_the_recorded_envelope(recording_server, name):
     ENVELOPE_SENT_BY[name](transport)
     (request,) = recording_server.requests
     # One JSON object per request, ended by a newline.
-    assert request.endswith(b"\n") and request.count(b"\n") == 1
+    assert request.endswith(b"\n")
+    assert request.count(b"\n") == 1
     assert json.loads(request) == fixture.body
 
 

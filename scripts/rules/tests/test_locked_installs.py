@@ -352,8 +352,10 @@ removal = "never"
         self.assertEqual(
             messages,
             [
-                "exception for .github/workflows/ci.yml (pip install gone) "
-                "matches no site"
+                (
+                    "exception for .github/workflows/ci.yml (pip install gone) "
+                    "matches no site"
+                )
             ],
         )
 
@@ -423,9 +425,11 @@ class TestRepositoryLayout(unittest.TestCase):
         self.assertEqual(
             self.lock_messages(files, other),
             [
-                f"[{LOCK_RULE}] locked-installs: no .github/workflows/pr.yml job "
-                "runs uv lock --check. Fix: run uv lock --check in a job of "
-                ".github/workflows/pr.yml."
+                (
+                    f"[{LOCK_RULE}] locked-installs: no .github/workflows/pr.yml job "
+                    "runs uv lock --check. Fix: run uv lock --check in a job of "
+                    ".github/workflows/pr.yml."
+                )
             ],
         )
 
@@ -533,9 +537,11 @@ class TestRepositoryLayout(unittest.TestCase):
         self.assertEqual(
             self.lock_messages(files, FIXTURE_REPOSITORY),
             [
-                f"[{LOCK_RULE}] locked-installs: checks/sample/pyproject.toml has "
-                "no committed uv.lock. Fix: run uv lock --project checks/sample "
-                "and commit uv.lock."
+                (
+                    f"[{LOCK_RULE}] locked-installs: checks/sample/pyproject.toml has "
+                    "no committed uv.lock. Fix: run uv lock --project checks/sample "
+                    "and commit uv.lock."
+                )
             ],
         )
 
@@ -559,9 +565,11 @@ class TestRepositoryLayout(unittest.TestCase):
         self.assertEqual(
             self.lock_messages(workspace, FIXTURE_REPOSITORY),
             [
-                f"[{LOCK_RULE}] locked-installs: packages/standalone/pyproject.toml "
-                "has no committed uv.lock. Fix: run uv lock --project "
-                "packages/standalone and commit uv.lock."
+                (
+                    f"[{LOCK_RULE}] locked-installs: packages/standalone/pyproject.toml"
+                    " has no committed uv.lock. Fix: run uv lock --project "
+                    "packages/standalone and commit uv.lock."
+                )
             ],
         )
 

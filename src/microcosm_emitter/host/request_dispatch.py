@@ -1,5 +1,6 @@
 """Bounded FIFO request workers, independent of each module's periodic work."""
 
+import contextlib
 import socket
 import threading
 from collections.abc import Callable, Iterable
@@ -55,11 +56,10 @@ class ModuleRequestDispatcher:
             if name in self._closed:
                 return
             self._closed.add(name)
-            try:
+            # When the queue is full, a busy worker sees closure after draining
+            # its bounded queue.
+            with contextlib.suppress(Full):
                 self._queues[name].put_nowait(None)
-            except Full:
-                # A busy worker sees closure after draining its bounded queue.
-                pass
 
     def stop(self) -> None:
         """Stop intake for every module; accepted requests still finish in order."""
@@ -93,10 +93,8 @@ class ModuleRequestDispatcher:
                 return
             with request.connection:
                 response = request.respond()
-                try:
+                with contextlib.suppress(OSError):
                     request.connection.sendall(response)
-                except OSError:
-                    pass
             with self._lock:
                 if name in self._closed and requests.empty():
                     return

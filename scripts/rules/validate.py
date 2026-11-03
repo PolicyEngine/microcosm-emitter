@@ -369,7 +369,7 @@ def _duplicate_ids(registry: Registry, category_ids: list[str]) -> list[Violatio
 
 
 def _validate_repository(registry: Registry, root: Path) -> list[Violation]:
-    """Check that the workflow, directories and packages ``[repository]`` names exist."""
+    """Check the workflow, directories and packages ``[repository]`` names exist."""
     repository = registry.repository
     violations = []
     if repository.pr_workflow and not (root / repository.pr_workflow).is_file():

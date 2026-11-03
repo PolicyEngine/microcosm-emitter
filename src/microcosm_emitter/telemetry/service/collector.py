@@ -1,4 +1,7 @@
-"""Best-effort telemetry delivery; shared authentication lives outside this component."""
+"""Best-effort telemetry delivery.
+
+Shared authentication lives outside this component.
+"""
 
 from __future__ import annotations
 
@@ -89,8 +92,8 @@ class CollectorDelivery:
         self.spool = spool
         self.session = session or CollectorSession(
             self.collector_url,
-            post=lambda *args: _http_post(*args),
-            credential=lambda: huggingface_token(),
+            post=_http_post,
+            credential=huggingface_token,
         )
         self._registered: set[str] = set()
         self._warned_no_token = False
@@ -125,9 +128,10 @@ class CollectorDelivery:
             token = self._collector_token(registration)
             if token is None:
                 continue
-            if registration_key not in self._registered:
-                if not self._register(registration, token):
-                    continue
+            if registration_key not in self._registered and not self._register(
+                registration, token
+            ):
+                continue
             events = self.spool.batch(run_id, str(registration["producer_id"]))
             if not events:
                 continue

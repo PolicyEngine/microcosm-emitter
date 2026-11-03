@@ -223,14 +223,17 @@ def test_bounded_module_queue_preserves_order_and_other_module_control(monkeypat
             assert healthy.messages == [{"accepted": True}]
             client.ping()
             client.close()
-            assert not slow.closed.is_set() and not healthy.closed.is_set()
+            assert not slow.closed.is_set()
+            assert not healthy.closed.is_set()
             slow.callback_release.set()
             for peer, value in zip(queued, ("hold", "second", "third"), strict=True):
                 assert json.loads(peer.recv(4096)) == {"result": value}
             thread.join(3)
-            assert not thread.is_alive() and not errors
+            assert not thread.is_alive()
+            assert not errors
             assert slow.values == ["hold", "second", "third"]
-            assert slow.closed.is_set() and healthy.messages == [{"accepted": True}]
+            assert slow.closed.is_set()
+            assert healthy.messages == [{"accepted": True}]
         finally:
             slow.callback_release.set()
             runtime.stop()
@@ -287,12 +290,15 @@ def test_parent_exit_waits_for_active_requests_before_lifecycle_callbacks():
                 while not runtime._parent_exited and time.monotonic() < deadline:
                     time.sleep(0.01)
                 assert runtime._parent_exited
-                assert not module.parent_called.is_set() and not module.closed.is_set()
+                assert not module.parent_called.is_set()
+                assert not module.closed.is_set()
                 module.callback_release.set()
                 assert json.loads(peer.recv(4096)) == {"result": "hold"}
                 thread.join(3)
-                assert not thread.is_alive() and not errors
-                assert module.parent_called.is_set() and module.closed.is_set()
+                assert not thread.is_alive()
+                assert not errors
+                assert module.parent_called.is_set()
+                assert module.closed.is_set()
             finally:
                 module.callback_release.set()
                 runtime.stop()
@@ -342,7 +348,8 @@ def test_shutdown_timeout_does_not_close_an_active_callback():
                 client.close()
                 thread.join(1)
                 assert not thread.is_alive()
-                assert len(errors) == 1 and isinstance(errors[0], LocalServiceError)
+                assert len(errors) == 1
+                assert isinstance(errors[0], LocalServiceError)
                 assert not module.closed.is_set()
                 module.callback_release.set()
                 assert module.closed.wait(3)

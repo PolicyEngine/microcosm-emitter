@@ -102,16 +102,24 @@ class TestUvVersionProof(unittest.TestCase):
         self.assertEqual(
             bad,
             [
-                ".github/workflows/ci.yml:16: astral-sh/setup-uv step does not pin "
-                "a uv release",
-                ".github/workflows/ci.yml:31: astral-sh/setup-uv step writes uv "
-                f"0.13.4 itself instead of reading {VERSION_FILE}",
-                "Dockerfile:5: uv container image does not pin a uv release (it "
-                "names latest)",
+                (
+                    ".github/workflows/ci.yml:16: astral-sh/setup-uv step does not pin "
+                    "a uv release"
+                ),
+                (
+                    ".github/workflows/ci.yml:31: astral-sh/setup-uv step writes uv "
+                    f"0.13.4 itself instead of reading {VERSION_FILE}"
+                ),
+                (
+                    "Dockerfile:5: uv container image does not pin a uv release (it "
+                    "names latest)"
+                ),
                 "app/modal_app.py:9: Modal uv_sync call does not pin a uv release",
                 "scripts/install-uv.sh:6: uv download URL does not pin a uv release",
-                "scripts/install-uv.sh:7: install of the uv package does not pin a "
-                "uv release",
+                (
+                    "scripts/install-uv.sh:7: install of the uv package does not pin a "
+                    "uv release"
+                ),
             ],
         )
         self.assertEqual(good, [])
@@ -194,8 +202,10 @@ class TestRequiredVersion(GuardCase):
         self.assertEqual(
             self.messages({}, required=f"=={PINNED}"),
             [
-                f"pyproject.toml's [tool.uv] required-version is '=={PINNED}', not "
-                "a lower bound written >=X.Y"
+                (
+                    f"pyproject.toml's [tool.uv] required-version is '=={PINNED}', not "
+                    "a lower bound written >=X.Y"
+                )
             ],
         )
 
@@ -203,8 +213,10 @@ class TestRequiredVersion(GuardCase):
         self.assertEqual(
             self.messages({}, required=">=0.14"),
             [
-                "pyproject.toml's [tool.uv] required-version '>=0.14' refuses uv "
-                f"{PINNED}, the release in {VERSION_FILE}"
+                (
+                    "pyproject.toml's [tool.uv] required-version '>=0.14' refuses uv "
+                    f"{PINNED}, the release in {VERSION_FILE}"
+                )
             ],
         )
 
@@ -214,8 +226,10 @@ class TestRequiredVersion(GuardCase):
                 self.assertEqual(
                     self.messages({}, required=required),
                     [
-                        "pyproject.toml's [tool.uv] required-version is "
-                        f"{required!r}, not a lower bound written >=X.Y"
+                        (
+                            "pyproject.toml's [tool.uv] required-version is "
+                            f"{required!r}, not a lower bound written >=X.Y"
+                        )
                     ],
                 )
 
@@ -306,8 +320,10 @@ class TestSetupUvSteps(GuardCase):
         self.assertEqual(
             messages,
             [
-                ".github/workflows/ci.yml:7: astral-sh/setup-uv step does not pin "
-                "a uv release"
+                (
+                    ".github/workflows/ci.yml:7: astral-sh/setup-uv step does not pin "
+                    "a uv release"
+                )
             ],
         )
 
@@ -330,12 +346,18 @@ class TestSetupUvSteps(GuardCase):
         self.assertEqual(
             messages,
             [
-                ".github/workflows/ci.yml:7: astral-sh/setup-uv step writes uv "
-                f"0.13.4 itself instead of reading {VERSION_FILE}",
-                ".github/workflows/ci.yml:10: astral-sh/setup-uv step writes uv "
-                f"{PINNED} itself instead of reading {VERSION_FILE}",
-                ".github/workflows/ci.yml:13: astral-sh/setup-uv step does not pin "
-                "a uv release (it names latest)",
+                (
+                    ".github/workflows/ci.yml:7: astral-sh/setup-uv step writes uv "
+                    f"0.13.4 itself instead of reading {VERSION_FILE}"
+                ),
+                (
+                    ".github/workflows/ci.yml:10: astral-sh/setup-uv step writes uv "
+                    f"{PINNED} itself instead of reading {VERSION_FILE}"
+                ),
+                (
+                    ".github/workflows/ci.yml:13: astral-sh/setup-uv step does not pin "
+                    "a uv release (it names latest)"
+                ),
             ],
         )
 
@@ -352,8 +374,10 @@ class TestSetupUvSteps(GuardCase):
         self.assertEqual(
             messages,
             [
-                ".github/actions/setup/action.yml:4: astral-sh/setup-uv step does "
-                "not pin a uv release"
+                (
+                    ".github/actions/setup/action.yml:4: astral-sh/setup-uv step does "
+                    "not pin a uv release"
+                )
             ],
         )
 
@@ -378,8 +402,10 @@ class TestImagesAndDownloads(GuardCase):
             messages,
             [
                 "Dockerfile:3: uv container image pins uv 0.13.4, not 0.13.6",
-                "Dockerfile:4: uv container image does not pin a uv release (it "
-                "names python3.13-bookworm)",
+                (
+                    "Dockerfile:4: uv container image does not pin a uv release (it "
+                    "names python3.13-bookworm)"
+                ),
             ],
         )
 
@@ -465,10 +491,14 @@ class TestModalImages(GuardCase):
             messages,
             [
                 "app/modal_app.py:7: Modal uv_sync call pins uv 0.13.4, not 0.13.6",
-                "app/modal_app.py:8: Modal uv_pip_install call does not pin a uv "
-                "release",
-                "app/modal_app.py:9: install of the uv package does not pin a uv "
-                "release",
+                (
+                    "app/modal_app.py:8: Modal uv_pip_install call does not pin a uv "
+                    "release"
+                ),
+                (
+                    "app/modal_app.py:9: install of the uv package does not pin a uv "
+                    "release"
+                ),
                 "app/modal_app.py:10: uv download URL does not pin a uv release",
             ],
         )

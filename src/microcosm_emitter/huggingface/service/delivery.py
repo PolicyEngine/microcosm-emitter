@@ -347,7 +347,9 @@ class HuggingFaceDelivery:
                     return 0
                 held.hold_job(job)
                 return int(self._deliver_job(hub, held))
-            if not self._run_files_to_commit(repository, run_files, at_shutdown):
+            if not self._run_files_to_commit(
+                repository, run_files=run_files, at_shutdown=at_shutdown
+            ):
                 return 0
             return int(self._deliver_run_files(hub))
         finally:
@@ -355,7 +357,11 @@ class HuggingFaceDelivery:
             self.queue.release_repository(repository, held.repository_lease)
 
     def _run_files_to_commit(
-        self, repository: str, run_files: bool, at_shutdown: bool
+        self,
+        repository: str,
+        *,
+        run_files: bool,
+        at_shutdown: bool,
     ) -> bool:
         return run_files and (
             at_shutdown or self.queue.run_files_due(repository, self.clock())
@@ -523,7 +529,9 @@ class HuggingFaceDelivery:
                 held.job, status="pending", error_code=CREDENTIAL_MISSING, retry=True
             )
             return
-        if not self._run_files_to_commit(repository, run_files, at_shutdown):
+        if not self._run_files_to_commit(
+            repository, run_files=run_files, at_shutdown=at_shutdown
+        ):
             return
         entries = self.queue.pending_run_files(repository)
         index_entries = self.queue.pending_run_index_entries(repository)

@@ -91,7 +91,8 @@ def test_publication_writes_the_build_folder_and_releases_json_in_one_commit(
     outcome = apply(hub, request)
     assert outcome.status == "published"
     (commit,) = hub.commits(PRIVATE_REPOSITORY)
-    assert outcome.commit == commit.oid and commit.parent == head_before
+    assert outcome.commit == commit.oid
+    assert commit.parent == head_before
     folder = f"releases/{NATIONAL}/{FIRST_BUILD}"
     assert commit.added == {
         **{f"{folder}/{name}": content for name, content in contents.items()},
@@ -753,7 +754,6 @@ def test_a_user_without_a_name_is_named_by_its_numeric_id(tmp_path, hub, monkeyp
 
     def record_and_allow(change, caller):
         callers.append(caller)
-        return None
 
     module = HuggingFaceModule(
         {"handover_database_path": str(tmp_path / "events.handovers.sqlite3")},

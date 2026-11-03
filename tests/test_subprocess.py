@@ -175,7 +175,8 @@ def test_finished_telemetry_keeps_shared_graph_process_until_outer_cleanup(
                 emitter.fail(RuntimeError("synthetic"), error_code="BUILD_FAILED")
             else:
                 emitter.complete()
-            assert emitter.available and handle.process.poll() is None
+            assert emitter.available
+            assert handle.process.poll() is None
             handle.client.ping()
             inventory = graph.inventory(directory, {"graph.orrery.json": "graph"})
             assert inventory is not None
