@@ -1,0 +1,1 @@
+A ratcheted rule lists the repository's 140 inline `# noqa` comments in `rules/baselines/noqa-comments.txt`, and the new noqa-comments guard fails a pull request that adds one. The wheels are unchanged.
