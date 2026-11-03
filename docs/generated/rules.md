@@ -8,11 +8,11 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 | Tier | enforced | ratcheted | advisory | doc-only | Total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| mechanical | 49 | 0 | 0 | 7 | 56 |
+| mechanical | 49 | 1 | 0 | 7 | 57 |
 | metric | 1 | 0 | 0 | 0 | 1 |
 | judgment | 0 | 0 | 0 | 0 | 0 |
 
-**Blocking:** 50 of 57 rules.
+**Blocking:** 51 of 58 rules.
 
 ## Gaps
 
@@ -58,7 +58,7 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 ### Ratcheted (existing violations still tolerated)
 
-- None.
+- `emitter.quality.inline-suppressions-only-shrink`: 140 remaining in `rules/baselines/noqa-comments.txt`
 
 ### Exceptions and review dates
 
@@ -237,6 +237,7 @@ flowchart LR
 | Rule | Statement | Tier | Status | Blocking | Enforced by | CI | Proof |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `emitter.quality.command-line-scripts-ruff-exemptions` | Command-line scripts under scripts/ may print their output (T201), run other programs (S603, S607) and use today's date (DTZ011); every other Ruff rule applies to them. | mechanical | enforced | yes | ruff per-file ignore of DTZ011, S603, S607, T201 for `scripts/**` | `ci.yml:quality` | — |
+| `emitter.quality.inline-suppressions-only-shrink` | The total number of inline suppressions may not grow. Every suppression comment Ruff applies in a tracked Python file (a # noqa, Ruff's ruff: ignore, disable and file-ignore forms, or a file-level ruff: noqa or flake8: noqa) is listed in rules/baselines/noqa-comments.txt, once per comment as `<path>: <codes>`, and the count may only fall against the base branch: a pull request may add a suppression only by removing another. The check counts comments only, so it does not stop a swap at the same total, a rename, or a code added to an existing comment. | mechanical | ratcheted | yes | quality guard `noqa-comments` | `pr.yaml:rules` | yes |
 | `emitter.quality.installed-checks-ruff-exemptions` | The installed-artifact checks (tools/check-installed.py, tools/installed-smoke.py and tools/installed-interface-smoke.py) assert, as tests do (S101), and import inside each check to test what that import loads (PLC0415). | mechanical | enforced | yes | ruff per-file ignore of PLC0415, S101 for `tools/{check-installed,installed-smoke,installed-interface-smoke}.py` | `ci.yml:quality` | — |
 | `emitter.quality.installed-smoke-ruff-exemptions` | The two installed smoke checks, tools/installed-smoke.py and tools/installed-interface-smoke.py, read the clients' private members to check the processes they started (SLF001), as tests do. | mechanical | enforced | yes | ruff per-file ignore of SLF001 for `tools/{installed-smoke,installed-interface-smoke}.py` | `ci.yml:quality` | — |
 | `emitter.quality.program-ruff-exemptions` | The modules that run as command-line programs, microcosm_emitter.cli and microcosm_emitter.host.__main__, may print their output (T201), as the Public API's modules that run as programs do; every other Ruff rule applies to them. | mechanical | enforced | yes | ruff per-file ignore of T201 for `src/microcosm_emitter/{cli,host/__main__}.py` | `ci.yml:quality` | — |
@@ -256,6 +257,9 @@ flowchart LR
   r_emitter_quality_command_line_scripts_ruff_exemptions("emitter.quality.command-line-scripts-ruff-exemptions (enforced)")
   e_ruff_per_file_ignore_of_DTZ011__S603__S607__T201_for_scripts___["ruff per-file ignore of DTZ011, S603, S607, T201 for scripts/**"]
   j_CI_ci_yml_quality["CI ci.yml:quality"]
+  r_emitter_quality_inline_suppressions_only_shrink("emitter.quality.inline-suppressions-only-shrink (ratcheted)")
+  e_quality_guard_noqa_comments["quality guard noqa-comments"]
+  j_CI_pr_yaml_rules["CI pr.yaml:rules"]
   r_emitter_quality_installed_checks_ruff_exemptions("emitter.quality.installed-checks-ruff-exemptions (enforced)")
   e_ruff_per_file_ignore_of_PLC0415__S101_for_tools__check_installed_installed_smoke_installed_interface_smoke__py["ruff per-file ignore of PLC0415, S101 for tools/{check-installed,installed-smoke,installed-interface-smoke}.py"]
   r_emitter_quality_installed_smoke_ruff_exemptions("emitter.quality.installed-smoke-ruff-exemptions (enforced)")
@@ -264,7 +268,6 @@ flowchart LR
   e_ruff_per_file_ignore_of_T201_for_src_microcosm_emitter__cli_host___main____py["ruff per-file ignore of T201 for src/microcosm_emitter/{cli,host/__main__}.py"]
   r_emitter_quality_python_file_length("emitter.quality.python-file-length (enforced)")
   e_quality_guard_file_length["quality guard file-length"]
-  j_CI_pr_yaml_rules["CI pr.yaml:rules"]
   r_emitter_quality_ruff_format("emitter.quality.ruff-format (enforced)")
   e_ruff_format["ruff format"]
   r_emitter_quality_ruff_lint("emitter.quality.ruff-lint (enforced)")
@@ -286,6 +289,8 @@ flowchart LR
   e_ruff_per_file_ignore_of_PT_for_scripts_rules_tests___["ruff per-file ignore of PT for scripts/rules/tests/**"]
   r_emitter_quality_command_line_scripts_ruff_exemptions --> e_ruff_per_file_ignore_of_DTZ011__S603__S607__T201_for_scripts___
   e_ruff_per_file_ignore_of_DTZ011__S603__S607__T201_for_scripts___ --> j_CI_ci_yml_quality
+  r_emitter_quality_inline_suppressions_only_shrink --> e_quality_guard_noqa_comments
+  e_quality_guard_noqa_comments --> j_CI_pr_yaml_rules
   r_emitter_quality_installed_checks_ruff_exemptions --> e_ruff_per_file_ignore_of_PLC0415__S101_for_tools__check_installed_installed_smoke_installed_interface_smoke__py
   e_ruff_per_file_ignore_of_PLC0415__S101_for_tools__check_installed_installed_smoke_installed_interface_smoke__py --> j_CI_ci_yml_quality
   r_emitter_quality_installed_smoke_ruff_exemptions --> e_ruff_per_file_ignore_of_SLF001_for_tools__installed_smoke_installed_interface_smoke__py

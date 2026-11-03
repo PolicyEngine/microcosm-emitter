@@ -765,6 +765,37 @@ workflow = ".github/workflows/ci.yml"
 job = "tests"
 invocation = 'pytest -m "not collector"'
 
+# Ratcheted: every inline suppression is listed, and the list may only shrink.
+[[rule]]
+id = "emitter.quality.inline-suppressions-only-shrink"
+category = "quality"
+statement = "The total number of inline suppressions may not grow. Every suppression comment Ruff applies in a tracked Python file (a # noqa, Ruff's ruff: ignore, disable and file-ignore forms, or a file-level ruff: noqa or flake8: noqa) is listed in rules/baselines/noqa-comments.txt, once per comment as `<path>: <codes>`, and the count may only fall against the base branch: a pull request may add a suppression only by removing another. The check counts comments only, so it does not stop a swap at the same total, a rename, or a code added to an existing comment."
+rationale = "README.md#development"
+scope = ["**/*.py", "rules/baselines/noqa-comments.txt"]
+tier = "mechanical"
+status = "ratcheted"
+autofix = false
+[rule.enforcer]
+kind = "quality-guard"
+name = "noqa-comments"
+[[rule.ci]]
+workflow = ".github/workflows/pr.yaml"
+job = "rules"
+invocation = "run_quality_guards.py"
+[rule.baseline]
+file = "rules/baselines/noqa-comments.txt"
+count = 140
+[rule.downgrade]
+reason = "The rule starts ratcheted with the 140 inline # noqa comments the Ruff fixes kept, each with its reason, rather than enforced at zero."
+issue = 74
+[rule.proof]
+bad_fixture = "scripts/rules/tests/fixtures/noqa_comments/bad.toml"
+good_fixture = "scripts/rules/tests/fixtures/noqa_comments/good.toml"
+test = "scripts/rules/tests/test_noqa_comments.py::TestNoqaCommentsProof::test_rule_proof_inline_suppressions_only_shrink"
+workflow = ".github/workflows/pr.yaml"
+job = "rules"
+invocation = "unittest discover -s scripts/rules/tests"
+
 # Test code is what [repository].test_directories lists, as paths from the
 # root, plus the rules tool's own tests and fixtures.
 [[rule]]
