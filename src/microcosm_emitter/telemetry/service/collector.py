@@ -38,6 +38,7 @@ from microcosm_emitter.core.constants import (
     UNSENDABLE_CREDENTIAL_MESSAGE,
 )
 from microcosm_emitter.core.http_status import is_permanent_client_error
+from microcosm_emitter.output import write_line
 from microcosm_emitter.telemetry.constants import (
     LOCAL_ONLY_REJECTED_EVENTS,
     REJECTED_EVENTS_MESSAGE,
@@ -47,9 +48,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from microcosm_emitter.telemetry.service.spool import EventSpool
-
-# Each print in this module that suppresses Ruff's T201 writes one of its
-# messages to standard error on purpose; none is leftover debugging output.
 
 #: Session answers for a given token that can no longer be used, and the
 #: reason each pending run records.
@@ -179,7 +177,7 @@ class CollectorDelivery:
             self._end_wait_for_readable_login()
         if result == "missing":
             if not self._warned_no_token:
-                print(NO_CREDENTIAL_MESSAGE, file=sys.stderr, flush=True)  # noqa: T201
+                write_line(NO_CREDENTIAL_MESSAGE, sys.stderr, flush=True)
                 self._warned_no_token = True
             self._make_local_only(registration, LOCAL_ONLY_MISSING_CREDENTIAL)
         elif result == "rejected":
@@ -208,9 +206,9 @@ class CollectorDelivery:
         is after an outage. The warning names only the error's type, once.
         """
         if not self._warned_unreadable_login:
-            print(  # noqa: T201
+            write_line(
                 UNREADABLE_LOGIN_WAITING_MESSAGE.format(error_type=error_type),
-                file=sys.stderr,
+                sys.stderr,
                 flush=True,
             )
             self._warned_unreadable_login = True
@@ -233,7 +231,7 @@ class CollectorDelivery:
     def _keep_pending(self, registration: Mapping[str, Any], reason: str) -> None:
         """Leave the run for an emitter with a credential, saying why once."""
         if not self._given_token_unusable:
-            print(GIVEN_TOKEN_UNUSABLE_MESSAGE, file=sys.stderr, flush=True)  # noqa: T201
+            write_line(GIVEN_TOKEN_UNUSABLE_MESSAGE, sys.stderr, flush=True)
             self._given_token_unusable = True
         registration_key = _registration_key(registration)
         if registration_key not in self._recorded_waiting:
@@ -294,5 +292,5 @@ class CollectorDelivery:
     def _warn_denied(self, registration_key: str, message: str) -> None:
         if registration_key in self._warned_denied:
             return
-        print(message, file=sys.stderr, flush=True)  # noqa: T201
+        write_line(message, sys.stderr, flush=True)
         self._warned_denied.add(registration_key)

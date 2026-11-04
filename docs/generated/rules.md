@@ -58,7 +58,7 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 ### Ratcheted (existing violations still tolerated)
 
-- `emitter.quality.inline-suppressions-only-shrink`: 112 remaining in `rules/baselines/noqa-comments.txt`
+- `emitter.quality.inline-suppressions-only-shrink`: 96 remaining in `rules/baselines/noqa-comments.txt`
 
 ### Exceptions and review dates
 

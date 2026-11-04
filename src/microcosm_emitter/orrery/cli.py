@@ -2,9 +2,11 @@
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from microcosm_emitter.orrery.client import GraphPublicationClient
+from microcosm_emitter.output import write_line
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,13 +39,13 @@ def main(argv: list[str] | None = None) -> int:
             receipt = client.enqueue(args.directory, inventory)
             if receipt["status"] == "failed":
                 # The command's output: the receipt as JSON on standard output.
-                print(json.dumps(receipt, sort_keys=True))  # noqa: T201
+                write_line(json.dumps(receipt, sort_keys=True), sys.stdout)
                 return 1
             receipt = client.retry(args.publication_id, wait_seconds=30)
         else:
             receipt = client.retry(args.publication_id, wait_seconds=30)
         # The command's output: the receipt as JSON on standard output.
-        print(json.dumps(receipt, sort_keys=True))  # noqa: T201
+        write_line(json.dumps(receipt, sort_keys=True), sys.stdout)
         return 0 if receipt["status"] == "published" else 1
     finally:
         client.close()

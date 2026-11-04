@@ -14,12 +14,10 @@ from microcosm_emitter.orrery.service.queue import (
     GraphPublicationQueue,
     publication_inventory,
 )
+from microcosm_emitter.output import write_line
 
 if TYPE_CHECKING:
     from microcosm_emitter.orrery.contracts import PublicationInventory
-
-# Each print in this module that suppresses Ruff's T201 writes one of its
-# messages to standard error on purpose; none is leftover debugging output.
 
 
 class OrreryModule(ServiceModule):
@@ -121,7 +119,7 @@ class OrreryModule(ServiceModule):
         # must not end delivery of every other job.
         except Exception:  # noqa: BLE001
             if not self._warned:
-                print(GRAPH_WORKER_ERROR_MESSAGE, file=sys.stderr, flush=True)  # noqa: T201
+                write_line(GRAPH_WORKER_ERROR_MESSAGE, sys.stderr, flush=True)
                 self._warned = True
 
     @override
