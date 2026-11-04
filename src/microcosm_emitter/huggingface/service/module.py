@@ -34,7 +34,11 @@ from microcosm_emitter.huggingface.service.hub import (
     DatasetRepository,
     hugging_face_api,
 )
-from microcosm_emitter.huggingface.service.queue import HandoverQueue, sha256_bytes
+from microcosm_emitter.huggingface.service.queue import (
+    HandoverQueue,
+    NewJob,
+    sha256_bytes,
+)
 from microcosm_emitter.huggingface.service.releases import (
     ReleaseCaller,
     ReleaseChangePolicy,
@@ -257,8 +261,7 @@ class HuggingFaceModule(ServiceModule):
         )
         client = CollectorSubmissionClient(
             origin,
-            credential=session.credential,
-            invalidate_credential=session.invalidate,
+            credentials=session,
             allow_loopback_uploads=bool(development_url),
             clock=self.clock,
         )
@@ -338,22 +341,24 @@ class HuggingFaceModule(ServiceModule):
                 "copied_files": [],
             }
         receipt = self.queue.enqueue_job(
-            handover_id=hand_over.handover_id,
-            kind=DATASET_BUNDLE,
-            target=hand_over.repository,
-            request=hand_over.request,
-            receipt={
-                "handover_id": hand_over.handover_id,
-                "status": "pending",
-                "error_code": None,
-                "revision": None,
-                "attempts": 0,
-                "repository": hand_over.repository,
-                "prefix": hand_over.remote_prefix,
-                "copied_files": sorted(hand_over.copied),
-            },
+            NewJob(
+                handover_id=hand_over.handover_id,
+                kind=DATASET_BUNDLE,
+                target=hand_over.repository,
+                request=hand_over.request,
+                receipt={
+                    "handover_id": hand_over.handover_id,
+                    "status": "pending",
+                    "error_code": None,
+                    "revision": None,
+                    "attempts": 0,
+                    "repository": hand_over.repository,
+                    "prefix": hand_over.remote_prefix,
+                    "copied_files": sorted(hand_over.copied),
+                },
+                files=hand_over.copied,
+            ),
             now=self.clock(),
-            files=hand_over.copied,
         )
         if self.collector_delivery is not None and wants_collector_submission(
             hand_over.request
@@ -406,22 +411,24 @@ class HuggingFaceModule(ServiceModule):
         if reason is not None:
             return refused("NOT_AUTHORIZED", hand_over.handover_id, str(reason))
         return self.queue.enqueue_job(
-            handover_id=hand_over.handover_id,
-            kind=RELEASE_CHANGE,
-            target=hand_over.repository,
-            request=hand_over.request,
-            receipt={
-                "handover_id": hand_over.handover_id,
-                "status": "pending",
-                "error_code": None,
-                "message": None,
-                "commit": None,
-                "repository": hand_over.repository,
-                "release": hand_over.change.release,
-                "build": hand_over.change.build,
-                "attempts": 0,
-                "current": None,
-            },
+            NewJob(
+                handover_id=hand_over.handover_id,
+                kind=RELEASE_CHANGE,
+                target=hand_over.repository,
+                request=hand_over.request,
+                receipt={
+                    "handover_id": hand_over.handover_id,
+                    "status": "pending",
+                    "error_code": None,
+                    "message": None,
+                    "commit": None,
+                    "repository": hand_over.repository,
+                    "release": hand_over.change.release,
+                    "build": hand_over.change.build,
+                    "attempts": 0,
+                    "current": None,
+                },
+            ),
             now=self.clock(),
         )
 
@@ -485,15 +492,7 @@ class HuggingFaceModule(ServiceModule):
             hand_over = parse_stage_run_files(message)
         except RequestRefusedError as refusal:
             return _refused_run_files_receipt(message, refusal.code)
-        self.queue.stage_run_files(
-            repository=hand_over.repository,
-            run_id=hand_over.run_id,
-            files=hand_over.files,
-            run_index_entry=hand_over.run_index_entry,
-            flush=hand_over.flush,
-            interval=hand_over.interval,
-            now=self.clock(),
-        )
+        self.queue.stage_run_files(hand_over, now=self.clock())
         return {
             "status": "recorded",
             **self.queue.run_receipt(hand_over.repository, hand_over.run_id),

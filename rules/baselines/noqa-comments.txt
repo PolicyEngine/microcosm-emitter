@@ -62,10 +62,6 @@ src/microcosm_emitter/huggingface/service/module.py: BLE001
 src/microcosm_emitter/huggingface/service/module.py: BLE001
 src/microcosm_emitter/huggingface/service/module.py: BLE001
 src/microcosm_emitter/huggingface/service/module.py: PLR0913
-src/microcosm_emitter/huggingface/service/queue.py: PLR0913
-src/microcosm_emitter/huggingface/service/queue_jobs.py: PLR0913
-src/microcosm_emitter/huggingface/service/queue_jobs.py: PLR0913
-src/microcosm_emitter/huggingface/service/queue_jobs.py: PLR0913
 src/microcosm_emitter/huggingface/service/releases.py: BLE001
 src/microcosm_emitter/huggingface/service/releases.py: BLE001
 src/microcosm_emitter/huggingface/service/releases.py: BLE001
@@ -75,7 +71,6 @@ src/microcosm_emitter/huggingface/service/workers.py: BLE001
 src/microcosm_emitter/orrery/client.py: BLE001
 src/microcosm_emitter/orrery/client.py: BLE001
 src/microcosm_emitter/orrery/service/module.py: BLE001
-src/microcosm_emitter/submissions/client.py: PLR0913
 src/microcosm_emitter/submissions/delivery.py: BLE001
 src/microcosm_emitter/telemetry/client.py: BLE001
 src/microcosm_emitter/telemetry/client.py: BLE001

@@ -36,6 +36,7 @@ from microcosm_emitter.huggingface.service.delivery import (
     LeaseRenewal,
     never_stop,
 )
+from microcosm_emitter.huggingface.service.queue import JobAttempt, NewJob
 from microcosm_emitter.output import write_line
 from microcosm_emitter.submissions.client import (
     AWAITING_FINAL_STATUS,
@@ -174,15 +175,17 @@ class CollectorSubmissionDelivery:
         rows have settled.
         """
         return self.queue.enqueue_job(
-            handover_id=handover_id,
-            kind=COLLECTOR_SUBMISSION,
-            target=self.target,
-            request=request,
-            receipt=self._receipt(handover_id, "pending", None, 0, []),
+            NewJob(
+                handover_id=handover_id,
+                kind=COLLECTOR_SUBMISSION,
+                target=self.target,
+                request=request,
+                receipt=self._receipt(handover_id, "pending", None, 0, []),
+                destination=DESTINATION_COLLECTOR,
+                files=files,
+                equivalent_targets=self.equivalent_targets,
+            ),
             now=self.clock(),
-            destination=DESTINATION_COLLECTOR,
-            files=files,
-            equivalent_targets=self.equivalent_targets,
         )
 
     def receipt(self, handover_id: str) -> dict[str, Any] | None:
@@ -223,11 +226,11 @@ class CollectorSubmissionDelivery:
                 break
             job = self.queue.claim_job(
                 self.target,
+                *self.equivalent_targets,
                 now=self.clock(),
                 lease_seconds=SUBMISSION_LEASE_SECONDS,
                 destination=DESTINATION_COLLECTOR,
                 kinds=[COLLECTOR_SUBMISSION],
-                equivalent_targets=self.equivalent_targets,
             )
             if job is None:
                 break
@@ -270,10 +273,8 @@ class CollectorSubmissionDelivery:
         )
         recorded = self.queue.finish_job(
             job,
-            receipt=receipt,
-            retry=result.retry,
+            JobAttempt(receipt, retry=result.retry, retry_after=result.retry_after),
             now=self.clock(),
-            retry_after=result.retry_after,
         )
         if recorded and not result.retry:
             # The hand-over settled in this attempt: report each submission

@@ -72,6 +72,19 @@ class Invalidations:
         self.count += 1
 
 
+class CountedInvalidations:
+    """A session's credential, whose invalidations are counted instead of applied."""
+
+    def __init__(self, session, invalidations) -> None:
+        self.session, self.invalidations = session, invalidations
+
+    def credential(self):
+        return self.session.credential()
+
+    def invalidate(self) -> None:
+        self.invalidations()
+
+
 class ManualClock:
     def __init__(self) -> None:
         self.now = 1_000_000.0
@@ -88,10 +101,14 @@ def submission_client(
         credential=lambda: hugging_face_credential,
         scope=SUBMIT_SCOPE,
     )
+    credentials = (
+        session
+        if invalidations is None
+        else CountedInvalidations(session, invalidations)
+    )
     return CollectorSubmissionClient(
         collector.origin,
-        credential=session.credential,
-        invalidate_credential=invalidations or session.invalidate,
+        credentials=credentials,
         allow_loopback_uploads=True,
         clock=clock or ManualClock(),
     )
@@ -545,8 +562,7 @@ def slow_link_client(collector) -> CollectorSubmissionClient:
     )
     return CollectorSubmissionClient(
         collector.origin,
-        credential=session.credential,
-        invalidate_credential=session.invalidate,
+        credentials=session,
         http=httpx.Client(
             follow_redirects=False,
             transport=httpx.HTTPTransport(socket_options=[small_send_buffer]),

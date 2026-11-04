@@ -78,6 +78,42 @@ class ClaimedJob:
     created_at: float = 0.0
 
 
+@dataclass(frozen=True)
+class NewJob:
+    """A hand-over to queue as a job for one destination: the fields of its row.
+
+    ``files`` are the bytes copied at hand-over, stored with the job and kept
+    until every destination has settled. A job already queued for one of
+    ``equivalent_targets``, other names of the same target, is the same
+    hand-over.
+    """
+
+    handover_id: str
+    kind: str
+    target: str
+    request: Mapping[str, Any]
+    receipt: Mapping[str, Any]
+    destination: str = DESTINATION_HUGGING_FACE
+    files: Mapping[str, bytes] | None = None
+    equivalent_targets: Iterable[str] = ()
+
+
+@dataclass(frozen=True)
+class JobAttempt:
+    """The record of one attempt at a claimed job.
+
+    ``receipt`` replaces the job's receipt. A retried job waits
+    ``retry_after`` seconds when given, otherwise the backoff for its number
+    of attempts; a job that is not retried takes the receipt's status.
+    ``committed`` records a commit to the job's target at the attempt's time.
+    """
+
+    receipt: Mapping[str, Any]
+    retry: bool
+    committed: bool = False
+    retry_after: float | None = None
+
+
 class HandoverJobs:
     """The job records of the hand-over database.
 
@@ -86,35 +122,20 @@ class HandoverJobs:
 
     _sessions: sessionmaker[Session]
 
-    # Each keyword-only parameter is one field of the job's row, which the
-    # modules and the tests pass by name.
-    def enqueue_job(  # noqa: PLR0913
-        self,
-        *,
-        handover_id: str,
-        kind: str,
-        target: str,
-        request: Mapping[str, Any],
-        receipt: Mapping[str, Any],
-        now: float,
-        destination: str = DESTINATION_HUGGING_FACE,
-        files: Mapping[str, bytes] | None = None,
-        equivalent_targets: Iterable[str] = (),
-    ) -> dict[str, Any]:
+    def enqueue_job(self, job: NewJob, *, now: float) -> dict[str, Any]:
         """Durably record a hand-over once; repeating it returns its receipt.
 
-        ``files`` are the bytes copied at hand-over, stored with the job in
-        one transaction and kept until every destination has settled. A job
-        already queued for one of ``equivalent_targets``, other names of the
-        same target, is the same hand-over.
+        The job's files are stored with it in one transaction. A job already
+        queued for its hand-over and destination, under its target or one of
+        its ``equivalent_targets``, is the same hand-over.
         """
         with self._sessions.begin() as session:
-            existing = session.get(HandoverJob, (handover_id, destination))
+            existing = session.get(HandoverJob, (job.handover_id, job.destination))
             if existing is not None:
                 if (
-                    existing.request != dict(request)
-                    or existing.kind != kind
-                    or existing.target not in {target, *equivalent_targets}
+                    existing.request != dict(job.request)
+                    or existing.kind != job.kind
+                    or existing.target not in {job.target, *job.equivalent_targets}
                 ):
                     error_message = (
                         "Hand-over identity conflicts with a queued hand-over."
@@ -123,30 +144,30 @@ class HandoverJobs:
                 return dict(existing.receipt)
             session.add(
                 HandoverJob(
-                    handover_id=handover_id,
-                    destination=destination,
-                    kind=kind,
-                    target=target,
-                    request=dict(request),
+                    handover_id=job.handover_id,
+                    destination=job.destination,
+                    kind=job.kind,
+                    target=job.target,
+                    request=dict(job.request),
                     status=JOB_PENDING,
                     attempts=0,
                     next_attempt_at=0.0,
                     lease_until=0.0,
-                    receipt=dict(receipt),
+                    receipt=dict(job.receipt),
                     created_at=now,
                 )
             )
-            for name, content in sorted((files or {}).items()):
-                if session.get(HandoverFile, (handover_id, name)) is None:
+            for name, content in sorted((job.files or {}).items()):
+                if session.get(HandoverFile, (job.handover_id, name)) is None:
                     session.add(
                         HandoverFile(
-                            handover_id=handover_id,
+                            handover_id=job.handover_id,
                             name=name,
                             content=content,
                             content_sha256=sha256_bytes(content),
                         )
                     )
-            return dict(receipt)
+            return dict(job.receipt)
 
     def copied_files(self, handover_id: str) -> dict[str, bytes]:
         """Return the bytes copied when ``handover_id`` was handed over, by name."""
@@ -156,30 +177,26 @@ class HandoverJobs:
             )
             return {row.name: row.content for row in rows}
 
-    # Each keyword-only parameter narrows or times the claim on its own; the
-    # deliveries and the tests pass them by name.
-    def claim_job(  # noqa: PLR0913
+    def claim_job(
         self,
-        target: str,
-        *,
+        *targets: str,
         now: float,
         lease_seconds: float,
         destination: str = DESTINATION_HUGGING_FACE,
         kinds: Iterable[str] | None = None,
-        equivalent_targets: Iterable[str] = (),
     ) -> ClaimedJob | None:
-        """Lease and return the earliest-due pending job for ``target``, if any.
+        """Lease and return the earliest-due pending job for the target, if any.
 
-        A job queued for one of ``equivalent_targets``, other names of the same
-        target, counts too, and ``kinds`` limits the job kinds. A conditional
-        update allows one current lease; a worker that exits leaves its job
-        eligible again once the lease expires. ``None`` when no job is due or
-        another writer leased it first.
+        ``targets`` are the target's names: a job queued under any of them
+        counts. ``kinds`` limits the job kinds. A conditional update allows one
+        current lease; a worker that exits leaves its job eligible again once
+        the lease expires. ``None`` when no job is due or another writer leased
+        it first.
         """
         with self._sessions.begin() as session:
             statement = select(HandoverJob).where(
                 HandoverJob.destination == destination,
-                HandoverJob.target.in_({target, *equivalent_targets}),
+                HandoverJob.target.in_(set(targets)),
                 HandoverJob.status == JOB_PENDING,
                 HandoverJob.next_attempt_at <= now,
                 HandoverJob.lease_until <= now,
@@ -260,23 +277,10 @@ class HandoverJobs:
                 .values(lease_until=0.0)
             )
 
-    # Each keyword-only parameter is one part of the attempt's record, which the
-    # deliveries and the tests pass by name.
-    def finish_job(  # noqa: PLR0913
-        self,
-        job: ClaimedJob,
-        *,
-        receipt: Mapping[str, Any],
-        retry: bool,
-        now: float,
-        committed: bool = False,
-        retry_after: float | None = None,
-    ) -> bool:
+    def finish_job(self, job: ClaimedJob, attempt: JobAttempt, *, now: float) -> bool:
         """Record one attempt; only the current lease holder may do so.
 
-        A retried job waits ``retry_after`` seconds when given, otherwise the
-        backoff for its number of attempts. Returns whether it was recorded:
-        False when the lease was lost.
+        Returns whether it was recorded: False when the lease was lost.
         """
         with self._sessions.begin() as session:
             row = session.scalar(
@@ -292,13 +296,15 @@ class HandoverJobs:
             )
             if row is None:
                 return False
-            row.receipt = dict(receipt)
-            if retry:
+            row.receipt = dict(attempt.receipt)
+            if attempt.retry:
                 row.next_attempt_at = now + (
-                    retry_delay(row.attempts) if retry_after is None else retry_after
+                    retry_delay(row.attempts)
+                    if attempt.retry_after is None
+                    else attempt.retry_after
                 )
             else:
-                row.status = str(receipt["status"])
+                row.status = str(attempt.receipt["status"])
                 still_pending = session.scalar(
                     select(HandoverJob.destination)
                     .where(
@@ -314,7 +320,7 @@ class HandoverJobs:
                             HandoverFile.handover_id == job.handover_id
                         )
                     )
-            if committed:
+            if attempt.committed:
                 repository_schedule(session, job.target).last_commit_at = now
             return True
 

@@ -47,6 +47,8 @@ from microcosm_emitter.huggingface.service.queue_jobs import (
     MAX_RETRY_SECONDS,
     ClaimedJob,
     HandoverJobs,
+    JobAttempt,
+    NewJob,
     repository_schedule,
     retry_delay,
     sha256_bytes,
@@ -57,6 +59,8 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
+    from microcosm_emitter.huggingface.service.requests import RunFilesHandOver
+
 # The job definitions moved to queue_jobs.py; importers keep reading them here.
 __all__ = [
     "DESTINATION_HUGGING_FACE",
@@ -65,6 +69,8 @@ __all__ = [
     "MIN_COMMIT_SPACING_SECONDS",
     "ClaimedJob",
     "HandoverQueue",
+    "JobAttempt",
+    "NewJob",
     "PendingRunFile",
     "now_seconds",
     "retry_delay",
@@ -332,28 +338,20 @@ class HandoverQueue(HandoverJobs):
             session.flush()
         return delivery
 
-    # Each keyword-only parameter is one field of the hand-over, which the
-    # module and the tests pass by name.
-    def stage_run_files(  # noqa: PLR0913
-        self,
-        *,
-        repository: str,
-        run_id: str,
-        files: Sequence[tuple[str, bytes]],
-        run_index_entry: Mapping[str, Any] | None,
-        flush: bool,
-        interval: float,
-        now: float,
-    ) -> None:
+    def stage_run_files(self, hand_over: RunFilesHandOver, *, now: float) -> None:
         """Record the newest bytes per path; nothing reaches the Hub here.
 
         An unforced hand-over is due one ``interval`` after the repository's
         last commit; a forced one (``flush``) at the next cycle.
         """
+        repository, run_id = hand_over.repository, hand_over.run_id
+        flush, run_index_entry = hand_over.flush, hand_over.run_index_entry
         with self._sessions.begin() as session:
             schedule = repository_schedule(session, repository)
-            due_at = now if flush else max(now, schedule.last_commit_at + interval)
-            for path_in_repo, content in files:
+            due_at = (
+                now if flush else max(now, schedule.last_commit_at + hand_over.interval)
+            )
+            for path_in_repo, content in hand_over.files:
                 digest = sha256_bytes(content)
                 row = session.get(StagedRunFile, (repository, path_in_repo))
                 if row is None:

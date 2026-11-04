@@ -13,7 +13,10 @@ from microcosm_emitter.core.models import TelemetryEventRecord
 from microcosm_emitter.huggingface.service.queue import (
     MIN_COMMIT_SPACING_SECONDS,
     HandoverQueue,
+    JobAttempt,
+    NewJob,
 )
+from microcosm_emitter.huggingface.service.requests import RunFilesHandOver
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 REPOSITORY = "policyengine/fake-staging"
@@ -39,7 +42,8 @@ def stage(queue, path_in_repo, content, *, now, **extra):
     if extra:
         error_message = f"stage() got unexpected options: {sorted(extra)}"
         raise TypeError(error_message)
-    queue.stage_run_files(files=[(path_in_repo, content)], now=now, **options)
+    hand_over = RunFilesHandOver(files=[(path_in_repo, content)], **options)
+    queue.stage_run_files(hand_over, now=now)
 
 
 def commit_everything(queue, *, repository=REPOSITORY, now, revision="commit-1"):
@@ -281,12 +285,14 @@ def test_retries_back_off_up_to_five_minutes():
 
 def test_receipt_counts_committed_files_and_commits_per_run(queue):
     queue.stage_run_files(
-        repository=REPOSITORY,
-        run_id="run-1",
-        files=[("runs/run-1/a.json", b"1"), ("runs/run-1/b.json", b"2")],
-        run_index_entry=None,
-        flush=True,
-        interval=30,
+        RunFilesHandOver(
+            repository=REPOSITORY,
+            run_id="run-1",
+            files=[("runs/run-1/a.json", b"1"), ("runs/run-1/b.json", b"2")],
+            run_index_entry=None,
+            flush=True,
+            interval=30,
+        ),
         now=1000,
     )
     commit_everything(queue, now=1000, revision="commit-1")
@@ -308,32 +314,25 @@ def test_jobs_are_idempotent_by_hand_over_and_survive_a_restart(tmp_path):
     path = tmp_path / "events.handovers.sqlite3"
     queue = HandoverQueue(path)
     request = {"repository": REPOSITORY, "run_id": "run-1"}
-    first = queue.enqueue_job(
+    job = NewJob(
         handover_id="bundle-1",
         kind="dataset_bundle",
         target=REPOSITORY,
         request=request,
         receipt={"status": "pending"},
-        now=1000,
     )
-    again = queue.enqueue_job(
-        handover_id="bundle-1",
-        kind="dataset_bundle",
-        target=REPOSITORY,
-        request=request,
-        receipt={"status": "pending"},
-        now=1001,
-    )
+    first = queue.enqueue_job(job, now=1000)
+    again = queue.enqueue_job(job, now=1001)
     assert first == again == {"status": "pending"}
+    conflicting = NewJob(
+        handover_id="bundle-1",
+        kind="dataset_bundle",
+        target=REPOSITORY,
+        request={"repository": REPOSITORY, "run_id": "other"},
+        receipt={"status": "pending"},
+    )
     with pytest.raises(ValueError, match="conflicts"):
-        queue.enqueue_job(
-            handover_id="bundle-1",
-            kind="dataset_bundle",
-            target=REPOSITORY,
-            request={"repository": REPOSITORY, "run_id": "other"},
-            receipt={"status": "pending"},
-            now=1002,
-        )
+        queue.enqueue_job(conflicting, now=1002)
     queue.close()
     restarted = HandoverQueue(path)
     try:
@@ -344,14 +343,16 @@ def test_jobs_are_idempotent_by_hand_over_and_survive_a_restart(tmp_path):
         assert job.kind == "dataset_bundle"
         assert restarted.claim_job(REPOSITORY, now=1004, lease_seconds=60) is None
         restarted.finish_job(
-            job, receipt={"status": "pending", "error_code": "X"}, retry=True, now=1005
+            job,
+            JobAttempt({"status": "pending", "error_code": "X"}, retry=True),
+            now=1005,
         )
         assert restarted.claim_job(REPOSITORY, now=1005, lease_seconds=60) is None
         retried = restarted.claim_job(REPOSITORY, now=1007, lease_seconds=60)
         assert retried is not None
         assert retried.attempts == 1
         restarted.finish_job(
-            retried, receipt={"status": "uploaded"}, retry=False, now=1008
+            retried, JobAttempt({"status": "uploaded"}, retry=False), now=1008
         )
         assert restarted.claim_job(REPOSITORY, now=5000, lease_seconds=60) is None
         assert restarted.job_receipt("bundle-1") == {"status": "uploaded"}
@@ -362,15 +363,17 @@ def test_jobs_are_idempotent_by_hand_over_and_survive_a_restart(tmp_path):
 
 def test_an_expired_worker_cannot_finish_a_reclaimed_job(queue):
     queue.enqueue_job(
-        handover_id="bundle-1",
-        kind="dataset_bundle",
-        target=REPOSITORY,
-        request={},
-        receipt={"status": "pending"},
+        NewJob(
+            handover_id="bundle-1",
+            kind="dataset_bundle",
+            target=REPOSITORY,
+            request={},
+            receipt={"status": "pending"},
+        ),
         now=1000,
     )
     expired = queue.claim_job(REPOSITORY, now=1000, lease_seconds=5)
     current = queue.claim_job(REPOSITORY, now=1006, lease_seconds=60)
     assert current is not None
-    queue.finish_job(expired, receipt={"status": "uploaded"}, retry=False, now=1007)
+    queue.finish_job(expired, JobAttempt({"status": "uploaded"}, retry=False), now=1007)
     assert queue.job_receipt("bundle-1") == {"status": "pending"}
