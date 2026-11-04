@@ -74,7 +74,7 @@ jobs:
       - name: Check the rules registry
         env:
           GH_TOKEN: ${{ github.token }}
-        run: uv run --no-project python scripts/run_quality_guards.py
+        run: uv run --no-project python -m scripts.run_quality_guards
 
   # The main ruleset requires this check by name.
   required:

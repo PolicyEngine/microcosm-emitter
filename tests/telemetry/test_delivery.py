@@ -6,6 +6,7 @@ import time
 from datetime import timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
+from typing import override
 
 import httpx
 import pytest
@@ -157,9 +158,9 @@ def test_token_bearing_http_post_does_not_follow_redirects() -> None:
             self.send_header("Content-Length", "0")
             self.end_headers()
 
-        # Overrides BaseHTTPRequestHandler.log_message, which names this
-        # parameter format.
-        def log_message(self, format, *args):  # noqa: A002
+        # BaseHTTPRequestHandler.log_message names this parameter format.
+        @override
+        def log_message(self, format, *args):
             return
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -1045,9 +1046,9 @@ def test_a_malformed_collector_answer_is_retried_like_a_network_failure(
             self.end_headers()
             self.wfile.write(body)
 
-        # Overrides BaseHTTPRequestHandler.log_message, which names this
-        # parameter format.
-        def log_message(self, format, *args):  # noqa: A002
+        # BaseHTTPRequestHandler.log_message names this parameter format.
+        @override
+        def log_message(self, format, *args):
             return
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Collector)

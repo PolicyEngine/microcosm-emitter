@@ -58,13 +58,13 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 ### Ratcheted (existing violations still tolerated)
 
-- `emitter.quality.inline-suppressions-only-shrink`: 140 remaining in `rules/baselines/noqa-comments.txt`
+- `emitter.quality.inline-suppressions-only-shrink`: 112 remaining in `rules/baselines/noqa-comments.txt`
 
 ### Exceptions and review dates
 
 - `emitter.dependencies.install-from-lock`: exception for `.github/workflows/pr-description.yaml` (`uv run --no-project python -m scripts.rules.pr_description`); remove when scripts/rules needs a package beyond the standard library (The PR description check is part of the rules tool, which uses only the standard library, so it runs without installing the project.)
+- `emitter.dependencies.install-from-lock`: exception for `.github/workflows/pr.yaml` (`uv run --no-project python -m scripts.run_quality_guards`); remove when scripts/rules needs a package beyond the standard library (The quality guards are the rules tool, which uses only the standard library, so they run without installing the project.)
 - `emitter.dependencies.install-from-lock`: exception for `.github/workflows/pr.yaml` (`uv run --no-project python -m unittest discover -s scripts/rules/tests`); remove when scripts/rules needs a package beyond the standard library (The rules tool uses only the standard library, so its tests run without installing the project.)
-- `emitter.dependencies.install-from-lock`: exception for `.github/workflows/pr.yaml` (`uv run --no-project python scripts/run_quality_guards.py`); remove when scripts/rules needs a package beyond the standard library (The quality guards are the rules tool, which uses only the standard library, so they run without installing the project.)
 - `emitter.dependencies.install-from-lock`: exception for `.github/workflows/pr.yaml` (`uv tool install shellcheck-py==0.11.0.1`) [pinned-tool] (shellcheck is a binary the ci-scripts tests run; the rules job has no project environment, so it installs the exact shellcheck-py release.)
 - `emitter.dependencies.install-from-lock`: exception for `tools/check-changelog.sh` (`uv run --no-project python tools/bump-version.py --check`); remove when tools/bump-version.py needs a package beyond the standard library (tools/bump-version.py uses only the standard library, so the changelog job checks fragments without installing the project.)
 - `emitter.dependencies.install-from-lock`: exception for `tools/check-collector.sh` (`uv pip install --reinstall --no-deps dist/*.whl`); remove when the contract test no longer tests the built wheels (The contract test tests the wheels build-packages built, so they replace the workspace's editable installs; their dependencies come from the locked environment uv sync --locked installed first.)

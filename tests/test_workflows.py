@@ -80,7 +80,7 @@ def test_pull_requests_check_the_rules_registry():
     runs = [step["run"] for step in rules["steps"] if "run" in step]
     assert runs[-2:] == [
         "uv run --no-project python -m unittest discover -s scripts/rules/tests -t .",
-        "uv run --no-project python scripts/run_quality_guards.py",
+        "uv run --no-project python -m scripts.run_quality_guards",
     ]
     assert rules["steps"][-1]["env"] == {"GH_TOKEN": "${{ github.token }}"}
 

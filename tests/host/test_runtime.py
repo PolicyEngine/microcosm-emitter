@@ -269,8 +269,9 @@ def test_query_timeout_rejects_unacknowledged_response(running):
 def test_a_query_answer_that_is_not_an_object_is_refused(running):
     module, client, errors = running
     module.query = lambda message: ["not", "an", "object"]
-    # The client raises only LocalServiceError, never the decoding error.
-    with pytest.raises(LocalServiceError):
+    # The client raises only LocalServiceError, never the decoding error; its
+    # message is the decoding error's type, TypeError for the answer's type.
+    with pytest.raises(LocalServiceError, match=r"^TypeError$"):
         client.request({}, module="default")
     module.query = lambda message: {"accepted": True}
     assert client.request({}, module="default") == {"accepted": True}

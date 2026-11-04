@@ -2,11 +2,11 @@
 
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, override
 
 from microcosm_emitter.core.auth import shared_session
 from microcosm_emitter.core.collector_origin import configured_collector_origin
-from microcosm_emitter.host.contracts import JsonObject, ModuleContext
+from microcosm_emitter.host.contracts import JsonObject, ModuleContext, ServiceModule
 from microcosm_emitter.orrery.service.queue import (
     DEFAULT_GRAPH_PUBLICATION_ORIGIN,
     GRAPH_WORKER_ERROR_MESSAGE,
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 # messages to standard error on purpose; none is leftover debugging output.
 
 
-class OrreryModule:
+class OrreryModule(ServiceModule):
     """Queue graph publications on request and deliver them on each tick."""
 
     def __init__(self, configuration: JsonObject, context: ModuleContext) -> None:
@@ -32,6 +32,7 @@ class OrreryModule:
         self.delivery: GraphPublicationDelivery | None = None
         self._warned = False
 
+    @override
     def initialize(self) -> None:
         """Open the graph publication queue and set up its delivery.
 
@@ -60,6 +61,7 @@ class OrreryModule:
             origin=publication_origin,
         )
 
+    @override
     def handle_message(self, message: JsonObject) -> None:
         """Queue the graph in ``message["directory"]`` with the message's inventory.
 
@@ -102,7 +104,8 @@ class OrreryModule:
 
     # The ServiceModule protocol fixes this signature; the host passes the
     # current time, which this module does not need.
-    def tick(self, now: float) -> None:  # noqa: ARG002
+    @override
+    def tick(self, now: float) -> None:
         """Try to deliver one queued graph publication; errors print a warning once.
 
         An exception from the attempt is not raised, since the host stops a
@@ -121,12 +124,14 @@ class OrreryModule:
                 print(GRAPH_WORKER_ERROR_MESSAGE, file=sys.stderr, flush=True)  # noqa: T201
                 self._warned = True
 
+    @override
     def parent_exited(self) -> None:
         """Preserved jobs remain eligible when a later host resumes delivery."""
 
     # The ServiceModule protocol fixes this signature; the host passes its
     # shutdown deadline, which closing the client and queue does not need.
-    def close(self, deadline: float) -> None:  # noqa: ARG002
+    @override
+    def close(self, deadline: float) -> None:
         """Close the delivery's HTTP client and the queue's database connections.
 
         ``deadline`` is not used.
