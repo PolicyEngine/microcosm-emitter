@@ -1,8 +1,8 @@
 """`microcosm-emitter status`: each run in the event queue file, read-only.
 
-Microcosm's Modal runner runs it in the container once the build and its
-emitter have finished, to record how many events each run left undelivered,
-without reading the emitter's event queue file itself.
+Microcosm's Modal runner is to run it in the container once the build and
+its emitter have finished, to record how many events each run left
+undelivered, without reading the emitter's event queue file itself.
 """
 
 import hashlib
@@ -10,16 +10,21 @@ import json
 import os
 import socket
 import stat
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from sqlalchemy import MetaData, Table, delete, update
+from sqlalchemy import Column, MetaData, String, Table, delete, insert, update
 from sqlalchemy.orm import Session
 
 from microcosm_emitter import cli
 from microcosm_emitter.core.database import create_spool_engine
-from microcosm_emitter.core.migrations import upgrade_handover_database
+from microcosm_emitter.core.migrations import (
+    migration_head_revision,
+    upgrade_handover_database,
+)
 from microcosm_emitter.core.models import TelemetryEventRecord
 from microcosm_emitter.telemetry.client import TelemetryRun
 from microcosm_emitter.telemetry.service.spool import EventSpool
@@ -136,6 +141,17 @@ def age_events(path: Path, days: int) -> None:
         engine.dispose()
 
 
+def record_registration_json(path: Path, text: str) -> None:
+    """Store ``text`` as every run's registration JSON, as written."""
+    engine = create_spool_engine(path)
+    try:
+        with engine.begin() as connection:
+            runs = Table("telemetry_runs", MetaData(), autoload_with=connection)
+            connection.execute(update(runs).values(registration_json=text))
+    finally:
+        engine.dispose()
+
+
 def record_revision(path: Path, revision: str) -> None:
     """Record ``revision`` as the event queue file's migration revision."""
     engine = create_spool_engine(path)
@@ -220,7 +236,7 @@ def test_status_prints_each_run_and_changes_nothing(
     [("cache", "cache"), ("  ", "home/.cache"), (None, "home/.cache")],
     ids=["XDG_CACHE_HOME set", "XDG_CACHE_HOME blank", "XDG_CACHE_HOME unset"],
 )
-def test_status_reads_the_emitters_own_file_by_default(
+def test_status_reads_the_default_path_for_its_environment(
     tmp_path, monkeypatch, capsys, xdg_cache_home, expected_root
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
@@ -302,6 +318,23 @@ def an_unfinished_write(path: Path) -> None:
     leave_an_unfinished_write(path)
 
 
+def a_known_revision_without_the_telemetry_tables(path: Path) -> None:
+    engine = create_spool_engine(path)
+    try:
+        with engine.begin() as connection:
+            version_table = Table(
+                "alembic_version",
+                MetaData(),
+                Column("version_num", String(32), primary_key=True),
+            )
+            version_table.create(connection)
+            connection.execute(
+                insert(version_table).values(version_num=migration_head_revision())
+            )
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.parametrize(
     ("prepare", "explanation"),
     [
@@ -312,6 +345,11 @@ def an_unfinished_write(path: Path) -> None:
         (a_newer_revision, f"migration revision ({NEWER_REVISION})"),
         (no_read_permission, "permission denied"),
         (an_unfinished_write, "a write that did not finish"),
+        # Any other database error: the message names SQLite's error code.
+        (
+            a_known_revision_without_the_telemetry_tables,
+            "cannot be read (SQLITE_ERROR)",
+        ),
     ],
     ids=[
         "other content",
@@ -321,6 +359,7 @@ def an_unfinished_write(path: Path) -> None:
         "a newer revision",
         "no read permission",
         "an unfinished write",
+        "a known revision without the telemetry tables",
     ],
 )
 def test_status_exits_9_for_a_file_it_cannot_use(
@@ -340,6 +379,35 @@ def test_status_exits_9_for_a_file_it_cannot_use(
     assert str(path) in output.err
     assert explanation in output.err
     assert directory_state(path.parent) == before
+
+
+def test_status_prints_a_run_whose_registration_is_not_an_object(tmp_path) -> None:
+    """`status` reads only the columns it prints, never a run's registration.
+
+    It runs as a program, as Microcosm's runner will run it, so an error that
+    escaped the command would show as its exit code.
+    """
+    path = tmp_path / "container" / "events.sqlite3"
+    write_event_queue_file(path)
+    record_registration_json(path, "[]")
+
+    answer = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "microcosm_emitter.cli",
+            "status",
+            "--event-queue-file",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert answer.returncode == 0, answer.stderr
+    assert json.loads(answer.stdout) == {"runs": EXPECTED_RUNS}
+    assert answer.stderr == ""
 
 
 def test_status_help_names_the_event_queue_file(capsys) -> None:
