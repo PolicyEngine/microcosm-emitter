@@ -9,10 +9,11 @@ launches a build on a machine without a Hugging Face credential, such as
 Modal: it obtains a collector token that can only write telemetry, for the
 emitter on that machine.
 
-`microcosm-emitter status` prints each run in the emitter's event queue file,
-with its upload state, the reason and how many events are undelivered, as
-JSON. It opens the file read-only, so it delivers, prunes and changes
-nothing; Microcosm's Modal runner runs it in the container after a build.
+`microcosm-emitter status` prints each run in an emitter's event queue file,
+with its upload state, the reason and how many of its events the file still
+holds, as JSON. It opens the file read-only, so it delivers, prunes and
+changes nothing. It is meant for Microcosm's Modal runner to run in the
+container after a build.
 """
 
 from __future__ import annotations
@@ -35,7 +36,6 @@ from microcosm_emitter.core.constants import TELEMETRY_SCOPE
 
 if TYPE_CHECKING:
     from microcosm_emitter.core.auth import ExchangeFailureResult
-    from microcosm_emitter.telemetry.service.run_status import Problem
 
 DISTRIBUTION_NAME = "microcosm-emitter"
 
@@ -105,31 +105,13 @@ TELEMETRY_TOKEN_UNEXPECTED_FAILURE: Final = (
 )
 #: Exit codes of `status` other than 0 and argparse's 2, each with one line
 #: for standard error: no file exists at the path it reads (8), or the file
-#: cannot be read as an event queue file (9). Nothing reaches standard output.
+#: cannot be read as an event queue file (9), with the line its ``Problem``
+#: gives. Nothing reaches standard output.
 EXIT_NO_EVENT_QUEUE_FILE: Final = 8
 EXIT_UNUSABLE_EVENT_QUEUE_FILE: Final = 9
 NO_EVENT_QUEUE_FILE_MESSAGE: Final = (
     "No event queue file exists at {path}; nothing was read."
 )
-#: ``{detail}`` is the unknown revision, or the error's name; the file's
-#: contents are never printed.
-UNUSABLE_EVENT_QUEUE_FILE_MESSAGES: Final[dict[Problem, str]] = {
-    "permission_denied": (
-        "The event queue file at {path} cannot be read: permission denied."
-    ),
-    "not_an_event_queue_file": "The file at {path} is not an event queue file.",
-    "unknown_revision": (
-        "The event queue file at {path} records a migration revision ({detail}) "
-        "that this emitter does not know: a newer emitter release wrote it, or "
-        "it is another database."
-    ),
-    "unfinished_write": (
-        "The event queue file at {path} cannot be read without changing it: the "
-        "journal beside it holds a write that did not finish, which SQLite must "
-        "roll back first, and `status` changes nothing."
-    ),
-    "unreadable": "The event queue file at {path} cannot be read ({detail}).",
-}
 
 
 def describe() -> EmitterDescription:
@@ -263,8 +245,7 @@ def status(arguments: argparse.Namespace) -> int:
         print(NO_EVENT_QUEUE_FILE_MESSAGE.format(path=path), file=sys.stderr)
         return EXIT_NO_EVENT_QUEUE_FILE
     except UnusableEventQueueFileError as error:
-        message = UNUSABLE_EVENT_QUEUE_FILE_MESSAGES[error.problem]
-        print(message.format(path=path, detail=error.detail), file=sys.stderr)
+        print(error.message(path), file=sys.stderr)
         return EXIT_UNUSABLE_EVENT_QUEUE_FILE
     print(json.dumps({"runs": runs}))
     return 0
@@ -306,10 +287,10 @@ def main(argv: list[str] | None = None) -> int:
     _add_development_collector_url(token_parser)
     status_parser = commands.add_parser(
         "status",
-        help="Print each run in the emitter's event queue file, with its upload "
-        "state, the reason and how many events are undelivered, as JSON. Reads "
-        "the file read-only: delivers, prunes and changes nothing.",
-        description="Print each run in the emitter's event queue file as JSON, "
+        help="Print each run in an emitter's event queue file, with its upload "
+        "state, the reason and how many of its events the file still holds, as "
+        "JSON. Reads the file read-only: delivers, prunes and changes nothing.",
+        description="Print each run in an emitter's event queue file as JSON, "
         "reading the file read-only. Exits 8 when no file exists at the path, "
         "and 9 when the file cannot be read as an event queue file.",
     )
@@ -318,10 +299,11 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         metavar="PATH",
-        help="The event queue file to read. Without it, the file the emitter "
-        "itself uses: $XDG_CACHE_HOME/microcosm/telemetry/events.sqlite3, or "
-        "~/.cache/microcosm/telemetry/events.sqlite3 when XDG_CACHE_HOME is "
-        "unset or blank.",
+        help="The event queue file to read. Without it, the default path for "
+        "this process's environment: $XDG_CACHE_HOME/microcosm/telemetry/"
+        "events.sqlite3, or ~/.cache/microcosm/telemetry/events.sqlite3 when "
+        "XDG_CACHE_HOME is unset or blank. That is a build's file only when the "
+        "build passed its emitter no path and ran with the same environment.",
     )
     if arguments[:1] == ["host"]:
         # The host parses its own options.

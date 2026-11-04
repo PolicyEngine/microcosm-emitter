@@ -32,8 +32,12 @@ def create_spool_engine(path: Path | str) -> Engine:
 def create_read_only_engine(path: Path) -> Engine:
     """Open an existing emitter database at ``path`` so that nothing can write it.
 
-    In SQLite's read-only mode every write is refused and a missing file is not
-    created, and no journal or other file is created beside it.
+    In SQLite's read-only mode every write is refused, a missing file is not
+    created, and a file in the default rollback-journal mode, which every
+    emitter writes, gets no journal or other file beside it. A file another
+    program switched to WAL mode is different: when its directory is writable,
+    SQLite creates the ``-wal`` and ``-shm`` files beside it and leaves them,
+    even for a read-only connection.
     """
     return create_engine(
         URL.create(
