@@ -1,7 +1,7 @@
 """The noqa-comments quality guard: the number of inline suppressions may not grow.
 
-Every suppression comment Ruff applies in a tracked Python file is one entry,
-``<path>: <codes>``, with the codes sorted and joined by ", ", or
+Every suppression directive Ruff 0.16.10 applies in a tracked Python file is
+one entry, ``<path>: <codes>``, with the codes sorted and joined by ", ", or
 ``<path>: (all)`` for a blanket one:
 
 - an inline ``noqa`` directive, with no label;
@@ -9,28 +9,33 @@ Every suppression comment Ruff applies in a tracked Python file is one entry,
   labelled ``(ruff: ignore)``, ``(ruff: disable)`` and ``(ruff: file-ignore)``
   (an ``enable[...]`` ends a disabled range and is not one);
 - a file-level ``ruff: noqa`` or ``flake8: noqa`` on its own line, labelled
-  ``(ruff: noqa)`` or ``(flake8: noqa)``.
+  ``(ruff: noqa)`` or ``(flake8: noqa)``;
+- the isort comments that switch off import sorting, as code ``I001``: a
+  whole ``skip_file`` or ``off`` comment, with or without ``ruff:``, and a
+  comment containing the skip marker after an import on the same line.
 
 Codes are read as Ruff reads them: uppercase letters then digits, with or
-without commas or spaces between codes, and a space is allowed before the
-colon. A directive whose codes Ruff rejects, such as lowercase ones, applies
-nothing and is not counted, and neither is a file-level directive after code.
-Only comments count: text in a string, or a comment that names noqa without
-the directive, does not. The rule's baseline file lists each entry once per
-comment, so moving a comment within its file changes nothing.
+without commas or spaces between codes, a comma allowed before the first, and
+a space allowed before the colon. A directive Ruff does not apply is not
+counted: codes it rejects, such as lowercase ones, a file-level noqa after
+code, and an isort comment Ruff ignores. Only comments count: text in a
+string, or a comment that names noqa without the directive, does not. The
+rule's baseline file lists each entry once per directive, so moving a
+directive within its file changes nothing.
 
-The guard compares the counts per entry. It fails on a comment the baseline
-does not list, and on a listed entry with fewer comments left than it lists,
-so the baseline has to change with the comments. The baseline's total may
-only fall against the base branch, which the rules guard checks as for every
+The guard compares the counts per entry. It fails on a directive the baseline
+does not list, and on a listed entry with fewer directives left than it lists,
+so the baseline has to change with the directives. The baseline's total may
+not grow against the base branch, which the rules guard checks as for every
 ratcheted rule: a pull request may add a suppression only by removing another.
-That comparison counts comments only, so swapping one for another at the same
-total, renaming a file or adding a code to an existing comment passes, once
-the baseline lists the result.
+That comparison counts directives only, so swapping one for another at the
+same total, renaming a file or adding a code to an existing comment passes,
+once the baseline lists the result.
 """
 
 from __future__ import annotations
 
+import ast
 import io
 import re
 import tokenize
@@ -61,6 +66,22 @@ RUFF_BRACKETED = re.compile(
 FILE_NOQA_DIRECTIVE = re.compile(
     r"#\s*(?P<tool>ruff|flake8)\s*:\s*(?i:noqa)(?P<rest>.*)"
 )
+# The isort comments, which switch off Ruff's import sorting (I001), as Ruff
+# 0.16.10's extract_isort_directives reads them: each whole comment below, with
+# trailing space removed, or else any comment containing one of SKIP_MARKERS.
+ISORT_SPLIT = frozenset({"# isort: split", "# ruff: isort: split"})
+ISORT_SKIP_FILE = frozenset(
+    {
+        "# isort: skip_file",
+        "# isort:skip_file",
+        "# ruff: isort: skip_file",
+        "# ruff: isort:skip_file",
+    }
+)
+ISORT_OFF = frozenset({"# isort: off", "# ruff: isort: off"})
+ISORT_ON = frozenset({"# isort: on", "# ruff: isort: on"})
+ISORT_SKIP_MARKERS = ("isort: skip", "isort:skip")
+ISORT_CODE = "I001"
 RULE_CODE = re.compile(r"[A-Z]+[0-9]+")
 CODE_SEPARATOR = re.compile(r"[\s,]*")
 NEW_SUPPRESSION_FIX = (
@@ -84,7 +105,8 @@ def codes_after(rest: str) -> list[str] | None:
         return [] if not rest or rest[0].isspace() or rest[0] == "#" else None
     text = stripped[1:].lstrip()
     codes = []
-    position = 0
+    # Ruff skips a comma before the first code, with a warning.
+    position = CODE_SEPARATOR.match(text).end()
     while code := RULE_CODE.match(text, position):
         codes.append(code.group())
         position = CODE_SEPARATOR.match(text, code.end()).end()
@@ -96,15 +118,75 @@ def _entry(path: str, codes: list[str], label: str = "") -> str:
     return f"{path}: {listed}{f' ({label})' if label else ''}"
 
 
-def _directive_entries(path: str, comment: str, *, own_line: bool) -> list[str]:
-    """Return the entries for the suppression directives in one comment."""
+def _file_level_entries(path: str, comment: str, *, own_line: bool) -> list[str]:
+    """Return the entry for a file-level noqa, which Ruff applies on its own line."""
     file_level = FILE_NOQA_DIRECTIVE.search(comment)
-    if file_level is not None:
-        codes = codes_after(file_level.group("rest"))
-        if not own_line or codes is None:
-            return []
-        return [_entry(path, codes, f"{file_level.group('tool')}: noqa")]
-    entries = [
+    if file_level is None or not own_line:
+        return []
+    codes = codes_after(file_level.group("rest"))
+    if codes is None:
+        return []
+    return [_entry(path, codes, f"{file_level.group('tool')}: noqa")]
+
+
+class _IsortReader:
+    """Read a file's isort comments in order, as Ruff does.
+
+    A whole comment of skip_file applies to the file, and one of off starts a
+    range that a whole comment of on ends; inside that range Ruff reads no
+    other isort comment. Any other comment containing a skip marker leaves out
+    of sorting only the import that starts on the comment's line, so it
+    applies to nothing on any other line. A split is not a suppression.
+    """
+
+    def __init__(self, import_lines: set[int]) -> None:
+        self.import_lines = import_lines
+        self.off = False
+
+    def entries(self, path: str, comment: str, line_number: int) -> list[str]:
+        """Return the entry for one comment, if Ruff applies it as a suppression."""
+        label = self._label(comment.rstrip(), line_number)
+        return [] if label is None else [_entry(path, [ISORT_CODE], label)]
+
+    def _label(self, text: str, line_number: int) -> str | None:
+        """Return the entry's label for an applied isort comment, or None."""
+        prefix = "ruff: " if text.startswith("# ruff:") else ""
+        if text in ISORT_SPLIT:
+            return None
+        if text in ISORT_SKIP_FILE:
+            return f"{prefix}isort: skip_file"
+        if self.off:
+            self.off = text not in ISORT_ON
+            return None
+        if any(marker in text for marker in ISORT_SKIP_MARKERS):
+            return "isort: skip" if line_number in self.import_lines else None
+        if text in ISORT_OFF:
+            self.off = True
+            return f"{prefix}isort: off"
+        return None
+
+
+def _import_lines(source: str) -> set[int]:
+    """Return the lines on which an import statement starts."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+    return {
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+    }
+
+
+def _directive_entries(path: str, comment: str, *, own_line: bool) -> list[str]:
+    """Return the entries for the suppression directives in one comment.
+
+    Ruff reads each kind of directive in a comment on its own, so a file-level
+    noqa that it does not apply hides none of the others.
+    """
+    entries = _file_level_entries(path, comment, own_line=own_line)
+    entries += [
         _entry(
             path, RULE_CODE.findall(form.group("codes")), f"ruff: {form.group('form')}"
         )
@@ -122,10 +204,12 @@ def _directive_entries(path: str, comment: str, *, own_line: bool) -> list[str]:
 def comment_entries(path: str, source: str) -> list[str]:
     """Return one entry for each suppression directive Ruff applies in ``source``."""
     entries = []
+    isort = _IsortReader(_import_lines(source))
     for token in tokenize.generate_tokens(io.StringIO(source).readline):
         if token.type != tokenize.COMMENT:
             continue
         own_line = not token.line[: token.start[1]].strip()
+        entries.extend(isort.entries(path, token.string, token.start[0]))
         entries.extend(_directive_entries(path, token.string, own_line=own_line))
     return entries
 
@@ -173,7 +257,7 @@ def compare(
     rule: Rule | None,
     baseline_file: str,
 ) -> list[Violation]:
-    """Report each comment the baseline doesn't list, and each entry left over."""
+    """Report each directive the baseline doesn't list, and each entry left over."""
     rule_id = rule.id if rule is not None else None
     violations = []
     for entry in sorted(found):
@@ -193,7 +277,7 @@ def compare(
             (
                 f"baseline entry no longer applies: {entry} is listed "
                 f"{_plural(baseline[entry], 'time')}, but the file has "
-                f"{_plural(found[entry], 'such comment')}"
+                f"{_plural(found[entry], 'such directive')}"
             ),
             REMOVED_SUPPRESSION_FIX.format(file=baseline_file),
         )

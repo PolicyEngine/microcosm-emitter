@@ -147,7 +147,7 @@ class TestNewAndRemovedSuppressions(unittest.TestCase):
                 (
                     "[registry] noqa-comments: baseline entry no longer applies: "
                     "pkg/module.py: F401 is listed 2 times, but the file has 1 such "
-                    "comment. Fix: remove the extra entry from "
+                    "directive. Fix: remove the extra entry from "
                     "rules/baselines/noqa-comments.txt and lower the rule's baseline "
                     "count."
                 )
@@ -243,6 +243,160 @@ class TestRuffSuppressionComments(unittest.TestCase):
         )
 
 
+class TestDirectivesBesideAFileLevelNoqa(unittest.TestCase):
+    """A trailing file-level noqa, which Ruff does not apply, hides nothing else.
+
+    Ruff reads every directive in a comment on its own, so the others still
+    count.
+    """
+
+    def test_an_inline_noqa_before_a_trailing_file_level_noqa_counts(self) -> None:
+        self.assertEqual(
+            comment_entries(
+                "pkg/module.py", "print(1)  # noqa: T201  # ruff: noqa: E501\n"
+            ),
+            ["pkg/module.py: T201"],
+        )
+
+    def test_an_inline_noqa_after_a_trailing_file_level_noqa_counts(self) -> None:
+        self.assertEqual(
+            comment_entries(
+                "pkg/module.py", "print(1)  # ruff: noqa: E501  # noqa: T201\n"
+            ),
+            ["pkg/module.py: T201"],
+        )
+
+    def test_an_inline_noqa_before_a_trailing_flake8_noqa_counts(self) -> None:
+        self.assertEqual(
+            comment_entries(
+                "pkg/module.py", "print(1)  # noqa: T201  # flake8: noqa\n"
+            ),
+            ["pkg/module.py: T201"],
+        )
+
+    def test_a_ruff_ignore_after_a_trailing_flake8_noqa_counts(self) -> None:
+        self.assertEqual(
+            comment_entries(
+                "pkg/module.py",
+                "print(1)  # flake8: noqa: E501  # ruff: ignore[T201]\n",
+            ),
+            ["pkg/module.py: T201 (ruff: ignore)"],
+        )
+
+    def test_an_own_line_file_level_noqa_and_an_inline_noqa_both_count(
+        self,
+    ) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# ruff: noqa: E501  # noqa: T201\n"),
+            ["pkg/module.py: E501 (ruff: noqa)", "pkg/module.py: T201"],
+        )
+
+
+class TestIsortDirectives(unittest.TestCase):
+    """The isort directives switch off Ruff's import sorting (I001)."""
+
+    def test_an_isort_skip_anywhere_in_a_comment_is_an_entry(self) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "import sys  # keep first, isort:skip\n"),
+            ["pkg/module.py: I001 (isort: skip)"],
+        )
+
+    def test_an_isort_skip_file_is_an_entry(self) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# isort: skip_file\nimport sys\n"),
+            ["pkg/module.py: I001 (isort: skip_file)"],
+        )
+
+    def test_a_ruff_isort_skip_file_is_an_entry(self) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# ruff: isort: skip_file\nimport sys\n"),
+            ["pkg/module.py: I001 (ruff: isort: skip_file)"],
+        )
+
+    def test_an_isort_off_is_an_entry_and_its_on_none(self) -> None:
+        source = "# isort: off\nimport sys\nimport os\n# isort: on\n"
+
+        self.assertEqual(
+            comment_entries("pkg/module.py", source),
+            ["pkg/module.py: I001 (isort: off)"],
+        )
+
+    def test_a_ruff_isort_off_is_an_entry(self) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# ruff: isort: off\nimport sys\n"),
+            ["pkg/module.py: I001 (ruff: isort: off)"],
+        )
+
+
+class TestIsortAsRuffReadsIt(unittest.TestCase):
+    """The isort comments are read exactly as Ruff 0.16.10 reads them.
+
+    Ruff takes a whole comment of skip_file, off or on, after "# isort: " or
+    "# ruff: isort: ", and otherwise any comment containing "isort: skip" or
+    "isort:skip", which leaves out of sorting the import that starts on the
+    same line. A skip on any other line, and an off written another way,
+    apply to nothing.
+    """
+
+    def test_skip_file_inside_a_longer_comment_skips_its_import(self) -> None:
+        source = "import sys  # keep first, isort: skip_file\nimport os\n"
+
+        self.assertEqual(
+            comment_entries("pkg/module.py", source),
+            ["pkg/module.py: I001 (isort: skip)"],
+        )
+
+    def test_skip_file_followed_by_more_comment_skips_its_import(self) -> None:
+        source = "import sys  # isort:skip_file  # keep first\nimport os\n"
+
+        self.assertEqual(
+            comment_entries("pkg/module.py", source),
+            ["pkg/module.py: I001 (isort: skip)"],
+        )
+
+    def test_skip_followed_by_more_letters_skips_its_import(self) -> None:
+        source = "import sys  # isort: skipped, it must load first\nimport os\n"
+
+        self.assertEqual(
+            comment_entries("pkg/module.py", source),
+            ["pkg/module.py: I001 (isort: skip)"],
+        )
+
+    def test_skip_followed_by_an_underscore_skips_its_import(self) -> None:
+        source = "import sys  # isort:skip_this\nimport os\n"
+
+        self.assertEqual(
+            comment_entries("pkg/module.py", source),
+            ["pkg/module.py: I001 (isort: skip)"],
+        )
+
+    def test_a_skip_on_its_own_line_applies_to_nothing(self) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# isort: skip\nimport sys\n"), []
+        )
+
+    def test_a_skip_after_code_that_is_not_an_import_applies_to_nothing(
+        self,
+    ) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "VALUE = 1  # isort: skip\n"), []
+        )
+
+    def test_an_off_without_the_space_after_the_hash_applies_to_nothing(
+        self,
+    ) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "#isort: off\nimport sys\n"), []
+        )
+
+    def test_an_off_without_the_space_after_the_colon_applies_to_nothing(
+        self,
+    ) -> None:
+        self.assertEqual(
+            comment_entries("pkg/module.py", "# isort:off\nimport sys\n"), []
+        )
+
+
 class TestCodesAsRuffReadsThem(unittest.TestCase):
     def test_codes_written_without_a_delimiter_are_separate_codes(self) -> None:
         self.assertEqual(
@@ -256,6 +410,13 @@ class TestCodesAsRuffReadsThem(unittest.TestCase):
             ["pkg/module.py: BLE001"],
         )
 
+    def test_a_code_list_starting_with_a_comma_still_names_its_codes(self) -> None:
+        # Ruff skips the comma, with a warning, and applies the code.
+        self.assertEqual(
+            comment_entries("pkg/module.py", "print(1)  # noqa: ,T201\n"),
+            ["pkg/module.py: T201"],
+        )
+
     def test_lowercase_codes_suppress_nothing_and_are_not_counted(self) -> None:
         # Ruff warns that the directive is invalid and reports the finding.
         self.assertEqual(
@@ -264,37 +425,66 @@ class TestCodesAsRuffReadsThem(unittest.TestCase):
 
 
 class TestTheTotalMayNotGrow(unittest.TestCase):
-    """The base branch comparison counts comments only, as Anthony decided.
+    """The base branch comparison counts directives only, as Anthony decided.
 
-    A pull request may add a suppression only by removing another, so the
-    same total passes even when a code is added to a comment, a code is
-    swapped for another or a file is renamed, as long as the baseline is
-    updated to match; a higher total fails.
+    Each test models a pull request as CI checks it: the base branch's files
+    and baseline, then the pull request's. The guard runs on the pull request,
+    and the baseline's total is compared with the base branch's. A pull
+    request may add a suppression only by removing another, so the same total
+    passes even when a code is added to a comment, a code is swapped for
+    another or a file is renamed, once the baseline lists the result; a higher
+    total fails. The base-branch comparison receives only the two totals.
     """
+
+    def check_pull_request(
+        self,
+        base: tuple[dict[str, str], list[str]],
+        head: tuple[dict[str, str], list[str]],
+    ) -> list[str]:
+        """Return CI's violations for a pull request from ``base`` to ``head``."""
+        base_files, base_baseline = base
+        head_files, head_baseline = head
+        self.assertEqual(violations_for(base_files, base_baseline), [])
+        self.assertNotEqual(Counter(base_baseline), Counter(head_baseline))
+        return violations_for(head_files, head_baseline) + base_branch_violations(
+            len(base_baseline), len(head_baseline)
+        )
 
     def test_a_code_added_to_an_existing_comment_passes_at_the_same_total(
         self,
     ) -> None:
-        files = {"pkg/module.py": "run()  # noqa: BLE001, S110\n"}
+        base = ({"pkg/module.py": "run()  # noqa: BLE001\n"}, ["pkg/module.py: BLE001"])
+        head = (
+            {"pkg/module.py": "run()  # noqa: BLE001, S110\n"},
+            ["pkg/module.py: BLE001, S110"],
+        )
 
-        self.assertEqual(violations_for(files, ["pkg/module.py: BLE001, S110"]), [])
-        self.assertEqual(base_branch_violations(1, 1), [])
+        self.assertEqual(self.check_pull_request(base, head), [])
 
     def test_a_swapped_code_passes_at_the_same_total(self) -> None:
-        files = {"pkg/module.py": "run()  # noqa: S110\n"}
+        base = ({"pkg/module.py": "run()  # noqa: BLE001\n"}, ["pkg/module.py: BLE001"])
+        head = ({"pkg/module.py": "run()  # noqa: S110\n"}, ["pkg/module.py: S110"])
 
-        self.assertEqual(violations_for(files, ["pkg/module.py: S110"]), [])
-        self.assertEqual(base_branch_violations(1, 1), [])
+        self.assertEqual(self.check_pull_request(base, head), [])
 
     def test_a_renamed_file_passes_at_the_same_total(self) -> None:
-        files = {"pkg/renamed.py": "run()  # noqa: BLE001\n"}
+        base = ({"pkg/module.py": "run()  # noqa: BLE001\n"}, ["pkg/module.py: BLE001"])
+        head = (
+            {"pkg/renamed.py": "run()  # noqa: BLE001\n"},
+            ["pkg/renamed.py: BLE001"],
+        )
 
-        self.assertEqual(violations_for(files, ["pkg/renamed.py: BLE001"]), [])
-        self.assertEqual(base_branch_violations(1, 1), [])
+        self.assertEqual(self.check_pull_request(base, head), [])
 
     def test_a_higher_total_fails_against_the_base_branch(self) -> None:
+        base = ({"pkg/module.py": "run()  # noqa: BLE001\n"}, ["pkg/module.py: BLE001"])
+        head = (
+            {"pkg/module.py": "run()  # noqa: BLE001\nprint(1)  # noqa: T201\n"},
+            ["pkg/module.py: BLE001", "pkg/module.py: T201"],
+        )
+
         self.assertEqual(
-            base_branch_violations(1, 2),
+            self.check_pull_request(base, head),
             [
                 (
                     "[ex.quality.inline-suppressions] baseline: baseline grew from 1 "

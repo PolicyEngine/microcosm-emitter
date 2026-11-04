@@ -22,6 +22,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from scripts.rules.baseline import baseline_lines
 from scripts.rules.load import load_registry
 from scripts.rules.model import CiScripts, Registry, Violation
 from scripts.rules.resolve import clear_caches, workflow_jobs
@@ -139,11 +140,7 @@ def _baseline(root: Path, path: str) -> set[str]:
     file = root / path
     if not file.is_file():
         return set()
-    return {
-        line.strip()
-        for line in file.read_text().splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-    }
+    return set(baseline_lines(file.read_text(encoding="utf-8")))
 
 
 def _rule_for(registry: Registry, baseline: str, check: str) -> str | None:
