@@ -114,3 +114,19 @@ def migration_head_revision(history: MigrationHistory = SPOOL_HISTORY) -> str | 
     """Return the single current head from one packaged migration history."""
     with alembic_config(history=history) as config:
         return ScriptDirectory.from_config(config).get_current_head()
+
+
+def recorded_revisions(connection: Connection) -> tuple[str, ...]:
+    """Return the revisions a database records, reading only.
+
+    It is empty for a database without a version table, such as one no
+    migration has run on.
+    """
+    return tuple(MigrationContext.configure(connection).get_current_heads())
+
+
+def known_revisions(history: MigrationHistory = SPOOL_HISTORY) -> frozenset[str]:
+    """Return every revision in one packaged migration history."""
+    with alembic_config(history=history) as config:
+        scripts = ScriptDirectory.from_config(config)
+        return frozenset(script.revision for script in scripts.walk_revisions())
