@@ -32,6 +32,7 @@ from microcosm_emitter.huggingface.service.requests import (
     release_change_from_message,
 )
 from microcosm_emitter.huggingface.service.run_files import commit_run_files
+from microcosm_emitter.output import write_line
 from microcosm_emitter_interface.publication import RELEASE_CHANGE
 
 if TYPE_CHECKING:
@@ -40,9 +41,6 @@ if TYPE_CHECKING:
     from huggingface_hub import HfApi
 
     from microcosm_emitter.huggingface.service.queue import ClaimedJob, HandoverQueue
-
-# Each print in this module that suppresses Ruff's T201 writes one of its
-# messages to standard error on purpose; none is leftover debugging output.
 
 #: How long a repository or job lease lasts without renewal. While a delivery
 #: runs, its leases are renewed every ``LEASE_RENEWAL_SECONDS``, so a long
@@ -250,7 +248,7 @@ class HuggingFaceDelivery:
             if key in self._warned:
                 return
             self._warned.add(key)
-        print(message, file=sys.stderr, flush=True)  # noqa: T201
+        write_line(message, sys.stderr, flush=True)
 
     def run_cycle(self) -> int:
         """Every kind of work, on the calling thread; return how many commits.

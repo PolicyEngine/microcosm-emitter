@@ -87,9 +87,6 @@ if TYPE_CHECKING:
 
     from microcosm_emitter_interface.submissions import CollectorSubmissionReceipt
 
-# Each print in this module that suppresses Ruff's T201 writes one of its
-# messages to standard error on purpose; none is leftover debugging output.
-
 STARTUP_WARNING = (
     "Local Microcosm emitter failed to start ({reason}); the build will continue."
 )
@@ -97,6 +94,25 @@ REQUEST_WARNING = (
     "The local Microcosm emitter did not accept a {kind} request "
     "({reason}, {error_type}); the build will continue."
 )
+
+
+def _write_warning(warning: str) -> None:
+    """Write ``warning`` and a newline to standard error, as ``print`` does.
+
+    It makes the calls ``print(warning, file=sys.stderr)`` makes, one ``write``
+    of the warning and one of the newline, so the bytes, the encoding and any
+    error the stream raises are the same. As with ``print``, the warning goes
+    to ``sys.stdout`` while ``sys.stderr`` is ``None``, and nothing is written
+    when both are: each is ``None`` in a process started without it.
+    """
+    stream = sys.stderr
+    if stream is None:
+        stream = sys.stdout
+        if stream is None:
+            return
+    stream.write(warning)
+    stream.write("\n")
+
 
 type RequestFailureReason = Literal[
     # No emitter is running, or it did not load the call's module.
@@ -173,20 +189,20 @@ class EmitterClient:
         # client with a fixed startup reason.
         except Exception:  # noqa: BLE001
             failure = EmitterStartupError("invalid_configuration")
-            print(STARTUP_WARNING.format(reason=failure.reason), file=sys.stderr)  # noqa: T201
+            _write_warning(STARTUP_WARNING.format(reason=failure.reason))
             return cls(startup_error=failure)
         try:
             process = start_emitter(
                 modules, command=command, startup_timeout=startup_timeout
             )
         except EmitterStartupError as error:
-            print(STARTUP_WARNING.format(reason=error.reason), file=sys.stderr)  # noqa: T201
+            _write_warning(STARTUP_WARNING.format(reason=error.reason))
             return cls(startup_error=error)
         # No call raises into the build: any failure gives an unavailable
         # client with a fixed startup reason.
         except Exception:  # noqa: BLE001
             failure = EmitterStartupError("startup_failure")
-            print(STARTUP_WARNING.format(reason=failure.reason), file=sys.stderr)  # noqa: T201
+            _write_warning(STARTUP_WARNING.format(reason=failure.reason))
             return cls(startup_error=failure)
         return cls(process)
 
@@ -235,9 +251,8 @@ class EmitterClient:
             if kind in self._warned:
                 return
             self._warned.add(kind)
-        print(  # noqa: T201
-            REQUEST_WARNING.format(kind=kind, reason=reason, error_type=error_type),
-            file=sys.stderr,
+        _write_warning(
+            REQUEST_WARNING.format(kind=kind, reason=reason, error_type=error_type)
         )
 
     def _message(

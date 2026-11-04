@@ -36,6 +36,7 @@ from microcosm_emitter.huggingface.service.delivery import (
     LeaseRenewal,
     never_stop,
 )
+from microcosm_emitter.output import write_line
 from microcosm_emitter.submissions.client import (
     AWAITING_FINAL_STATUS,
     FINAL_STATUSES,
@@ -53,9 +54,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from microcosm_emitter.huggingface.service.queue import ClaimedJob, HandoverQueue
-
-# Each print in this module that suppresses Ruff's T201 writes one of its
-# messages to standard error on purpose; none is leftover debugging output.
 
 COLLECTOR_SUBMISSIONS_ENABLED_BY_DEFAULT: Final = False
 DESTINATION_COLLECTOR: Final = "collector"
@@ -108,8 +106,8 @@ SUBMISSION_OUTCOME_MESSAGE: Final = (
 
 
 def print_to_standard_error(message: str) -> None:
-    """Print ``message`` to standard error and flush it."""
-    print(message, file=sys.stderr, flush=True)  # noqa: T201
+    """Write ``message`` and a newline to standard error, and flush it."""
+    write_line(message, sys.stderr, flush=True)
 
 
 def status_check_delay(checks_made: int) -> float:

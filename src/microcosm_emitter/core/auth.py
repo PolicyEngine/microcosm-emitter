@@ -48,13 +48,11 @@ from microcosm_emitter.core.constants import (
     TOKEN_REFRESH_MARGIN_SECONDS,
     UNSENDABLE_CREDENTIAL_ERROR,
 )
+from microcosm_emitter.output import write_line
 
 if TYPE_CHECKING:
     import email.message
     from collections.abc import Callable, Mapping
-
-# Each print in this module that suppresses Ruff's T201 writes one of its
-# messages to standard error on purpose; none is leftover debugging output.
 
 #: Visible ASCII (letters, digits and punctuation), the only characters of a
 #: Hugging Face credential or a collector token. Any other value is refused
@@ -571,10 +569,8 @@ def shared_session(
     try:
         session = CollectorSession(origin, destination=destination)
     except GivenCollectorTokenError as error:
-        print(  # noqa: T201
-            GIVEN_TOKEN_START_ERROR_MESSAGE.format(reason=error),
-            file=sys.stderr,
-            flush=True,
+        write_line(
+            GIVEN_TOKEN_START_ERROR_MESSAGE.format(reason=error), sys.stderr, flush=True
         )
         raise
     if session.given_token is not None:

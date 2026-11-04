@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from microcosm_emitter.host.constants import STARTUP_TIMEOUT
 from microcosm_emitter.host.errors import ServiceStartupError, safe_startup_error
 from microcosm_emitter.host.launcher import ServiceHandle, start_service
+from microcosm_emitter.output import write_line
 from microcosm_emitter.telemetry.constants import (
     DEFAULT_HEARTBEAT_SECONDS,
     QUEUE_WARNING,
@@ -45,9 +46,6 @@ from microcosm_emitter_interface.telemetry import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-
-# Each print in this module that suppresses Ruff's T201 writes one of its
-# messages to standard error on purpose; none is leftover debugging output.
 
 # Every public name, including those re-exported from the interface package,
 # so type checkers of this py.typed package treat them as exported.
@@ -126,9 +124,8 @@ class LocalTelemetryEmitter:
         # with a fixed startup reason.
         except Exception as error:  # noqa: BLE001
             failure = safe_startup_error(error)
-            print(  # noqa: T201
-                SERVICE_START_WARNING.format(error_type=str(failure)),
-                file=sys.stderr,
+            write_line(
+                SERVICE_START_WARNING.format(error_type=str(failure)), sys.stderr
             )
             emitter = cls(
                 run=run, transport=None, close_service_on_finish=close_service_on_finish
@@ -158,8 +155,8 @@ class LocalTelemetryEmitter:
 
     def _warn(self, error: Exception) -> None:
         if not self._warned:
-            print(  # noqa: T201
-                QUEUE_WARNING.format(error_type=type(error).__name__), file=sys.stderr
+            write_line(
+                QUEUE_WARNING.format(error_type=type(error).__name__), sys.stderr
             )
             self._warned = True
 
