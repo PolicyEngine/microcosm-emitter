@@ -149,32 +149,32 @@ def test_prints_a_telemetry_token_for_the_requested_lifetime(
     assert collector.exchange_credentials == [SYNTHETIC_HUGGING_FACE_TOKEN]
 
 
-@pytest.mark.parametrize(
-    ("failure", "expected_exit_code"),
-    [
-        ("no Hugging Face login", 3),
-        ("credential refused with 401", 4),
-        ("not an organization member (403)", 4),
-        # Not a bearer token the collector would accept, so it counts as refused.
-        ("credential with a line break", 4),
-        ("unreadable saved login", 3),
-        # Not a saved login that cannot be read, so not exit 3.
-        ("OIDC token exchange that fails", 7),
-        ("collector unreachable", 5),
-        ("collector answers 503", 5),
-        ("collector answer that is not HTTP", 5),
-        ("collector without lifetime_seconds (422)", 6),
-        ("lifetime below 1", 2),
-        ("development collector that is not loopback", 2),
-        # Its text could quote the credential, so only its type is printed.
-        ("unexpected error", 7),
-    ],
-)
-# A pytest test function: pytest passes its four fixtures and
-# two parametrized values by name, so the parameters stay.
-def test_each_failure_has_its_own_exit_code_and_prints_nothing(  # noqa: PLR0913, PLR0917
-    collector, operator_login, monkeypatch, capsys, failure, expected_exit_code
+#: The exit code of each failure that ``_arrange_failure`` arranges.
+FAILURE_EXIT_CODES = {
+    "no Hugging Face login": 3,
+    "credential refused with 401": 4,
+    "not an organization member (403)": 4,
+    # Not a bearer token the collector would accept, so it counts as refused.
+    "credential with a line break": 4,
+    "unreadable saved login": 3,
+    # Not a saved login that cannot be read, so not exit 3.
+    "OIDC token exchange that fails": 7,
+    "collector unreachable": 5,
+    "collector answers 503": 5,
+    "collector answer that is not HTTP": 5,
+    "collector without lifetime_seconds (422)": 6,
+    "lifetime below 1": 2,
+    "development collector that is not loopback": 2,
+    # Its text could quote the credential, so only its type is printed.
+    "unexpected error": 7,
+}
+
+
+@pytest.mark.parametrize("failure", FAILURE_EXIT_CODES)
+def test_each_failure_has_its_own_exit_code_and_prints_nothing(
+    collector, operator_login, monkeypatch, capsys, failure
 ) -> None:
+    expected_exit_code = FAILURE_EXIT_CODES[failure]
     collector_url, lifetime_seconds = _arrange_failure(failure, collector, monkeypatch)
 
     exit_code = telemetry_token(collector_url, lifetime_seconds)

@@ -62,10 +62,6 @@ src/microcosm_emitter/huggingface/service/module.py: BLE001
 src/microcosm_emitter/huggingface/service/module.py: BLE001
 src/microcosm_emitter/huggingface/service/module.py: BLE001
 src/microcosm_emitter/huggingface/service/module.py: PLR0913
-src/microcosm_emitter/huggingface/service/queue.py: PLR0913
-src/microcosm_emitter/huggingface/service/queue_jobs.py: PLR0913
-src/microcosm_emitter/huggingface/service/queue_jobs.py: PLR0913
-src/microcosm_emitter/huggingface/service/queue_jobs.py: PLR0913
 src/microcosm_emitter/huggingface/service/releases.py: BLE001
 src/microcosm_emitter/huggingface/service/releases.py: BLE001
 src/microcosm_emitter/huggingface/service/releases.py: BLE001
@@ -75,7 +71,6 @@ src/microcosm_emitter/huggingface/service/workers.py: BLE001
 src/microcosm_emitter/orrery/client.py: BLE001
 src/microcosm_emitter/orrery/client.py: BLE001
 src/microcosm_emitter/orrery/service/module.py: BLE001
-src/microcosm_emitter/submissions/client.py: PLR0913
 src/microcosm_emitter/submissions/delivery.py: BLE001
 src/microcosm_emitter/telemetry/client.py: BLE001
 src/microcosm_emitter/telemetry/client.py: BLE001
@@ -89,14 +84,10 @@ tests/host/test_multiple_modules.py: BLE001
 tests/host/test_runtime.py: BLE001
 tests/huggingface/test_delivery_workers.py: BLE001
 tests/huggingface/test_delivery_workers.py: BLE001
-tests/interface/test_launcher.py: PLR0913, PLR0917
 tests/orrery/test_client.py: BLE001
 tests/orrery/test_publication.py: BLE001
 tests/orrery/test_publication.py: BLE001
 tests/submissions/test_delivery.py: BLE001
-tests/submissions/test_delivery.py: PLR0913, PLR0917
-tests/test_collector_contract.py: PLR0913, PLR0917
 tests/test_dependabot.py: S506
-tests/test_telemetry_token_command.py: PLR0913, PLR0917
 tests/test_tools_scripts.py: S506
 tests/test_workflows.py: S506

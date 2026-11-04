@@ -784,7 +784,7 @@ job = "rules"
 invocation = "scripts.run_quality_guards"
 [rule.baseline]
 file = "rules/baselines/noqa-comments.txt"
-count = 96
+count = 87
 [rule.downgrade]
 reason = "The rule starts ratcheted with the 140 inline # noqa comments the Ruff fixes kept, each with its reason, rather than enforced at zero."
 issue = 74

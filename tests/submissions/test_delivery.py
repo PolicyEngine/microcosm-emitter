@@ -797,16 +797,19 @@ def test_a_collector_row_is_free_within_one_lease_after_shutdown(two_emitters):
 ANOTHER_TRUSTED_ORIGIN = "https://another-collector.example"
 
 
+#: Whether an emitter at the default origin delivers a row queued at each origin.
+DELIVERED_BY_DEFAULT = {CLOUD_RUN_COLLECTOR_URL: True, ANOTHER_TRUSTED_ORIGIN: False}
+
+
 @pytest.mark.parametrize(
-    ("queued_origin", "delivered_by_default"),
-    [(CLOUD_RUN_COLLECTOR_URL, True), (ANOTHER_TRUSTED_ORIGIN, False)],
+    "queued_origin",
+    DELIVERED_BY_DEFAULT,
     ids=["cloud run address", "another trusted origin"],
 )
-# A pytest test function: pytest passes its four fixtures and
-# two parametrized values by name, so the parameters stay.
-def test_a_default_emitter_takes_only_rows_queued_for_its_own_collector(  # noqa: PLR0913, PLR0917
-    module_factory, collector, capsys, monkeypatch, queued_origin, delivered_by_default
+def test_a_default_emitter_takes_only_rows_queued_for_its_own_collector(
+    module_factory, collector, capsys, monkeypatch, queued_origin
 ):
+    delivered_by_default = DELIVERED_BY_DEFAULT[queued_origin]
     from microcosm_emitter.core import collector_origin as collector_origin_module
 
     monkeypatch.setattr(

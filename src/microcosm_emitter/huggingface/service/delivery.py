@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from microcosm_emitter.huggingface.service.bundles import stage_bundle
 from microcosm_emitter.huggingface.service.hub import UPLOAD_FAILED, DatasetRepository
+from microcosm_emitter.huggingface.service.queue import JobAttempt
 from microcosm_emitter.huggingface.service.releases import (
     ReleaseOutcome,
     apply_release_change,
@@ -442,10 +443,8 @@ class HuggingFaceDelivery:
             )
         self.queue.finish_job(
             job,
-            receipt=receipt,
-            retry=result.retry,
+            JobAttempt(receipt, retry=result.retry, committed=result.committed),
             now=self.clock(),
-            committed=result.committed,
         )
 
     def _deliver_job(self, hub: DatasetRepository, held: HeldLeases) -> bool:

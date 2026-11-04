@@ -39,7 +39,7 @@ from microcosm_emitter.huggingface.service.hub import (
 from microcosm_emitter.huggingface.service.queue import sha256_file
 
 if TYPE_CHECKING:
-    from microcosm_emitter.core.auth import SessionCredential
+    from microcosm_emitter.core.auth import CredentialSource
     from microcosm_emitter.submissions.planning import PlannedSubmission
     from microcosm_emitter_interface.serialization import JsonValue
 
@@ -257,25 +257,25 @@ class CollectorSubmissionClient:
 
     # The keyword-only parameters are the client's replaceable dependencies,
     # which the Hugging Face module and the tests pass by name.
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         origin: str,
         *,
-        credential: Callable[[], SessionCredential],
-        invalidate_credential: Callable[[], None],
+        credentials: CredentialSource,
         http: httpx.Client | None = None,
         allow_loopback_uploads: bool = False,
         clock: Callable[[], float] = time.time,
     ) -> None:
-        """Hold the collector origin, the credential callables and the HTTP client.
+        """Hold the collector origin, the credential source and the HTTP client.
 
-        Without ``http``, a new ``httpx.Client`` that does not follow redirects
-        is made. ``allow_loopback_uploads`` also accepts signed upload URLs on a
+        ``credentials`` gives each request's token, and discards one the
+        collector refuses: the module's ``CollectorSession``. Without ``http``,
+        a new ``httpx.Client`` that does not follow redirects is made.
+        ``allow_loopback_uploads`` also accepts signed upload URLs on a
         loopback host, for a development collector.
         """
         self.origin = origin.rstrip("/")
-        self._credential = credential
-        self._invalidate_credential = invalidate_credential
+        self._credentials = credentials
         self._http = http or httpx.Client(follow_redirects=False)
         self._allow_loopback_uploads = allow_loopback_uploads
         self._clock = clock
@@ -283,7 +283,7 @@ class CollectorSubmissionClient:
 
     def _intake_unavailable(self) -> SubmissionOutcome:
         """Discard the token and send nothing to this collector for an hour."""
-        self._invalidate_credential()
+        self._credentials.invalidate()
         self._intake_unavailable_until = self._clock() + INTAKE_RETRY_SECONDS
         return SubmissionOutcome(
             "pending", COLLECTOR_INTAKE_NOT_ENABLED, retry_after=INTAKE_RETRY_SECONDS
@@ -306,7 +306,7 @@ class CollectorSubmissionClient:
         self._http.close()
 
     def _token(self) -> str:
-        result, token = self._credential()
+        result, token = self._credentials.credential()
         if result == "ok" and token:
             return token
         if result == "missing":
@@ -347,7 +347,7 @@ class CollectorSubmissionClient:
                 return SubmissionOutcome("pending", SUBMISSION_NOT_FOUND)
             return self._intake_unavailable()
         if status == HTTPStatus.UNAUTHORIZED:
-            self._invalidate_credential()
+            self._credentials.invalidate()
             return SubmissionOutcome("pending", COLLECTOR_UNAVAILABLE)
         if is_permanent_client_error(status):
             return SubmissionOutcome("failed", f"COLLECTOR_REFUSED_{status}")
@@ -384,7 +384,7 @@ class CollectorSubmissionClient:
             response.status_code == HTTPStatus.FORBIDDEN
             and self._error_code(response) is None
         ):
-            self._invalidate_credential()
+            self._credentials.invalidate()
             token = self._token()
             response = self._send(method, path, token, body)
         return response, token

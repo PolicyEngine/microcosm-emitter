@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
 from http.client import HTTPException
-from typing import IO, TYPE_CHECKING, Any, Literal, NamedTuple, override
+from typing import IO, TYPE_CHECKING, Any, Literal, NamedTuple, Protocol, override
 from urllib.parse import urlsplit
 
 from huggingface_hub import get_token
@@ -438,6 +438,21 @@ class SessionCredential(NamedTuple):
     def __repr__(self) -> str:
         """Show only ``result``, never the token."""
         return f"SessionCredential(result={self.result!r})"
+
+
+class CredentialSource(Protocol):
+    """A collector token to send, and a way to discard one the collector refused.
+
+    ``CollectorSession`` is one.
+    """
+
+    def credential(self) -> SessionCredential:
+        """Return the token to send, or the reason there is none."""
+        ...
+
+    def invalidate(self) -> None:
+        """Discard the token, so that ``credential()`` obtains another."""
+        ...
 
 
 class CollectorSession:

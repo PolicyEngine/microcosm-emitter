@@ -107,26 +107,19 @@ def test_emitter_runs_as_a_child_of_the_build_under_the_same_user(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("variables", "saved_login", "expected_token"),
+    ("variables", "expected_token"),
     [
         (
             {"HF_TOKEN": FAKE_HF_TOKEN, "HUGGINGFACE_TOKEN": FAKE_HUGGINGFACE_TOKEN},
-            FAKE_SAVED_LOGIN_TOKEN,
             FAKE_HF_TOKEN,
         ),
-        (
-            {"HUGGINGFACE_TOKEN": FAKE_HUGGINGFACE_TOKEN},
-            FAKE_SAVED_LOGIN_TOKEN,
-            FAKE_HUGGINGFACE_TOKEN,
-        ),
-        ({}, FAKE_SAVED_LOGIN_TOKEN, FAKE_SAVED_LOGIN_TOKEN),
+        ({"HUGGINGFACE_TOKEN": FAKE_HUGGINGFACE_TOKEN}, FAKE_HUGGINGFACE_TOKEN),
+        ({}, FAKE_SAVED_LOGIN_TOKEN),
     ],
     ids=["hf-token-first", "huggingface-token-second", "saved-login-last"],
 )
-# A pytest test function: pytest passes its three fixtures and
-# three parametrized values by name, so the parameters stay.
-def test_child_finds_the_build_hugging_face_credential_in_the_same_order(  # noqa: PLR0913, PLR0917
-    tmp_path, monkeypatch, loopback_collector, variables, saved_login, expected_token
+def test_child_finds_the_build_hugging_face_credential_in_the_same_order(
+    tmp_path, monkeypatch, loopback_collector, variables, expected_token
 ):
     """The token reaches the child only by inheriting the build's environment.
 
@@ -140,7 +133,7 @@ def test_child_finds_the_build_hugging_face_credential_in_the_same_order(  # noq
     token_path = Path(os.environ["HF_TOKEN_PATH"])
     token_path.parent.mkdir(parents=True, exist_ok=True)
     with token_path.open("w") as token_file:
-        token_file.write(saved_login)
+        token_file.write(FAKE_SAVED_LOGIN_TOKEN)
     client = EmitterClient.start(
         telemetry=TelemetrySettings(
             run=TelemetryRun("credential-order", "UK", "test"),
