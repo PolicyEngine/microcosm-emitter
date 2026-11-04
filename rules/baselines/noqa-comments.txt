@@ -89,14 +89,10 @@ tests/host/test_multiple_modules.py: BLE001
 tests/host/test_runtime.py: BLE001
 tests/huggingface/test_delivery_workers.py: BLE001
 tests/huggingface/test_delivery_workers.py: BLE001
-tests/interface/test_launcher.py: PLR0913, PLR0917
 tests/orrery/test_client.py: BLE001
 tests/orrery/test_publication.py: BLE001
 tests/orrery/test_publication.py: BLE001
 tests/submissions/test_delivery.py: BLE001
-tests/submissions/test_delivery.py: PLR0913, PLR0917
-tests/test_collector_contract.py: PLR0913, PLR0917
 tests/test_dependabot.py: S506
-tests/test_telemetry_token_command.py: PLR0913, PLR0917
 tests/test_tools_scripts.py: S506
 tests/test_workflows.py: S506

@@ -256,29 +256,20 @@ def test_blocked_run_projects_check_metadata_without_failure(
     assert "hf_private_check" not in response.text
 
 
-@pytest.mark.parametrize(
-    ("failure_class", "error_code", "error"),
-    [
-        ("error", "BUILD_FAILED", RuntimeError("Bearer hf_private_error")),
-        (
-            "interrupted",
-            "BUILD_INTERRUPTED",
-            KeyboardInterrupt("Bearer hf_private_error"),
-        ),
-        ("terminated", "BUILD_TERMINATED", RuntimeError("Bearer hf_private_error")),
-        ("oom", "BUILD_OUT_OF_MEMORY", MemoryError("Bearer hf_private_error")),
-    ],
-)
-# A pytest test function: pytest passes its three fixtures and
-# three parametrized values by name, so the parameters stay.
-def test_supplied_failure_codes_survive_collector_storage_and_documents(  # noqa: PLR0913, PLR0917
-    tmp_path,
-    monkeypatch,
-    live_collector,
-    failure_class,
-    error_code,
-    error,
+#: The error code and the error each supplied failure class is sent with.
+SUPPLIED_FAILURES = {
+    "error": ("BUILD_FAILED", RuntimeError("Bearer hf_private_error")),
+    "interrupted": ("BUILD_INTERRUPTED", KeyboardInterrupt("Bearer hf_private_error")),
+    "terminated": ("BUILD_TERMINATED", RuntimeError("Bearer hf_private_error")),
+    "oom": ("BUILD_OUT_OF_MEMORY", MemoryError("Bearer hf_private_error")),
+}
+
+
+@pytest.mark.parametrize("failure_class", SUPPLIED_FAILURES)
+def test_supplied_failure_codes_survive_collector_storage_and_documents(
+    tmp_path, monkeypatch, live_collector, failure_class
 ):
+    error_code, error = SUPPLIED_FAILURES[failure_class]
     address, reader = live_collector
     monkeypatch.setenv("HF_TOKEN", "hf_test_member")
     run_id = uuid.uuid4().hex
