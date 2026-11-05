@@ -8,6 +8,12 @@ user, including any Hugging Face credential. It is never a system service.
 launches a build on a machine without a Hugging Face credential, such as
 Modal: it obtains a collector token that can only write telemetry, for the
 emitter on that machine.
+
+`microcosm-emitter status` prints each run in an emitter's event queue file,
+with its upload state, the reason and how many of its events the file still
+holds, as JSON. It opens the file read-only, so it delivers, prunes and
+changes nothing. It is meant for Microcosm's Modal runner to run in the
+container after a build.
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from importlib.metadata import version
+from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from microcosm_emitter.compatibility import (
@@ -95,6 +102,15 @@ TELEMETRY_TOKEN_UNEXPECTED_FAILURE: Final = (
     # A message, not a secret.
     "No telemetry token was obtained: an unexpected {error_type} occurred. Its "  # noqa: S105
     "details are not printed, because they can contain the credential."
+)
+#: Exit codes of `status` other than 0 and argparse's 2, each with one line
+#: for standard error: no file exists at the path it reads (8), or the file
+#: cannot be read as an event queue file (9), with the line its ``Problem``
+#: gives. Nothing reaches standard output.
+EXIT_NO_EVENT_QUEUE_FILE: Final = 8
+EXIT_UNUSABLE_EVENT_QUEUE_FILE: Final = 9
+NO_EVENT_QUEUE_FILE_MESSAGE: Final = (
+    "No event queue file exists at {path}; nothing was read."
 )
 
 
@@ -207,13 +223,41 @@ def telemetry_token(arguments: argparse.Namespace) -> int:
     return 0
 
 
+def status(arguments: argparse.Namespace) -> int:
+    """Print each run in the event queue file as JSON, changing nothing.
+
+    A missing file exits 8, and a file that cannot be read as an event queue
+    file exits 9, each with one line on standard error naming the path.
+    """
+    # Imported when the command runs, not with the CLI: the other commands
+    # load no database code.
+    from microcosm_emitter.telemetry.service.run_status import (
+        MissingEventQueueFileError,
+        UnusableEventQueueFileError,
+        event_queue_file,
+        read_run_statuses,
+    )
+
+    path = event_queue_file(arguments.event_queue_file)
+    try:
+        runs = read_run_statuses(path)
+    except MissingEventQueueFileError:
+        print(NO_EVENT_QUEUE_FILE_MESSAGE.format(path=path), file=sys.stderr)
+        return EXIT_NO_EVENT_QUEUE_FILE
+    except UnusableEventQueueFileError as error:
+        print(error.message(path), file=sys.stderr)
+        return EXIT_UNUSABLE_EVENT_QUEUE_FILE
+    print(json.dumps({"runs": runs}))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one `microcosm-emitter` command and return its exit code.
 
     ``argv`` defaults to ``sys.argv[1:]``. ``host`` hands the remaining arguments
     to the host's own parser; ``version`` prints ``version_report()`` as JSON;
-    and an unexpected error in ``telemetry-token`` exits 7, naming only the
-    error's type.
+    an unexpected error in ``telemetry-token`` exits 7, naming only the
+    error's type; and ``status`` prints the event queue file's runs as JSON.
     """
     arguments = sys.argv[1:] if argv is None else list(argv)
     parser = argparse.ArgumentParser(prog="microcosm-emitter", description=__doc__)
@@ -241,6 +285,26 @@ def main(argv: list[str] | None = None) -> int:
         help="How long the token should last; the collector may grant less.",
     )
     _add_development_collector_url(token_parser)
+    status_parser = commands.add_parser(
+        "status",
+        help="Print each run in an emitter's event queue file, with its upload "
+        "state, the reason and how many of its events the file still holds, as "
+        "JSON. Reads the file read-only: delivers, prunes and changes nothing.",
+        description="Print each run in an emitter's event queue file as JSON, "
+        "reading the file read-only. Exits 8 when no file exists at the path, "
+        "and 9 when the file cannot be read as an event queue file.",
+    )
+    status_parser.add_argument(
+        "--event-queue-file",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="The event queue file to read. Without it, the default path for "
+        "this process's environment: $XDG_CACHE_HOME/microcosm/telemetry/"
+        "events.sqlite3, or ~/.cache/microcosm/telemetry/events.sqlite3 when "
+        "XDG_CACHE_HOME is unset or blank. That is a build's file only when the "
+        "build passed its emitter no path and ran with the same environment.",
+    )
     if arguments[:1] == ["host"]:
         # The host parses its own options.
         from microcosm_emitter.host.__main__ import main as host_main
@@ -260,6 +324,8 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return EXIT_UNEXPECTED_FAILURE
+    if parsed.command == "status":
+        return status(parsed)
     print(json.dumps(version_report()))
     return 0
 

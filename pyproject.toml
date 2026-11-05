@@ -146,7 +146,8 @@ known-first-party = ["microcosm_emitter", "microcosm_emitter_interface"]
 # points (the service packages) import their module's implementation only when
 # create_module runs, the Hub client's HfApi and CommitOperationAdd are
 # imported only by the functions in huggingface/service/hub.py that build them,
-# and the CLI imports the host's entry point only for `microcosm-emitter host`.
+# and the CLI imports the host's entry point only for `microcosm-emitter host`
+# and the event queue file reader only for `microcosm-emitter status`.
 # Ruff's PLC0415 accepts in-function imports of these without a suppression. A
 # module belongs here only if no application module imports it at module level.
 banned-module-level-imports = [
@@ -155,6 +156,7 @@ banned-module-level-imports = [
     "microcosm_emitter.host.__main__",
     "microcosm_emitter.huggingface.service.module",
     "microcosm_emitter.telemetry.service.module",
+    "microcosm_emitter.telemetry.service.run_status",
 ]
 
 [tool.ruff.lint.flake8-type-checking]
