@@ -156,9 +156,10 @@ class ReleaseCaller:
 type ReleaseChangePolicy = Callable[[ReleaseChange, ReleaseCaller], str | None]
 
 
-# A ReleaseChangePolicy, which is called with the change and its caller; this
-# one allows every change, so it reads neither.
-def allow_every_change(change: ReleaseChange, caller: ReleaseCaller) -> str | None:  # noqa: ARG001
+# A ReleaseChangePolicy, which the module calls with the change and its caller
+# by position. This one allows every change and reads neither, so their names
+# start with an underscore.
+def allow_every_change(_change: ReleaseChange, _caller: ReleaseCaller) -> str | None:
     """Allow every change by returning ``None``: the default ``ReleaseChangePolicy``.
 
     It stays the default until who may change releases is decided.

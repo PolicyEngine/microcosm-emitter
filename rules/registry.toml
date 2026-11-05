@@ -781,10 +781,10 @@ name = "noqa-comments"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 [rule.baseline]
 file = "rules/baselines/noqa-comments.txt"
-count = 140
+count = 112
 [rule.downgrade]
 reason = "The rule starts ratcheted with the 140 inline # noqa comments the Ruff fixes kept, each with its reason, rather than enforced at zero."
 issue = 74
@@ -813,7 +813,7 @@ name = "file-length"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 [rule.proof]
 # Files at their limit (below) pass, and files one line over it (above) fail.
 below_fixture = "scripts/rules/tests/fixtures/file_length/good_files.toml"
@@ -871,7 +871,7 @@ name = "locked-installs"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 [[rule.ci]]
 workflow = ".github/workflows/ci.yml"
 job = "quality"
@@ -899,7 +899,7 @@ name = "locked-installs"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 [rule.proof]
 bad_fixture = "scripts/rules/tests/fixtures/locked_installs/install_bad"
 good_fixture = "scripts/rules/tests/fixtures/locked_installs/install_good"
@@ -922,7 +922,7 @@ removal = "scripts/rules needs a package beyond the standard library"
 
 [[rule.exception]]
 path = ".github/workflows/pr.yaml"
-match = "uv run --no-project python scripts/run_quality_guards.py"
+match = "uv run --no-project python -m scripts.run_quality_guards"
 reason = "The quality guards are the rules tool, which uses only the standard library, so they run without installing the project."
 removal = "scripts/rules needs a package beyond the standard library"
 
@@ -989,7 +989,7 @@ name = "locked-installs"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 [rule.proof]
 bad_fixture = "scripts/rules/tests/fixtures/locked_installs/test_bad"
 good_fixture = "scripts/rules/tests/fixtures/locked_installs/test_good"
@@ -1066,7 +1066,7 @@ name = "uv-version"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 [rule.proof]
 bad_fixture = "scripts/rules/tests/fixtures/uv_version/bad"
 good_fixture = "scripts/rules/tests/fixtures/uv_version/good"
@@ -1105,7 +1105,7 @@ name = "ci-scripts"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 [rule.proof]
 bad_fixture = "scripts/rules/tests/fixtures/ci_scripts/multiline_bad"
 good_fixture = "scripts/rules/tests/fixtures/ci_scripts/multiline_good"
@@ -1129,7 +1129,7 @@ name = "ci-scripts"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 [rule.proof]
 bad_fixture = "scripts/rules/tests/fixtures/ci_scripts/untested_bad"
 good_fixture = "scripts/rules/tests/fixtures/ci_scripts/untested_good"
@@ -1153,7 +1153,7 @@ name = "ci-scripts"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 [rule.proof]
 bad_fixture = "scripts/rules/tests/fixtures/ci_scripts/shellcheck/bad_script.sh"
 good_fixture = "scripts/rules/tests/fixtures/ci_scripts/shellcheck/good_script.sh"
@@ -1271,7 +1271,7 @@ name = "rules-registry"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 
 [[rule]]
 id = "emitter.agents.adapters-point-to-agents-md"
@@ -1288,7 +1288,7 @@ name = "rules-registry"
 [[rule.ci]]
 workflow = ".github/workflows/pr.yaml"
 job = "rules"
-invocation = "run_quality_guards.py"
+invocation = "scripts.run_quality_guards"
 [rule.proof]
 bad_fixture = "scripts/rules/tests/fixtures/adapters/bad_CLAUDE.md"
 good_fixture = "scripts/rules/tests/fixtures/adapters/good_CLAUDE.md"

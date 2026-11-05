@@ -46,8 +46,7 @@ def _decode_response(response: bytearray) -> JsonObject | None:
     result = json.loads(bytes(response).removesuffix(DELIMITER))
     if not isinstance(result, dict):
         error_message = "service rejected the request"
-        # The caller reports the exception's type name, so it stays ValueError.
-        raise ValueError(error_message)  # noqa: TRY004
+        raise TypeError(error_message)
     return result
 
 
@@ -125,16 +124,18 @@ class SocketClient:
             raise LocalServiceError(error_message)
         return response
 
-    def send(self, message: JsonObject) -> None:
-        """Send ``message`` to the host's only module and wait for its acknowledgement.
+    def send(self, message: JsonObject, *, module: str | None = None) -> None:
+        """Send ``message`` to ``module`` and wait for its acknowledgement.
 
-        Raises ``LocalServiceError`` when the client is closed or the host refuses
-        the message.
+        Without ``module`` the host's only module receives it. Raises
+        ``LocalServiceError`` when the client is closed or the host refuses the
+        message.
         """
         if self.closed:
             error_message = "client is closed"
             raise LocalServiceError(error_message)
-        self._request({"action": "message", "message": message})
+        routing = {} if module is None else {"module": module}
+        self._request({"action": "message", **routing, "message": message})
 
     def close(self) -> None:
         """Ask the host to stop; the client counts as closed even if that fails."""
@@ -159,14 +160,7 @@ class ModuleClient:
         Raises ``LocalServiceError`` when the shared client is closed or the host
         refuses the message.
         """
-        if self.client.closed:
-            error_message = "client is closed"
-            raise LocalServiceError(error_message)
-        # ModuleClient, defined beside SocketClient in this file, sends through
-        # SocketClient's private request method with its module's name.
-        self.client._request(  # noqa: SLF001
-            {"action": "message", "module": self.name, "message": message}
-        )
+        self.client.send(message, module=self.name)
 
     def request(
         self, message: JsonObject, *, timeout: float | None = None

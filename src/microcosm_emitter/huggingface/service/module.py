@@ -16,7 +16,7 @@ import getpass
 import os
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 from microcosm_emitter.core.auth import CollectorSession, huggingface_token
 from microcosm_emitter.core.collector_origin import (
@@ -24,6 +24,7 @@ from microcosm_emitter.core.collector_origin import (
     configured_collector_origin,
 )
 from microcosm_emitter.host.constants import TICK_SECONDS
+from microcosm_emitter.host.contracts import ServiceModule
 from microcosm_emitter.huggingface.service.delivery import (
     CREDENTIAL_MISSING,
     DATASET_BUNDLE,
@@ -124,7 +125,7 @@ def _user_name() -> str:
         return str(os.getuid())
 
 
-class HuggingFaceModule:
+class HuggingFaceModule(ServiceModule):
     """Queue hand-overs on request; commit them on worker threads.
 
     ``background_workers`` false runs every delivery on the host's ``tick``
@@ -166,6 +167,7 @@ class HuggingFaceModule:
         self.workers: dict[str, DeliveryWorker] = {}
         self._closed = False
 
+    @override
     def initialize(self) -> None:
         """Open the hand-over queue, set up delivery and start any background workers.
 
@@ -264,7 +266,8 @@ class HuggingFaceModule:
 
     # The ServiceModule protocol fixes this signature; the host calls it with
     # each message, which this module refuses without reading.
-    def handle_message(self, message: JsonObject) -> None:  # noqa: ARG002
+    @override
+    def handle_message(self, message: JsonObject) -> None:
         """Raise ``ValueError``: Hugging Face hand-overs are queries with receipts."""
         error_message = "Hugging Face hand-overs are queries with receipts."
         raise ValueError(error_message)
@@ -543,7 +546,8 @@ class HuggingFaceModule:
 
     # The ServiceModule protocol fixes this signature; the host passes the
     # current time, which this module does not need.
-    def tick(self, now: float) -> None:  # noqa: ARG002
+    @override
+    def tick(self, now: float) -> None:
         """Run one delivery cycle on the host's thread; an error prints a warning.
 
         With background workers it commits run files only; without them it runs
@@ -572,9 +576,11 @@ class HuggingFaceModule:
             except Exception:  # noqa: BLE001
                 self._collector_error()
 
+    @override
     def parent_exited(self) -> None:
         """Queued hand-overs stay eligible for the next emitter host."""
 
+    @override
     def close(self, deadline: float) -> None:
         """Commit pending run files once more, then stop by ``deadline``.
 

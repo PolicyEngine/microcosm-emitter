@@ -8,14 +8,17 @@ from microcosm_emitter.core.models import SpoolModel
 _MISSING_CONNECTION_ERROR = (
     "telemetry spool migrations require a programmatically supplied connection"
 )
+_CONNECTION_TYPE_ERROR = "telemetry spool migrations require a SQLAlchemy Connection"
 
 
 def run_migrations() -> None:
     """Run migrations on the connection supplied by the emitter service."""
     connection = context.config.attributes.get("connection")
-    if not isinstance(connection, Connection):
+    if connection is None:
         # Alembic ran without the emitter's connection: a missing setting.
-        raise RuntimeError(_MISSING_CONNECTION_ERROR)  # noqa: TRY004
+        raise RuntimeError(_MISSING_CONNECTION_ERROR)
+    if not isinstance(connection, Connection):
+        raise TypeError(_CONNECTION_TYPE_ERROR)
     context.configure(
         connection=connection,
         target_metadata=SpoolModel.metadata,

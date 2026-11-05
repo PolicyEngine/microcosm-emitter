@@ -47,8 +47,9 @@ COLLECTOR_TOKEN_EXPIRES_AT_VARIABLE: Final = "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_
 COLLECTOR_TOKEN_ORIGIN_VARIABLE: Final = "MICROCOSM_COLLECTOR_ORIGIN"  # noqa: S105
 
 LOOPBACK_HOSTS: Final = frozenset({"localhost", "127.0.0.1", "::1"})
-# A URL path, not a secret.
-TOKEN_EXCHANGE_PATH: Final = "/v1/auth/huggingface/exchange"  # noqa: S105
+# Where exchange_huggingface_credential sends a Hugging Face credential, for a
+# collector token.
+CREDENTIAL_EXCHANGE_PATH: Final = "/v1/auth/huggingface/exchange"
 TELEMETRY_SCOPE: Final = "telemetry:write"
 RUN_REGISTRATION_PATH: Final = "/v1/runs"
 RUN_EVENTS_PATH_TEMPLATE: Final = "/v1/runs/{run_id}/events"
@@ -127,25 +128,24 @@ COLLECTOR_RESPONSE_TOO_LARGE_ERROR: Final = "collector response exceeds 1 MiB"
 UNSENDABLE_CREDENTIAL_ERROR: Final = (
     "the credential contains characters that cannot be sent as a bearer token"
 )
+# The given-token errors name the variables, from the constants above, and
+# never their values.
 GIVEN_TOKEN_VARIABLES_ERROR: Final = (
-    # An error message, not a secret.
-    "MICROCOSM_COLLECTOR_TOKEN, MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT and "  # noqa: S105
-    "MICROCOSM_COLLECTOR_ORIGIN must be set together"
+    f"{COLLECTOR_TOKEN_VARIABLE}, {COLLECTOR_TOKEN_EXPIRES_AT_VARIABLE} and "
+    f"{COLLECTOR_TOKEN_ORIGIN_VARIABLE} must be set together"
 )
 GIVEN_TOKEN_VALUE_ERROR: Final = (
-    # An error message, not a secret.
-    "MICROCOSM_COLLECTOR_TOKEN must be visible ASCII characters, without spaces "  # noqa: S105
+    f"{COLLECTOR_TOKEN_VARIABLE} must be visible ASCII characters, without spaces "
     "or line breaks"
 )
 GIVEN_TOKEN_EXPIRY_ERROR: Final = (
-    # An error message, not a secret.
-    "MICROCOSM_COLLECTOR_TOKEN_EXPIRES_AT must be an ISO 8601 time with a time zone"  # noqa: S105
+    f"{COLLECTOR_TOKEN_EXPIRES_AT_VARIABLE} must be an ISO 8601 time with a time zone"
 )
 GIVEN_TOKEN_ORIGIN_ERROR: Final = (
-    # An error message, not a secret.
-    "MICROCOSM_COLLECTOR_ORIGIN is not the collector origin this emitter's module "  # noqa: S105
-    "settings resolve (without a `collector_origin` or `development_collector_url` "
-    "setting, the origin that `microcosm-emitter version` prints)"
+    f"{COLLECTOR_TOKEN_ORIGIN_VARIABLE} is not the collector origin this emitter's "
+    "module settings resolve (without a `collector_origin` or "
+    "`development_collector_url` setting, the origin that `microcosm-emitter "
+    "version` prints)"
 )
 # Printed by the telemetry or Orrery module, whichever the host starts first:
 # the host itself prints only a fixed startup failure, and exits.

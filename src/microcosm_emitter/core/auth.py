@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from http import HTTPStatus
 from http.client import HTTPException
-from typing import IO, TYPE_CHECKING, Any, Literal, NamedTuple
+from typing import IO, TYPE_CHECKING, Any, Literal, NamedTuple, override
 from urllib.parse import urlsplit
 
 from huggingface_hub import get_token
@@ -32,6 +32,7 @@ from microcosm_emitter.core.constants import (
     COLLECTOR_TOKEN_VARIABLE,
     COLLECTOR_URL_HTTPS_ERROR,
     COLLECTOR_URL_ORIGIN_ERROR,
+    CREDENTIAL_EXCHANGE_PATH,
     DEVELOPMENT_COLLECTOR_LOOPBACK_ERROR,
     GIVEN_TOKEN_EXPIRY_ERROR,
     GIVEN_TOKEN_ORIGIN_ERROR,
@@ -44,7 +45,6 @@ from microcosm_emitter.core.constants import (
     MAX_HTTP_RESPONSE_BYTES,
     MINIMUM_TOKEN_LIFETIME_SECONDS,
     TELEMETRY_SCOPE,
-    TOKEN_EXCHANGE_PATH,
     TOKEN_REFRESH_MARGIN_SECONDS,
     UNSENDABLE_CREDENTIAL_ERROR,
 )
@@ -74,18 +74,18 @@ NETWORK_FAILURES = (OSError, TimeoutError, HTTPException)
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Keep bearer credentials on the explicitly configured origin."""
 
-    # HTTPRedirectHandler.redirect_request fixes these six positional
-    # parameters, and urllib passes each of them by position.
-    def redirect_request(  # noqa: PLR0913, PLR0917
+    # HTTPRedirectHandler.redirect_request fixes these six parameters, which
+    # urllib passes by position; this override refuses every redirect, so it
+    # reads none of them.
+    @override
+    def redirect_request(
         self,
-        # urllib calls this override of HTTPRedirectHandler.redirect_request with
-        # these six arguments; it refuses every redirect, so it reads none of them.
-        req: urllib.request.Request,  # noqa: ARG002
-        fp: IO[bytes],  # noqa: ARG002
-        code: int,  # noqa: ARG002
-        msg: str,  # noqa: ARG002
-        headers: email.message.Message,  # noqa: ARG002
-        newurl: str,  # noqa: ARG002
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: email.message.Message,
+        newurl: str,
     ) -> urllib.request.Request | None:
         return None
 
@@ -352,7 +352,7 @@ def exchange_huggingface_credential(
         body["lifetime_seconds"] = lifetime_seconds
     try:
         status, answer = (post or _http_post)(
-            origin + TOKEN_EXCHANGE_PATH, body, hugging_face_token
+            origin + CREDENTIAL_EXCHANGE_PATH, body, hugging_face_token
         )
     except NETWORK_FAILURES:
         return ExchangeFailure("unavailable")

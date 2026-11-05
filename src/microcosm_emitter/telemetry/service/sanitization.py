@@ -54,9 +54,11 @@ def sanitize_json(value: object, *, depth: int = 0) -> JsonValue:
     return _sanitize_scalar(value)
 
 
-def _sanitize_mapping(value: Mapping[object, object], *, depth: int) -> JsonValue:
+def _sanitize_mapping(
+    value: Mapping[object, object], *, depth: int
+) -> dict[str, JsonValue]:
     """Redact the values of sensitive keys and sanitize the others, one level down."""
-    result = {}
+    result: dict[str, JsonValue] = {}
     for key, item in list(value.items())[:MAX_TELEMETRY_COLLECTION_ITEMS]:
         name = str(key)
         if any(part in name.lower() for part in _SENSITIVE_KEY_PARTS):
@@ -84,12 +86,9 @@ def _sanitize_scalar(value: object) -> JsonValue:
 
 def sanitize_details(value: Mapping[str, Any]) -> dict[str, Any]:
     """Return a redacted details object within the wire-size limit."""
-    sanitized = sanitize_json(value)
-    # An invariant, not a caller's type error: sanitize_json returns a dict for
-    # every mapping, so this raises only if that changes. AssertionError, as the
-    # assert it replaces raised.
-    if not isinstance(sanitized, dict):
-        raise AssertionError  # noqa: TRY004
+    # The same as sanitize_json(value): at depth 0 the depth limit does not
+    # apply, so a mapping always gives a dict.
+    sanitized = _sanitize_mapping(value, depth=0)
     if (
         len(json.dumps(sanitized, separators=(",", ":")).encode())
         <= MAX_TELEMETRY_DETAILS_BYTES

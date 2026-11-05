@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 from sqlalchemy import (
     Float,
@@ -30,24 +30,26 @@ class JsonObjectText(TypeDecorator[dict[str, Any]]):
     impl = Text
     cache_ok = True
 
+    # TypeDecorator.process_bind_param fixes the dialect parameter; the JSON text
+    # is the same for every dialect.
+    @override
     def process_bind_param(
         self,
         value: dict[str, Any] | None,
-        # SQLAlchemy's TypeDecorator calls this override with the dialect; the
-        # JSON text is the same for every dialect.
-        dialect: Dialect,  # noqa: ARG002
+        dialect: Dialect,
     ) -> str | None:
         """Serialize ``value`` as compact, key-sorted JSON text, or keep ``None``."""
         if value is None:
             return None
         return _serialize_json_object(value)
 
+    # TypeDecorator.process_result_value fixes the dialect parameter; the JSON
+    # text is decoded the same way for every dialect.
+    @override
     def process_result_value(
         self,
         value: str | None,
-        # SQLAlchemy's TypeDecorator calls this override with the dialect; the
-        # JSON text is decoded the same way for every dialect.
-        dialect: Dialect,  # noqa: ARG002
+        dialect: Dialect,
     ) -> dict[str, Any] | None:
         """Decode the stored JSON text, or keep ``None``.
 
