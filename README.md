@@ -46,17 +46,17 @@ The queue upgrades the existing `20261007_01` Alembic revision to `20261008_02`,
 
 ## Heartbeat readings, sleeps and stage spans
 
-Each heartbeat, every 30 seconds by default (`heartbeat_seconds`), carries a reading of the build and its machine as `details.reading`:
+Each heartbeat the service sends, every 30 seconds by default (`heartbeat_seconds`), carries a reading of the build and its machine as `details.reading` (a heartbeat a build sends itself through `emit` carries none):
 
 - `interval_seconds` and `late_seconds`: the awake seconds since the previous reading, and how late this one came.
-- `stages` and `progress`: the open stages, outermost first, and the latest progress of the heartbeat's stage or an open one, with its `outer` counter and `reported_at` time.
+- `stages` and `progress`: the open stages, outermost first, and the latest progress, from `progress` or `emit`. It is shown while its own stage is the heartbeat's stage or open, or while the stage that was innermost when it was reported is open, so graph-node progress inside a stage counts. It has its `outer` counter and `reported_at` time; `done` and `total` appear only as numbers, and `unit` is cut to 200 characters.
 - `process_tree`: the build and every descendant process.
   - `processes`.
   - `memory_bytes`: physical footprint on macOS (RSS for a process whose footprint can't be read), RSS on Linux.
   - `memory_peak_bytes` and `interval_memory_peak_bytes`, from the samples taken every second.
   - `cpu_user_cores` and `cpu_system_cores`: cores in use over the interval's awake time.
   - `disk_read_bytes` and `disk_written_bytes`: bytes during the interval.
-  - A process that exits keeps its CPU and disk totals; one that starts and exits between two samples is not counted.
+  - A process that exits keeps its CPU and disk totals; one that starts and exits between two samples is not counted. Processes are told apart as psutil does, by their ID and their start time since boot, so a wall-clock step doesn't count them again.
 - `machine`: available memory; on macOS, compressed memory and the memory pressure level; on Linux, the pressure-stall shares (from the cgroup when it has them, otherwise from `/proc/pressure/memory`), bytes swapped in and out, and the cgroup's memory and limit. Also swap used and in all, the whole machine's CPU busy share, the one-minute load average, whether it runs on battery power, and the free space on the build's working volume. A value that can't be read is `null`. macOS's page-in and page-out counters count every kind of paging, so they are not reported as swap.
 
 On every tick the service compares a clock that stops while the machine sleeps with one that keeps running: `CLOCK_UPTIME_RAW` against `CLOCK_MONOTONIC` on macOS, and `CLOCK_MONOTONIC` against `CLOCK_BOOTTIME` on Linux. A difference of 5 seconds or more is a sleep. The service then appends a heartbeat at once, with `details.sleep = {started_at, ended_at, seconds}`, accurate to about one tick, and the next heartbeat is due a full interval later.
@@ -73,7 +73,7 @@ Every stage the service sees start, from `stage`, `transition_stage` or `emit`, 
 
 - **Start:** gets `details.stage_span = {parent_stage_id, occurrence}`.
 - **End:** closes the innermost open stage of that ID. It first ends the stages opened inside it, with the same status and `closed_by: "enclosing_stage_ended"`. It adds `awake_seconds`, `asleep_seconds` and `closed_by`, which is `null` when the build ended the stage.
-- **Closed by the service:** moving to another transition stage ends the last one with `next_stage_started`, or `other_stage_updated` when the new event is not a start. When the run completes, is refused or fails (including when the build exits unexpectedly), every open stage ends, innermost first, with `run_completed`, `run_blocked` or `run_failed`. The innermost stage carries a failure's message and details.
+- **Closed by the service:** moving to another transition stage ends the last one with `next_stage_started`, or `other_stage_updated` when the new event is not a start. When the run completes, is refused or fails, whether by `complete`, `block`, `fail`, an `emit` of a run end or an unexpected exit, every open stage ends, innermost first, with `run_completed`, `run_blocked` or `run_failed`. The innermost stage carries a failure's message and details. The transition stage is identified by its occurrence, so a stage of the same ID opened inside it ends first.
 - **Limit:** at most 32 stages are tracked.
 
 Progress may carry an outer counter (`StageProgress.outer`, an `OuterProgress`), recorded as `details.outer`. A build's own details may not use `reading`, `sleep`, `environment`, `stage_span` or `outer`, which the service adds after sanitizing them. When the build's details and these keys together exceed the 8 KiB details limit (measured in compact JSON), the build's part is compacted further, so the service's keys are kept and the whole stays within the limit.

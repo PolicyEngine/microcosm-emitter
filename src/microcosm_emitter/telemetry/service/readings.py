@@ -217,10 +217,12 @@ def reading_details(
 ) -> dict[str, Any]:
     """Return a heartbeat's ``details.reading``.
 
-    ``progress`` is the latest progress the build reported, while its stage is
-    the heartbeat's stage or still open; otherwise None.
+    ``progress`` is the latest progress the build reported, by any request,
+    while its stage is the heartbeat's stage or still open, or while the stage
+    that was innermost when it was reported is still open; otherwise None.
     """
     open_stage_ids = [stage.stage_id for stage in state.open_stages]
+    open_stages = {(stage.stage_id, stage.occurrence) for stage in state.open_stages}
     progress = state.latest_progress
     current = {*open_stage_ids, current_stage(state)}
     return {
@@ -229,7 +231,8 @@ def reading_details(
         "stages": open_stage_ids,
         "progress": (
             progress.as_reading()
-            if progress is not None and progress.stage_id in current
+            if progress is not None
+            and (progress.stage_id in current or progress.within in open_stages)
             else None
         ),
         "process_tree": process_tree,

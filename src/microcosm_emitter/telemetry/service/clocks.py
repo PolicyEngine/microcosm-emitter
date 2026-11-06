@@ -80,13 +80,18 @@ class SystemClocks:
         self._ids = clock_ids(platform)
 
     def read(self) -> ClockReading | None:
-        """Return the current readings, or None on a platform without the clocks."""
+        """Return the current readings, or None when the clocks can't be read.
+
+        That is on a platform without them, or when the system refuses either.
+        """
         if self._ids is None:
             return None
-        awake, total = self._ids
-        return ClockReading(
-            time.clock_gettime(awake), time.clock_gettime(total), datetime.now(UTC)
-        )
+        awake_id, total_id = self._ids
+        try:
+            awake, total = time.clock_gettime(awake_id), time.clock_gettime(total_id)
+        except OSError:
+            return None
+        return ClockReading(awake, total, datetime.now(UTC))
 
 
 class SleepDetector:

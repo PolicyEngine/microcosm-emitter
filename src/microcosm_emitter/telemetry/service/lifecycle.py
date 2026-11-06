@@ -76,6 +76,7 @@ _STATUSES = frozenset(
     {STATUS_STARTED, STATUS_PROGRESS, STATUS_COMPLETED, STATUS_FAILED, STATUS_BLOCKED}
 )
 _STAGE_ENDS = frozenset({STATUS_COMPLETED, STATUS_FAILED})
+_RUN_ENDS = frozenset({STATUS_COMPLETED, STATUS_FAILED, STATUS_BLOCKED})
 
 #: The ``details`` keys only the emitter writes; a build's details may not use
 #: them.
@@ -93,6 +94,12 @@ CLOSED_BY_RUN_BLOCKED: Final = "run_blocked"
 CLOSED_BY_RUN_FAILED: Final = "run_failed"
 _SECONDS_DIGITS: Final = 3
 _MAX_UNIT_CHARS: Final = 200
+#: Each run end's status for the stages it closes, and why it closes them.
+_RUN_END_CLOSURES: Final = {
+    STATUS_COMPLETED: (STATUS_COMPLETED, "run_completed"),
+    STATUS_FAILED: (STATUS_FAILED, "run_failed"),
+    STATUS_BLOCKED: (STATUS_COMPLETED, "run_blocked"),
+}
 
 
 @dataclass(frozen=True)
@@ -107,7 +114,11 @@ class OpenStage:
 
 @dataclass(frozen=True)
 class ProgressRecord:
-    """The latest progress the build reported, as a heartbeat's reading repeats it."""
+    """The latest progress the build reported, as a heartbeat's reading repeats it.
+
+    ``within`` identifies the innermost open stage when it was reported, by
+    stage ID and occurrence, or is None when no stage was open.
+    """
 
     stage_id: str
     done: Any
@@ -115,17 +126,28 @@ class ProgressRecord:
     unit: Any
     outer: Mapping[str, Any] | None
     reported_at: str
+    within: tuple[str, int] | None = None
 
     def as_reading(self) -> dict[str, Any]:
-        """Return the progress as a reading's ``progress``."""
+        """Return the progress as a reading's ``progress``.
+
+        ``done`` and ``total`` are kept only when they are numbers and ``unit``
+        only when it is text, cut to 200 characters, so a reading stays small.
+        """
         return {
             "stage_id": self.stage_id,
-            "done": self.done,
-            "total": self.total,
-            "unit": self.unit,
+            "done": _number(self.done),
+            "total": _number(self.total),
+            "unit": self.unit[:_MAX_UNIT_CHARS] if isinstance(self.unit, str) else None,
             "outer": None if self.outer is None else dict(self.outer),
             "reported_at": self.reported_at,
         }
+
+
+def _number(value: object) -> int | float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value
 
 
 @dataclass(frozen=True)
@@ -133,10 +155,13 @@ class LifecycleState:
     """State corresponding exclusively to events already committed to the queue.
 
     ``open_stages`` lists the open stages, outermost first; ``stage_starts``
-    counts the starts of each stage ID.
+    counts the starts of each stage ID. ``transition_occurrence`` is the
+    transition stage's occurrence among the open stages, or None when it is
+    not tracked.
     """
 
     transition_stage: str | None = None
+    transition_occurrence: int | None = None
     last_stage: str = STAGE_CREATED
     finished: bool = False
     open_stages: tuple[OpenStage, ...] = ()
@@ -393,13 +418,12 @@ class _RequestProcessor:
             raise ValueError(error_message)
 
     def progress(self, request: Mapping[str, Any]) -> None:
-        """Record a progress event, with its outer counter, as the latest progress."""
+        """Record a progress event, with its outer counter."""
         outer = _outer(request.get("outer"))
-        stage_id = _stage_id(request)
-        self.add(
+        event = _event(
             EVENT_TYPE_PROGRESS,
             STATUS_PROGRESS,
-            stage_id,
+            _stage_id(request),
             details={
                 "done": request["done"],
                 "total": request["total"],
@@ -407,21 +431,9 @@ class _RequestProcessor:
                 **_mapping(request.get("details", {})),
             },
         )
-        event = self.events[-1]
         if outer is not None:
             event["details"] = _with_emitter_keys(event["details"], {"outer": outer})
-        details = event["details"]
-        self.state = replace(
-            self.state,
-            latest_progress=ProgressRecord(
-                stage_id,
-                details.get("done"),
-                details.get("total"),
-                details.get("unit"),
-                outer,
-                event["timestamp"],
-            ),
-        )
+        self._append(event, None)
 
     def calibration_progress(self, command: str, request: Mapping[str, Any]) -> None:
         """Record a calibration progress event at ``STAGE_CALIBRATING``.
@@ -450,27 +462,43 @@ class _RequestProcessor:
         stage_id: str | None = None,
         message: str | None = None,
         details: Mapping[str, Any] | None = None,
-    ) -> None:
-        """Record one event; a stage start or end also opens or closes its span."""
+    ) -> dict[str, Any] | None:
+        """Record one event, and return its stage span, if it has one.
+
+        A stage start or end also opens or closes its span, and a run end,
+        however it is sent, first ends every open stage.
+        """
         span = None
         if event_type == EVENT_TYPE_STAGE and isinstance(stage_id, str):
             if status == STATUS_STARTED:
                 span = self._open(stage_id)
             elif status in _STAGE_ENDS:
                 span = self._close(stage_id, status, None)
+                if span is None and stage_id == self.state.transition_stage:
+                    # The transition stage started beyond MAX_OPEN_STAGES.
+                    self.state = replace(self.state, transition_stage=None)
+        elif event_type == EVENT_TYPE_RUN and status in _RUN_ENDS:
+            stage_status, closed_by = _RUN_END_CLOSURES[status]
+            if status == STATUS_FAILED:
+                self.close_all(stage_status, closed_by, message, details)
+            else:
+                self.close_all(stage_status, closed_by)
         self._append(_event(event_type, status, stage_id, message, details), span)
+        return span
 
-    def end_stage(
+    def _end_open_stage(
         self,
-        stage_id: str,
+        stage: OpenStage,
         status: str,
         closed_by: str,
         message: str | None = None,
         details: Mapping[str, Any] | None = None,
     ) -> None:
-        """Record the end of a stage the emitter closes, saying why it closed it."""
-        span = self._close(stage_id, status, closed_by)
-        self._append(_event(EVENT_TYPE_STAGE, status, stage_id, message, details), span)
+        """Record the end of an open stage the emitter closes, and why."""
+        span = self._close(stage.stage_id, status, closed_by, stage.occurrence)
+        self._append(
+            _event(EVENT_TYPE_STAGE, status, stage.stage_id, message, details), span
+        )
 
     def _append(self, event: dict[str, Any], span: Mapping[str, Any] | None) -> None:
         if span is not None:
@@ -479,14 +507,36 @@ class _RequestProcessor:
             )
         self.events.append(event)
         event_type, status = event["event_type"], event["status"]
-        if event_type == EVENT_TYPE_RUN and status in {
-            STATUS_COMPLETED,
-            STATUS_FAILED,
-            STATUS_BLOCKED,
-        }:
-            self.state = replace(self.state, finished=True, transition_stage=None)
+        if event_type == EVENT_TYPE_RUN and status in _RUN_ENDS:
+            self.state = replace(
+                self.state,
+                finished=True,
+                transition_stage=None,
+                transition_occurrence=None,
+            )
         elif event["stage_id"] is not None:
             self.state = replace(self.state, last_stage=event["stage_id"])
+        details = event["details"]
+        if (
+            event_type == EVENT_TYPE_PROGRESS
+            and event["stage_id"] is not None
+            and {"done", "total"} <= details.keys()
+        ):
+            innermost = self.state.open_stages[-1] if self.state.open_stages else None
+            self.state = replace(
+                self.state,
+                latest_progress=ProgressRecord(
+                    event["stage_id"],
+                    details["done"],
+                    details["total"],
+                    details.get("unit"),
+                    details.get("outer"),
+                    event["timestamp"],
+                    None
+                    if innermost is None
+                    else (innermost.stage_id, innermost.occurrence),
+                ),
+            )
 
     def _open(self, stage_id: str) -> dict[str, Any] | None:
         """Open a stage and return its start's span, or None beyond the limit."""
@@ -508,12 +558,18 @@ class _RequestProcessor:
         return {"parent_stage_id": parent, "occurrence": occurrence}
 
     def _close(
-        self, stage_id: str, status: str, closed_by: str | None
+        self,
+        stage_id: str,
+        status: str,
+        closed_by: str | None,
+        occurrence: int | None = None,
     ) -> dict[str, Any] | None:
-        """Close the innermost open stage ``stage_id``; return its end's span.
+        """Close an open stage ``stage_id``; return its end's span.
 
-        The stages opened inside it are ended first, innermost first, with the
-        same status. A stage that isn't open has no span.
+        That is the stage of that ``occurrence``, or without one the innermost
+        open stage of that ID. The stages opened inside it are ended first,
+        innermost first, with the same status. A stage that isn't open has no
+        span.
         """
         open_stages = self.state.open_stages
         position = next(
@@ -521,23 +577,21 @@ class _RequestProcessor:
                 index
                 for index in range(len(open_stages) - 1, -1, -1)
                 if open_stages[index].stage_id == stage_id
+                and occurrence in {None, open_stages[index].occurrence}
             ),
             None,
         )
         if position is None:
             return None
         for nested in reversed(open_stages[position + 1 :]):
-            self.end_stage(nested.stage_id, status, CLOSED_BY_ENCLOSING_STAGE_ENDED)
+            self._end_open_stage(nested, status, CLOSED_BY_ENCLOSING_STAGE_ENDED)
         stage = self.state.open_stages[-1]
-        self.state = replace(
-            self.state,
-            open_stages=self.state.open_stages[:-1],
-            transition_stage=(
-                None
-                if self.state.transition_stage == stage.stage_id
-                else self.state.transition_stage
-            ),
-        )
+        transition = (self.state.transition_stage, self.state.transition_occurrence)
+        self.state = replace(self.state, open_stages=self.state.open_stages[:-1])
+        if transition == (stage.stage_id, stage.occurrence):
+            self.state = replace(
+                self.state, transition_stage=None, transition_occurrence=None
+            )
         return {
             "parent_stage_id": stage.parent_stage_id,
             "occurrence": stage.occurrence,
@@ -564,37 +618,52 @@ class _RequestProcessor:
             error_message = "stage status must be a string"
             raise TypeError(error_message)
         status = SEQUENTIAL_STATUS_MAP.get(source_status, STATUS_PROGRESS)
+        message, details = request.get("message"), request.get("details", {})
         if status == STATUS_STARTED:
             if self.state.transition_stage == stage:
                 status = STATUS_PROGRESS
             else:
                 self.close_stage()
-                self.state = replace(self.state, transition_stage=stage)
+                span = self.add(EVENT_TYPE_STAGE, status, stage, message, details)
+                self.state = replace(
+                    self.state,
+                    transition_stage=stage,
+                    transition_occurrence=None if span is None else span["occurrence"],
+                )
+                return
         elif self.state.transition_stage == stage:
             if status in _STAGE_ENDS:
-                self.state = replace(self.state, transition_stage=None)
+                # The build ends the transition stage itself.
+                self.close_stage(status, message, details, closed_by=None)
+                return
         else:
             self.close_stage(closed_by=CLOSED_BY_OTHER_STAGE_UPDATED)
-        self.add(
-            EVENT_TYPE_STAGE,
-            status,
-            stage,
-            request.get("message"),
-            request.get("details", {}),
-        )
+        self.add(EVENT_TYPE_STAGE, status, stage, message, details)
 
     def close_stage(
         self,
         status: str = STATUS_COMPLETED,
         message: str | None = None,
         details: Mapping[str, Any] | None = None,
-        closed_by: str = CLOSED_BY_NEXT_STAGE_STARTED,
+        closed_by: str | None = CLOSED_BY_NEXT_STAGE_STARTED,
     ) -> None:
-        """End the transition stage, if there is one."""
+        """End the transition stage, if there is one.
+
+        ``closed_by`` is None when the build ended it.
+        """
         stage = self.state.transition_stage
-        if stage is not None:
-            self.end_stage(stage, status, closed_by, message, details)
-            self.state = replace(self.state, transition_stage=None)
+        if stage is None:
+            return
+        occurrence = self.state.transition_occurrence
+        span = (
+            None
+            if occurrence is None
+            else self._close(stage, status, closed_by, occurrence)
+        )
+        self._append(_event(EVENT_TYPE_STAGE, status, stage, message, details), span)
+        self.state = replace(
+            self.state, transition_stage=None, transition_occurrence=None
+        )
 
     def close_all(
         self,
@@ -610,12 +679,17 @@ class _RequestProcessor:
         """
         carried = (message, details)
         for stage in reversed(self.state.open_stages):
-            self.end_stage(stage.stage_id, status, closed_by, *carried)
+            self._end_open_stage(stage, status, closed_by, *carried)
             carried = (None, None)
         if self.state.transition_stage is not None:
             # A transition stage started beyond MAX_OPEN_STAGES is not tracked.
             self.close_stage(status, *carried, closed_by=closed_by)
-        self.state = replace(self.state, open_stages=(), transition_stage=None)
+        self.state = replace(
+            self.state,
+            open_stages=(),
+            transition_stage=None,
+            transition_occurrence=None,
+        )
 
     def fail(self, request: Mapping[str, Any]) -> None:
         failed_stage = (

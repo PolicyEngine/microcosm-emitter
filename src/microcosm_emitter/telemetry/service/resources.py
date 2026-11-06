@@ -64,11 +64,14 @@ class _ProcessSample:
     disk_readable: bool
 
 
-def _still_running(key: tuple[int, float]) -> bool:
-    """Whether the process with this ID and start time still runs."""
-    pid, started = key
+def _still_running(process: psutil.Process) -> bool:
+    """Whether ``process`` still runs under its process ID.
+
+    psutil compares processes by their ID and their start time since boot,
+    which, unlike ``create_time()``, a wall-clock step doesn't move.
+    """
     try:
-        return psutil.Process(pid).create_time() == started
+        return psutil.Process(process.pid) == process
     except (psutil.Error, OSError):
         return False
 
@@ -82,7 +85,9 @@ class ProcessTreeSampler:
     pages, or RSS elsewhere and for a process whose footprint can't be read)
     and its peaks, and each process's own CPU and disk totals. A process that
     exits keeps its last totals, so the tree's CPU and disk totals never fall;
-    one that starts and exits between two samples is not counted.
+    one that starts and exits between two samples is not counted. Processes
+    are told apart as psutil tells them apart, so a wall-clock step or a
+    reused process ID doesn't count one twice.
     """
 
     def __init__(self, parent_pid: int, *, system_platform: str = sys.platform) -> None:
@@ -95,7 +100,9 @@ class ProcessTreeSampler:
         self._memory_peak = 0
         self._interval_memory_peak = 0
         self._disk_readable = False
-        self._live: dict[tuple[int, float], _ProcessTotals] = {}
+        # Each live process by its ID: the psutil process first seen with that
+        # ID, and its latest totals.
+        self._live: dict[int, tuple[psutil.Process, _ProcessTotals]] = {}
         self._exited = _ProcessTotals()
         self._reported: _ProcessTotals | None = None
 
@@ -110,7 +117,7 @@ class ProcessTreeSampler:
         user = 0.0
         system = 0.0
         rss = 0
-        samples: dict[tuple[int, float], _ProcessSample] = {}
+        samples: dict[int, tuple[psutil.Process, _ProcessSample]] = {}
         for process in processes:
             try:
                 cpu = process.cpu_times()
@@ -120,8 +127,9 @@ class ProcessTreeSampler:
                     getattr(cpu, "children_system", 0.0)
                 )
                 rss += int(memory.rss)
-                samples[(process.pid, process.create_time())] = self._process(
-                    process, cpu, int(memory.rss)
+                samples[process.pid] = (
+                    process,
+                    self._process(process, cpu, int(memory.rss)),
                 )
             except (psutil.Error, OSError):
                 continue
@@ -164,29 +172,39 @@ class ProcessTreeSampler:
             disk_readable=True,
         )
 
-    def _record(self, samples: dict[tuple[int, float], _ProcessSample]) -> None:
+    def _record(
+        self, samples: dict[int, tuple[psutil.Process, _ProcessSample]]
+    ) -> None:
         """Adopt a sample's processes, keeping the totals of those that exited."""
-        live = {key: sample.totals for key, sample in samples.items()}
-        for key, totals in self._live.items():
-            if key in live:
+        live: dict[int, tuple[psutil.Process, _ProcessTotals]] = {}
+        for pid, (process, sample) in samples.items():
+            previous = self._live.get(pid)
+            if previous is not None and previous[0] != process:
+                # The ID was reused: the earlier process exited.
+                self._exited += previous[1]
+                previous = None
+            live[pid] = (process if previous is None else previous[0], sample.totals)
+        for pid, (process, totals) in self._live.items():
+            if pid in live:
                 continue
-            if _still_running(key):
+            if _still_running(process):
                 # Running but not read this time: keep its last totals.
-                live[key] = totals
+                live[pid] = (process, totals)
             else:
                 self._exited += totals
         self._live = live
-        self._processes = len(samples)
-        self._memory = sum(sample.memory_bytes for sample in samples.values())
+        readings = [sample for _, sample in samples.values()]
+        self._processes = len(readings)
+        self._memory = sum(sample.memory_bytes for sample in readings)
         self._memory_peak = max(self._memory_peak, self._memory)
         self._interval_memory_peak = max(self._interval_memory_peak, self._memory)
-        self._disk_readable = any(sample.disk_readable for sample in samples.values())
+        self._disk_readable = any(sample.disk_readable for sample in readings)
         if self._reported is None:
             self._reported = self._totals()
 
     def _totals(self) -> _ProcessTotals:
         totals = self._exited
-        for process_totals in self._live.values():
+        for _, process_totals in self._live.values():
             totals += process_totals
         return totals
 
