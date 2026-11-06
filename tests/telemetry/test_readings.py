@@ -386,3 +386,107 @@ class FakeSleepClocks:
 
     def read(self):
         return self.readings.pop(0) if self.readings else None
+
+
+def test_wide_characters_and_long_numbers_keep_a_reading_within_the_limit(module):
+    stage_ids = [f"{index:02d}" + "s" * 190 for index in range(32)]
+    for stage_id in stage_ids:
+        module.handle_message({"command": "stage", "stage_id": stage_id})
+    module.handle_message(
+        {
+            "command": "progress",
+            "stage_id": stage_ids[-1],
+            "done": 10**400,
+            "total": 1.5,
+            "unit": "é" * 2000,
+            "outer": {"done": 1, "total": 2, "unit": "\U0001f600" * 200},
+        }
+    )
+    module.clocks = FakeSleepClocks()
+    module.tick(time.monotonic())
+    module.tick(time.monotonic() + 60)
+    details = heartbeats(module)[-1]["details"]
+    assert len(json.dumps(details, separators=(",", ":")).encode()) <= 8192
+    reading = details["reading"]
+    assert "sleep" in details
+    # Only the outermost stages may be left out, to keep the reading in bounds.
+    assert reading["stages"] == stage_ids[len(stage_ids) - len(reading["stages"]) :]
+    progress = reading["progress"] or {}
+    assert (progress.get("done"), progress.get("total")) == (None, 1.5)
+    assert progress.get("unit", "").startswith("é")
+
+
+def fake_psutil(processes):
+    """Return a psutil stand-in over ``processes``: process ID to its state.
+
+    Each state holds ``start`` (its start time since boot, which psutil uses
+    to tell processes apart), ``user`` CPU seconds and ``disk``, the bytes
+    read so far, or None when reading them fails.
+    """
+
+    class FakeProcess:
+        def __init__(self, pid):
+            self.pid = pid
+            self.start = processes[pid]["start"]
+
+        def __eq__(self, other):
+            return isinstance(other, FakeProcess) and (other.pid, other.start) == (
+                self.pid,
+                self.start,
+            )
+
+        def __hash__(self):
+            return hash((self.pid, self.start))
+
+        def children(self, *, recursive=False):
+            return [FakeProcess(pid) for pid in processes if pid != self.pid]
+
+        def cpu_times(self):
+            return SimpleNamespace(
+                user=processes[self.pid]["user"],
+                system=0.0,
+                children_user=0.0,
+                children_system=0.0,
+            )
+
+        def memory_info(self):
+            return SimpleNamespace(rss=100)
+
+        def io_counters(self):
+            disk = processes[self.pid]["disk"]
+            if disk is None:
+                raise OSError(3, "No such process")
+            return SimpleNamespace(read_bytes=disk, write_bytes=0)
+
+    return SimpleNamespace(Process=FakeProcess, Error=OSError)
+
+
+def test_a_disk_read_that_fails_once_keeps_the_process_disk_totals(monkeypatch):
+    processes = {
+        10: {"start": 1.0, "user": 0.0, "disk": 0},
+        11: {"start": 2.0, "user": 0.0, "disk": 1000},
+    }
+    monkeypatch.setattr(resources_module, "psutil", fake_psutil(processes))
+    sampler = ProcessTreeSampler(10, system_platform="linux")
+    sampler.sample()
+    sampler.tree_reading(30.0)
+    processes[11]["disk"] = None
+    sampler.sample()
+    assert sampler.tree_reading(30.0)["disk_read_bytes"] == 0
+    processes[11]["disk"] = 1100
+    sampler.sample()
+    assert sampler.tree_reading(30.0)["disk_read_bytes"] == 100
+
+
+def test_a_reused_process_id_counts_the_new_process_from_its_start(monkeypatch):
+    processes = {
+        10: {"start": 1.0, "user": 0.0, "disk": 0},
+        11: {"start": 2.0, "user": 100.0, "disk": 0},
+    }
+    monkeypatch.setattr(resources_module, "psutil", fake_psutil(processes))
+    sampler = ProcessTreeSampler(10, system_platform="linux")
+    sampler.sample()
+    sampler.tree_reading(10.0)
+    processes[11] = {"start": 50.0, "user": 5.0, "disk": 0}
+    sampler.sample()
+    assert sampler.tree_reading(10.0)["cpu_user_cores"] == 0.5

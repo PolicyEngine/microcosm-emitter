@@ -561,3 +561,29 @@ def test_an_untracked_transition_stage_ended_by_a_stage_event_ends_once():
         ("export", "started"),
     ]
     assert state.transition_stage == "export"
+
+
+def test_a_run_failure_sent_through_emit_carries_its_message_to_the_innermost_stage():
+    _, events = apply(
+        [
+            (stage("build"), clock(0)),
+            (stage("score"), clock(1)),
+            (
+                emitted_run_end(
+                    "failed",
+                    message="Synthetic failure.",
+                    details={"error_type": "RuntimeError"},
+                ),
+                clock(2),
+            ),
+        ]
+    )
+    score_end, build_end, run_end = events[-3:]
+    assert (score_end["stage_id"], score_end["message"]) == (
+        "score",
+        "Synthetic failure.",
+    )
+    assert score_end["details"]["error_type"] == "RuntimeError"
+    assert (build_end["stage_id"], build_end["message"]) == ("build", None)
+    assert "error_type" not in build_end["details"]
+    assert run_end["message"] == "Synthetic failure."
