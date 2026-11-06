@@ -19,12 +19,18 @@ from microcosm_emitter.core.constants import (
 from microcosm_emitter.host.contracts import JsonObject, ModuleContext
 from microcosm_emitter.telemetry.protocol import UNEXPECTED_PROCESS_EXIT_MESSAGE
 from microcosm_emitter.telemetry.requests import COMMAND_FAIL
+from microcosm_emitter.telemetry.service.clocks import SleepDetector, SystemClocks
 from microcosm_emitter.telemetry.service.collector import CollectorDelivery
+from microcosm_emitter.telemetry.service.environment import machine_environment
 from microcosm_emitter.telemetry.service.lifecycle import (
     LifecycleState,
     heartbeat_event,
     process_request,
     started_event,
+)
+from microcosm_emitter.telemetry.service.readings import (
+    MachineReader,
+    reading_details,
 )
 from microcosm_emitter.telemetry.service.resources import ProcessTreeSampler
 from microcosm_emitter.telemetry.service.spool import EventSpool
@@ -41,6 +47,8 @@ class TelemetryModule:
         self.delivery: CollectorDelivery | None = None
         self._lock = threading.RLock()
         self.lifecycle = LifecycleState()
+        self.clocks = SystemClocks()
+        self.sleep_detector = SleepDetector()
 
     def initialize(self) -> None:
         """Read the settings, open the event queue and record that the run started.
@@ -48,7 +56,8 @@ class TelemetryModule:
         An untrusted collector origin or an unusable given collector token is
         refused before the event queue is opened, and a heartbeat interval that
         is not finite raises ``ValueError``. The run is registered and its
-        started event appended, with a resource sample.
+        started event appended, with a resource sample and the description of
+        the machine.
         """
         self.registration = dict(self.configuration["registration"])
         heartbeat = float(
@@ -58,8 +67,10 @@ class TelemetryModule:
             error_message = "heartbeat interval must be finite"
             raise ValueError(error_message)
         self.heartbeat_seconds = max(MINIMUM_HEARTBEAT_SECONDS, heartbeat)
-        self._next_heartbeat = time.monotonic() + self.heartbeat_seconds
+        self._last_reading_at = time.monotonic()
+        self._next_heartbeat = self._last_reading_at + self.heartbeat_seconds
         self.sampler = ProcessTreeSampler(self.context.parent_pid)
+        self.machine = MachineReader(self.context.parent_pid)
         # Refuse an untrusted origin, or an unusable given collector token,
         # before opening the spool.
         session = shared_session(
@@ -82,7 +93,9 @@ class TelemetryModule:
             self.spool.register(self.registration)
             self.spool.append(
                 self.registration,
-                started_event(self.configuration.get("identity", {})),
+                started_event(
+                    self.configuration.get("identity", {}), machine_environment()
+                ),
                 resources=self.sampler.sample(),
             )
         except Exception:
@@ -95,7 +108,7 @@ class TelemetryModule:
         The lifecycle state changes only once the events are stored.
         """
         with self._lock:
-            state, events = process_request(self.lifecycle, message)
+            state, events = process_request(self.lifecycle, message, self.clocks.read())
             if events:
                 self.spool.append_many(
                     self.registration, events, resources=self.sampler.sample()
@@ -106,18 +119,36 @@ class TelemetryModule:
     def tick(self, now: float) -> None:
         """Do the periodic work: a heartbeat, pruning and one delivery pass.
 
-        ``now`` is a ``time.monotonic()`` reading. The heartbeat is appended only
-        when it is due and the run has not finished, and pruning runs only when
-        it is due.
+        ``now`` is a ``time.monotonic()`` reading, which stops while the
+        machine sleeps. Each tick samples the build's processes and checks the
+        clocks for a sleep. A heartbeat, with a reading, is appended when it is
+        due, or at once after a sleep with the sleep too, while the run has not
+        finished; the next one is then due a full interval later. Pruning runs
+        only when it is due.
         """
         with self._lock:
             resources = self.sampler.sample()
-            if not self.lifecycle.finished and now >= self._next_heartbeat:
+            sleep = self.sleep_detector.observe(self.clocks.read())
+            due = now >= self._next_heartbeat
+            if not self.lifecycle.finished and (due or sleep is not None):
+                interval = max(0.0, now - self._last_reading_at)
+                reading = reading_details(
+                    self.lifecycle,
+                    interval_seconds=interval,
+                    late_seconds=max(0.0, now - self._next_heartbeat),
+                    process_tree=self.sampler.tree_reading(interval),
+                    machine=self.machine.reading(),
+                )
                 self.spool.append(
                     self.registration,
-                    heartbeat_event(self.lifecycle),
+                    heartbeat_event(
+                        self.lifecycle,
+                        reading,
+                        None if sleep is None else sleep.as_details(),
+                    ),
                     resources=resources,
                 )
+                self._last_reading_at = now
                 self._next_heartbeat = now + self.heartbeat_seconds
         # Network I/O must never hold the lock used by local message handling.
         self.spool.prune_if_due()

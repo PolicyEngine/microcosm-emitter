@@ -34,6 +34,7 @@ from microcosm_emitter_interface.telemetry import (
     BuildRefused,
     CalibrationProgress,
     EventRecord,
+    OuterProgress,
     StageEvent,
     StageProgress,
     StageTransition,
@@ -216,10 +217,15 @@ class LocalTelemetryEmitter:
         done: int,
         total: int,
         unit: str | None = None,
+        outer: OuterProgress | None = None,
         **details: object,
     ) -> None:
-        """Send progress for ``stage_id``: ``done`` of ``total``, in ``unit``."""
-        self._request(StageProgress(stage_id, done, total, unit, details))
+        """Send progress for ``stage_id``: ``done`` of ``total``, in ``unit``.
+
+        ``outer`` is the counter one level above, such as the pass a batch
+        belongs to.
+        """
+        self._request(StageProgress(stage_id, done, total, unit, details, outer))
 
     def calibration_progress(self, event: Mapping[str, Any]) -> None:
         """Send one calibration progress ``event``.

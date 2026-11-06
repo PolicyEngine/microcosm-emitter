@@ -75,9 +75,10 @@ def telemetry_smoke() -> None:
     spool = EventSpool(path)
     try:
         assert not spool.has_deliverable()
+        # Completing the run ends the stage the build left open.
         assert [
             event["sequence"] for event in spool.batch(run.run_id, run.producer_id)
-        ] == [1, 2, 3]
+        ] == [1, 2, 3, 4]
     finally:
         spool.close()
 

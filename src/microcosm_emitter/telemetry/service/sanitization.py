@@ -82,28 +82,58 @@ def _sanitize_scalar(value: object) -> JsonValue:
     return sanitize_text(str(value))
 
 
-def sanitize_details(value: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a redacted details object within the wire-size limit."""
+def details_size(details: Mapping[str, Any]) -> int:
+    """Return the size of ``details`` in compact JSON, as the limit measures it."""
+    return len(json.dumps(details, separators=(",", ":")).encode())
+
+
+def _json_text_bytes(text: str) -> int:
+    """Return the bytes ``text`` takes as a JSON string, without its quotes."""
+    return details_size({"": text}) - len('{"":""}')
+
+
+def bounded_text(value: object, max_bytes: int) -> str | None:
+    """Return text cut to at most ``max_bytes`` of JSON, or None for non-text.
+
+    JSON escapes every character outside ASCII, so a byte bound, unlike a
+    character bound, also bounds wide characters.
+    """
+    if not isinstance(value, str):
+        return None
+    if _json_text_bytes(value) <= max_bytes:
+        return value
+    shortest, longest = 0, len(value)
+    while shortest < longest:
+        middle = (shortest + longest + 1) // 2
+        if _json_text_bytes(value[:middle]) <= max_bytes:
+            shortest = middle
+        else:
+            longest = middle - 1
+    return value[:shortest]
+
+
+def sanitize_details(
+    value: Mapping[str, Any], *, limit: int = MAX_TELEMETRY_DETAILS_BYTES
+) -> dict[str, Any]:
+    """Return a redacted details object within ``limit`` bytes of compact JSON.
+
+    The limit is the wire-size limit unless the emitter must leave room for
+    its own keys.
+    """
     sanitized = sanitize_json(value)
     # An invariant, not a caller's type error: sanitize_json returns a dict for
     # every mapping, so this raises only if that changes. AssertionError, as the
     # assert it replaces raised.
     if not isinstance(sanitized, dict):
         raise AssertionError  # noqa: TRY004
-    if (
-        len(json.dumps(sanitized, separators=(",", ":")).encode())
-        <= MAX_TELEMETRY_DETAILS_BYTES
-    ):
+    if details_size(sanitized) <= limit:
         return sanitized
     compact: dict[str, Any] = {_DETAILS_TRUNCATED_KEY: True}
     for key, item in sanitized.items():
         if not (isinstance(item, (str, int, float, bool)) or item is None):
             continue
         candidate = {**compact, key: item}
-        if (
-            len(json.dumps(candidate, separators=(",", ":")).encode())
-            > MAX_TELEMETRY_DETAILS_BYTES
-        ):
+        if details_size(candidate) > limit:
             break
         compact[key] = item
     return compact

@@ -320,5 +320,14 @@ def test_supplied_failure_codes_survive_collector_storage_and_documents(  # noqa
         ("hf_download", "failed"),
         ("failed", "failed"),
     ]
-    assert all(event["details"] == expected for event in document["events"][-2:])
+    stage_end, run_end = document["events"][-2:]
+    # The stage's end also carries its span, which says the run's failure
+    # closed it.
+    assert (stage_end["details"].get("stage_span") or {}).get("closed_by") == (
+        "run_failed"
+    )
+    assert {
+        key: value for key, value in stage_end["details"].items() if key != "stage_span"
+    } == expected
+    assert run_end["details"] == expected
     assert "hf_private_error" not in response.text

@@ -135,7 +135,8 @@ def test_event_and_stage_requests_are_sanitized_in_service(module):
     assert details["HF_TOKEN"] == "[redacted]"
     assert details["traceback"] == "[redacted]"
     assert details["telemetry_details_truncated"]
-    assert len(json.dumps(details).encode()) <= 8192
+    # The limit is measured in compact JSON, as the service measures it.
+    assert len(json.dumps(details, separators=(",", ":")).encode()) <= 8192
     module.handle_message(
         {
             "command": "emit",
