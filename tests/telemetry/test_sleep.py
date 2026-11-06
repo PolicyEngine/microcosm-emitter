@@ -54,11 +54,21 @@ def test_other_platforms_have_no_sleep_clocks():
     assert clock_ids("win32") is None
 
 
-def test_the_system_clocks_read_the_running_clock_at_or_ahead_of_the_awake_one():
-    reading = SystemClocks().read()
-    assert reading is not None
-    assert reading.total >= reading.awake
-    assert reading.wall.tzinfo is not None
+def test_the_system_clocks_advance_together_while_the_machine_is_awake():
+    # Only the clocks' advances are compared: their origins can differ, and on
+    # a virtual machine the clock that keeps running can read less than the
+    # one that stops.
+    clocks = SystemClocks()
+    first = clocks.read()
+    time.sleep(0.2)
+    second = clocks.read()
+    assert first is not None
+    assert second is not None
+    awake = second.awake - first.awake
+    total = second.total - first.total
+    assert 0.1 < awake < 5
+    assert abs(total - awake) < 1
+    assert second.wall.tzinfo is not None
 
 
 def test_a_gap_between_the_clocks_is_a_sleep():
