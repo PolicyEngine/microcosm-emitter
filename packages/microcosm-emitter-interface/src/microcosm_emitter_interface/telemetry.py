@@ -25,7 +25,7 @@ type TelemetryEventType = Literal[
 ]
 type TelemetryStatus = Literal["started", "progress", "completed", "failed", "blocked"]
 
-DEFAULT_HEARTBEAT_SECONDS = 60.0
+DEFAULT_HEARTBEAT_SECONDS = 30.0
 DEFAULT_FAILURE_CLASS = "build_failure"
 
 
@@ -206,6 +206,25 @@ type TelemetryCommand = (
 )
 
 
+def _progress_message(command: StageProgress) -> dict[str, Any]:
+    """Return a progress request, with ``outer`` only when the command has one."""
+    message: dict[str, Any] = {
+        "command": "progress",
+        "stage_id": command.stage_id,
+        "done": command.done,
+        "total": command.total,
+        "unit": command.unit,
+        "details": dict(command.details),
+    }
+    if command.outer is not None:
+        message["outer"] = {
+            "done": command.outer.done,
+            "total": command.outer.total,
+            "unit": command.outer.unit,
+        }
+    return message
+
+
 def telemetry_message(command: TelemetryCommand) -> dict[str, Any]:
     """Return the telemetry module's request for one typed command.
 
@@ -239,14 +258,7 @@ def telemetry_message(command: TelemetryCommand) -> dict[str, Any]:
                 "details": dict(command.details),
             }
         case StageProgress():
-            message = {
-                "command": "progress",
-                "stage_id": command.stage_id,
-                "done": command.done,
-                "total": command.total,
-                "unit": command.unit,
-                "details": dict(command.details),
-            }
+            message = _progress_message(command)
         case CalibrationProgress():
             message = {
                 "command": (

@@ -44,6 +44,40 @@ The service uses the existing Hugging Face credential from the environment or lo
 
 The queue upgrades the existing `20261007_01` Alembic revision to `20261008_02`, adding graph-job records without changing producer sequences, event IDs or upload eligibility. Unversioned databases are rejected without schema modification. There is no raw SQL, automatic schema adoption, or parallel legacy implementation. The hosted telemetry collector and calibration dashboard do not change.
 
+## Heartbeat readings, sleeps and stage spans
+
+Each heartbeat, every 30 seconds by default (`heartbeat_seconds`), carries a reading of the build and its machine as `details.reading`:
+
+- `interval_seconds` and `late_seconds`: the awake seconds since the previous reading, and how late this one came.
+- `stages` and `progress`: the open stages, outermost first, and the latest progress of the heartbeat's stage or an open one, with its `outer` counter and `reported_at` time.
+- `process_tree`: the build and every descendant process.
+  - `processes`.
+  - `memory_bytes`: physical footprint on macOS (RSS for a process whose footprint can't be read), RSS on Linux.
+  - `memory_peak_bytes` and `interval_memory_peak_bytes`, from the samples taken every second.
+  - `cpu_user_cores` and `cpu_system_cores`: cores in use over the interval's awake time.
+  - `disk_read_bytes` and `disk_written_bytes`: bytes during the interval.
+  - A process that exits keeps its CPU and disk totals; one that starts and exits between two samples is not counted.
+- `machine`: available memory; on macOS, compressed memory and the memory pressure level; on Linux, the pressure-stall shares (from the cgroup when it has them, otherwise from `/proc/pressure/memory`), bytes swapped in and out, and the cgroup's memory and limit. Also swap used and in all, the whole machine's CPU busy share, the one-minute load average, whether it runs on battery power, and the free space on the build's working volume. A value that can't be read is `null`. macOS's page-in and page-out counters count every kind of paging, so they are not reported as swap.
+
+On every tick the service compares a clock that stops while the machine sleeps with one that keeps running: `CLOCK_UPTIME_RAW` against `CLOCK_MONOTONIC` on macOS, and `CLOCK_MONOTONIC` against `CLOCK_BOOTTIME` on Linux. A difference of 5 seconds or more is a sleep. The service then appends a heartbeat at once, with `details.sleep = {started_at, ended_at, seconds}`, accurate to about one tick, and the next heartbeat is due a full interval later.
+
+The run-started event carries `details.environment`, beside the build's `identity`:
+
+- `kind`: `modal_container` when `MODAL_TASK_ID` is set, with `modal = {task_id, region, cloud_provider}`; otherwise `local`.
+- The operating system and its version, the architecture, the CPU model and count, total memory, and the Linux cgroup's CPU and memory limits.
+- The emitter and Python versions.
+
+It never holds a hostname, user name, address, serial number or path, nor any other Modal variable.
+
+Every stage the service sees start, from `stage`, `transition_stage` or `emit`, gets exactly one end:
+
+- **Start:** gets `details.stage_span = {parent_stage_id, occurrence}`.
+- **End:** closes the innermost open stage of that ID. It first ends the stages opened inside it, with the same status and `closed_by: "enclosing_stage_ended"`. It adds `awake_seconds`, `asleep_seconds` and `closed_by`, which is `null` when the build ended the stage.
+- **Closed by the service:** moving to another transition stage ends the last one with `next_stage_started`, or `other_stage_updated` when the new event is not a start. When the run completes, is refused or fails (including when the build exits unexpectedly), every open stage ends, innermost first, with `run_completed`, `run_blocked` or `run_failed`. The innermost stage carries a failure's message and details.
+- **Limit:** at most 32 stages are tracked.
+
+Progress may carry an outer counter (`StageProgress.outer`, an `OuterProgress`), recorded as `details.outer`. A build's own details may not use `reading`, `sleep`, `environment`, `stage_span` or `outer`, which the service adds after sanitizing them.
+
 ## Builds on machines without a Hugging Face credential
 
 A build on Modal runs without the operator's Hugging Face credential, so its emitter cannot exchange one. Instead, the operator's workstation obtains a collector token for it when it launches the build, and passes it in three environment variables.
