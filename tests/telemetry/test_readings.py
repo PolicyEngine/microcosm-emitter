@@ -1,15 +1,18 @@
 """Every heartbeat carries a reading of the build's processes and of the machine."""
 
+import json
 import os
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
 from microcosm_emitter.host.contracts import ModuleContext
 from microcosm_emitter.telemetry.client import TelemetryRun
+from microcosm_emitter.telemetry.service import resources as resources_module
 from microcosm_emitter.telemetry.service.module import TelemetryModule
 from microcosm_emitter.telemetry.service.readings import MachineReader
 from microcosm_emitter.telemetry.service.resources import ProcessTreeSampler
@@ -252,3 +255,134 @@ def test_machine_readings_on_this_platform():
         assert reading["memory_compressed_bytes"] is None
         assert reading["swap_in_bytes"] >= 0
         assert reading["swap_out_bytes"] >= 0
+
+
+def test_a_wall_clock_step_does_not_count_the_processes_again(monkeypatch):
+    """Count a process once across a wall-clock step.
+
+    The fake identifies a process as psutil does, by its PID and its start
+    time since boot, while its ``create_time()`` follows the wall clock and so
+    moves when the clock is stepped.
+    """
+    clock = {"offset": 0.0}
+
+    class FakeProcess:
+        def __init__(self, pid):
+            self.pid = pid
+
+        def __eq__(self, other):
+            return isinstance(other, FakeProcess) and other.pid == self.pid
+
+        def __hash__(self):
+            return hash(self.pid)
+
+        def create_time(self):
+            return 1_000.0 + self.pid + clock["offset"]
+
+        def children(self, *, recursive=False):
+            return [FakeProcess(11)] if self.pid == 10 else []
+
+        def cpu_times(self):
+            return SimpleNamespace(
+                user=3600.0, system=600.0, children_user=0.0, children_system=0.0
+            )
+
+        def memory_info(self):
+            return SimpleNamespace(rss=100)
+
+        def io_counters(self):
+            return SimpleNamespace(read_bytes=10**9, write_bytes=10**9)
+
+    monkeypatch.setattr(
+        resources_module,
+        "psutil",
+        SimpleNamespace(Process=FakeProcess, Error=OSError),
+    )
+    sampler = ProcessTreeSampler(10, system_platform="linux")
+    sampler.sample()
+    sampler.tree_reading(30.0)
+    clock["offset"] = 3600.0
+    sampler.sample()
+    reading = sampler.tree_reading(30.0)
+    assert (reading["cpu_user_cores"], reading["cpu_system_cores"]) == (0.0, 0.0)
+    assert (reading["disk_read_bytes"], reading["disk_written_bytes"]) == (0, 0)
+
+
+def test_progress_sent_through_emit_inside_an_open_stage_is_in_the_reading(module):
+    """Microcosm's UK builds send graph-node progress through ``emit``."""
+    module.handle_message({"command": "transition_stage", "stage_id": "uk_build"})
+    module.handle_message(
+        {
+            "command": "emit",
+            "event_type": "progress",
+            "stage_id": "node.population",
+            "status": "completed",
+            "details": {"done": 3, "total": 40, "unit": "graph_nodes"},
+        }
+    )
+    progress_event = module.spool.batch("reading-run", "reading-producer")[-1]
+    module.tick(time.monotonic() + 60)
+    reading = heartbeats(module)[-1]["details"].get("reading") or {}
+    assert reading.get("stages") == ["uk_build"]
+    assert reading.get("progress") == {
+        "stage_id": "node.population",
+        "done": 3,
+        "total": 40,
+        "unit": "graph_nodes",
+        "outer": None,
+        "reported_at": progress_event["timestamp"],
+    }
+    module.handle_message(
+        {"command": "transition_stage", "stage_id": "uk_build", "status": "completed"}
+    )
+    module.handle_message({"command": "transition_stage", "stage_id": "export"})
+    module.tick(time.monotonic() + 120)
+    assert (heartbeats(module)[-1]["details"].get("reading") or {}).get(
+        "progress", "missing"
+    ) is None
+
+
+def test_a_reading_at_its_largest_stays_within_the_details_limit(module):
+    for index in range(32):
+        module.handle_message(
+            {"command": "stage", "stage_id": f"{index:02d}" + "s" * 190}
+        )
+    module.handle_message(
+        {
+            "command": "progress",
+            "stage_id": "31" + "s" * 190,
+            "done": "d" * 2000,
+            "total": "t" * 2000,
+            "unit": "u" * 2000,
+            "outer": {"done": 1, "total": 2, "unit": "p" * 200},
+        }
+    )
+    module.clocks = FakeSleepClocks()
+    module.tick(time.monotonic())
+    module.tick(time.monotonic() + 60)
+    details = heartbeats(module)[-1]["details"]
+    assert "reading" in details
+    assert "sleep" in details
+    assert len(details["reading"]["stages"]) == 32
+    progress = details["reading"]["progress"] or {}
+    assert (progress.get("done"), progress.get("total")) == (None, None)
+    assert len(progress.get("unit") or "") <= 200
+    assert len(json.dumps(details, separators=(",", ":")).encode()) <= 8192
+
+
+class FakeSleepClocks:
+    """Clocks across which the machine slept for an hour."""
+
+    def __init__(self):
+        from datetime import UTC, datetime
+
+        from microcosm_emitter.telemetry.service.clocks import ClockReading
+
+        start = datetime(2026, 11, 6, 12, tzinfo=UTC)
+        self.readings = [
+            ClockReading(0.0, 0.0, start),
+            ClockReading(1.0, 3601.0, start),
+        ]
+
+    def read(self):
+        return self.readings.pop(0) if self.readings else None

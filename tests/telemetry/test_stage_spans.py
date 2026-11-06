@@ -444,3 +444,120 @@ def test_an_unexpected_exit_ends_every_open_stage(module):
         ("build", "failed", "run_failed"),
         ("failed", "failed", None),
     ]
+
+
+def emitted_run_end(status, **extra):
+    return {
+        "command": "emit",
+        "event_type": "run",
+        "stage_id": {"completed": "complete", "failed": "failed"}.get(
+            status, "blocked"
+        ),
+        "status": status,
+        **extra,
+    }
+
+
+@pytest.mark.parametrize(
+    ("status", "details", "stage_status", "closed_by"),
+    [
+        ("completed", {}, "completed", "run_completed"),
+        ("failed", {"error_type": "RuntimeError"}, "failed", "run_failed"),
+        (
+            "blocked",
+            {
+                "phase": "preflight",
+                "blocking_gate_ids": ["fixture-check"],
+                "blocking_failure_count": 1,
+            },
+            "completed",
+            "run_blocked",
+        ),
+    ],
+)
+def test_ending_the_run_through_emit_ends_every_open_stage(
+    status, details, stage_status, closed_by
+):
+    state, events = apply(
+        [
+            (stage("build"), clock(0)),
+            (transition("score"), clock(1)),
+            (emitted_run_end(status, details=details), clock(2)),
+        ]
+    )
+    assert [
+        (stage_id, end_status, (span or {}).get("closed_by"))
+        for stage_id, end_status, span in stage_events(events)[-2:]
+    ] == [("score", stage_status, closed_by), ("build", stage_status, closed_by)]
+    assert (events[-1]["event_type"], events[-1]["status"]) == ("run", status)
+    assert state.open_stages == ()
+    assert state.transition_stage is None
+    assert state.finished
+
+
+def test_a_stage_inside_a_transition_stage_of_the_same_id_ends_first():
+    state, events = apply(
+        [
+            (transition("score"), clock(0)),
+            (stage("score"), clock(1)),
+            (transition("export"), clock(2)),
+        ]
+    )
+    assert stage_events(events)[2:] == [
+        (
+            "score",
+            "completed",
+            {
+                "parent_stage_id": "score",
+                "occurrence": 2,
+                "awake_seconds": 1.0,
+                "asleep_seconds": 0.0,
+                "closed_by": "enclosing_stage_ended",
+            },
+        ),
+        (
+            "score",
+            "completed",
+            {
+                "parent_stage_id": None,
+                "occurrence": 1,
+                "awake_seconds": 2.0,
+                "asleep_seconds": 0.0,
+                "closed_by": "next_stage_started",
+            },
+        ),
+        ("export", "started", {"parent_stage_id": None, "occurrence": 1}),
+    ]
+    assert [open_stage.stage_id for open_stage in state.open_stages] == ["export"]
+    assert state.transition_stage == "export"
+
+
+def test_ending_the_inner_stage_of_the_same_id_keeps_the_transition_stage():
+    state, events = apply(
+        [
+            (transition("score"), clock(0)),
+            (stage("score"), clock(1)),
+            (stage("score", "completed"), clock(2)),
+        ]
+    )
+    assert (events[-1]["details"].get("stage_span") or {}).get("occurrence") == 2
+    assert state.transition_stage == "score"
+    assert [open_stage.occurrence for open_stage in state.open_stages] == [1]
+
+
+def test_an_untracked_transition_stage_ended_by_a_stage_event_ends_once():
+    tracked = [(stage(f"stage-{index}"), clock(index)) for index in range(32)]
+    state, events = apply(
+        [
+            *tracked,
+            (transition("score"), clock(40)),
+            (stage("score", "completed"), clock(41)),
+            (transition("export"), clock(42)),
+        ]
+    )
+    assert [(event["stage_id"], event["status"]) for event in events[32:]] == [
+        ("score", "started"),
+        ("score", "completed"),
+        ("export", "started"),
+    ]
+    assert state.transition_stage == "export"

@@ -71,6 +71,15 @@ def test_the_system_clocks_advance_together_while_the_machine_is_awake():
     assert second.wall.tzinfo is not None
 
 
+def test_a_clock_that_cant_be_read_gives_no_reading(monkeypatch):
+    def refuse(clock_id):
+        raise OSError(22, "Invalid argument")
+
+    monkeypatch.setattr(time, "clock_gettime", refuse)
+    assert SystemClocks("linux").read() is None
+    assert SystemClocks("darwin").read() is None
+
+
 def test_a_gap_between_the_clocks_is_a_sleep():
     detector = SleepDetector()
     assert detector.observe(clock(0)) is None
