@@ -76,7 +76,7 @@ Every stage the service sees start, from `stage`, `transition_stage` or `emit`, 
 - **Closed by the service:** moving to another transition stage ends the last one with `next_stage_started`, or `other_stage_updated` when the new event is not a start. When the run completes, is refused or fails (including when the build exits unexpectedly), every open stage ends, innermost first, with `run_completed`, `run_blocked` or `run_failed`. The innermost stage carries a failure's message and details.
 - **Limit:** at most 32 stages are tracked.
 
-Progress may carry an outer counter (`StageProgress.outer`, an `OuterProgress`), recorded as `details.outer`. A build's own details may not use `reading`, `sleep`, `environment`, `stage_span` or `outer`, which the service adds after sanitizing them.
+Progress may carry an outer counter (`StageProgress.outer`, an `OuterProgress`), recorded as `details.outer`. A build's own details may not use `reading`, `sleep`, `environment`, `stage_span` or `outer`, which the service adds after sanitizing them. When the build's details and these keys together exceed the 8 KiB details limit (measured in compact JSON), the build's part is compacted further, so the service's keys are kept and the whole stays within the limit.
 
 ## Builds on machines without a Hugging Face credential
 
