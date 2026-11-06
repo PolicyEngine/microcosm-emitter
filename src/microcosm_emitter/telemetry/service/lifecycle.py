@@ -57,6 +57,7 @@ from microcosm_emitter.telemetry.requests import (
 )
 from microcosm_emitter.telemetry.service.clocks import ClockReading
 from microcosm_emitter.telemetry.service.sanitization import (
+    bounded_text,
     details_size,
     sanitize_details,
     sanitize_text,
@@ -94,11 +95,16 @@ CLOSED_BY_RUN_BLOCKED: Final = "run_blocked"
 CLOSED_BY_RUN_FAILED: Final = "run_failed"
 _SECONDS_DIGITS: Final = 3
 _MAX_UNIT_CHARS: Final = 200
+#: A reading's progress units, as JSON, are at most this many bytes, so a
+#: unit of wide characters can't push a heartbeat past the details limit.
+_MAX_READING_UNIT_BYTES: Final = 100
+#: A reading's progress counts are kept only within a 64-bit integer's range.
+_MAX_READING_COUNT: Final = 2**63
 #: Each run end's status for the stages it closes, and why it closes them.
 _RUN_END_CLOSURES: Final = {
-    STATUS_COMPLETED: (STATUS_COMPLETED, "run_completed"),
-    STATUS_FAILED: (STATUS_FAILED, "run_failed"),
-    STATUS_BLOCKED: (STATUS_COMPLETED, "run_blocked"),
+    STATUS_COMPLETED: (STATUS_COMPLETED, CLOSED_BY_RUN_COMPLETED),
+    STATUS_FAILED: (STATUS_FAILED, CLOSED_BY_RUN_FAILED),
+    STATUS_BLOCKED: (STATUS_COMPLETED, CLOSED_BY_RUN_BLOCKED),
 }
 
 
@@ -131,21 +137,30 @@ class ProgressRecord:
     def as_reading(self) -> dict[str, Any]:
         """Return the progress as a reading's ``progress``.
 
-        ``done`` and ``total`` are kept only when they are numbers and ``unit``
-        only when it is text, cut to 200 characters, so a reading stays small.
+        ``done`` and ``total`` are kept only when they are numbers a 64-bit
+        integer can hold, and the units only when they are text, cut to 100
+        bytes of JSON, so a reading stays small.
         """
+        outer = None
+        if self.outer is not None:
+            outer = {
+                **self.outer,
+                "unit": bounded_text(self.outer.get("unit"), _MAX_READING_UNIT_BYTES),
+            }
         return {
             "stage_id": self.stage_id,
             "done": _number(self.done),
             "total": _number(self.total),
-            "unit": self.unit[:_MAX_UNIT_CHARS] if isinstance(self.unit, str) else None,
-            "outer": None if self.outer is None else dict(self.outer),
+            "unit": bounded_text(self.unit, _MAX_READING_UNIT_BYTES),
+            "outer": outer,
             "reported_at": self.reported_at,
         }
 
 
 def _number(value: object) -> int | float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, int) and abs(value) >= _MAX_READING_COUNT:
         return None
     return value
 
@@ -216,13 +231,20 @@ def heartbeat_event(
     reading: Mapping[str, Any] | None = None,
     sleep: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Create a heartbeat at the current stage, with its reading and any sleep."""
+    """Create a heartbeat at the current stage, with its reading and any sleep.
+
+    A reading that would take the details past their limit leaves out its
+    outermost open stages, one at a time, until it fits.
+    """
     event = _event(EVENT_TYPE_HEARTBEAT, STATUS_PROGRESS, current_stage(state))
     emitter_details: dict[str, Any] = {}
     if reading is not None:
-        emitter_details["reading"] = dict(reading)
+        emitter_details["reading"] = {**reading, "stages": list(reading["stages"])}
     if sleep is not None:
         emitter_details["sleep"] = dict(sleep)
+    stages = emitter_details.get("reading", {}).get("stages", [])
+    while stages and details_size(emitter_details) > MAX_TELEMETRY_DETAILS_BYTES:
+        del stages[0]
     event["details"] = _with_emitter_keys(event["details"], emitter_details)
     return event
 
@@ -406,7 +428,6 @@ class _RequestProcessor:
         elif command == COMMAND_BLOCK:
             self.block(request)
         elif command == COMMAND_COMPLETE:
-            self.close_all(STATUS_COMPLETED, CLOSED_BY_RUN_COMPLETED)
             self.add(
                 EVENT_TYPE_RUN,
                 STATUS_COMPLETED,
@@ -708,7 +729,7 @@ class _RequestProcessor:
         if error_code is not None:
             details["error_code"] = error_code
         message = _optional_text(request.get("message"))
-        self.close_all(STATUS_FAILED, CLOSED_BY_RUN_FAILED, message, details)
+        # Adding the run's failure ends every open stage first.
         self.add(EVENT_TYPE_RUN, STATUS_FAILED, STAGE_FAILED, message, details)
 
     def block(self, request: Mapping[str, Any]) -> None:
@@ -726,7 +747,6 @@ class _RequestProcessor:
         if statuses is not None:
             details["gate_statuses"] = _mapping(statuses)
         _validate_block_details(details)
-        self.close_all(STATUS_COMPLETED, CLOSED_BY_RUN_BLOCKED)
         self.add(
             EVENT_TYPE_RUN,
             STATUS_BLOCKED,

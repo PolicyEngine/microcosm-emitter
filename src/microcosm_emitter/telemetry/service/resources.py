@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Final, Protocol
 
 import psutil
@@ -183,7 +183,15 @@ class ProcessTreeSampler:
                 # The ID was reused: the earlier process exited.
                 self._exited += previous[1]
                 previous = None
-            live[pid] = (process if previous is None else previous[0], sample.totals)
+            totals = sample.totals
+            if previous is not None and not sample.disk_readable:
+                # Its disk counters failed this time: keep their last values.
+                totals = replace(
+                    totals,
+                    disk_read=previous[1].disk_read,
+                    disk_written=previous[1].disk_written,
+                )
+            live[pid] = (process if previous is None else previous[0], totals)
         for pid, (process, totals) in self._live.items():
             if pid in live:
                 continue

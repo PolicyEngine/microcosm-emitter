@@ -87,6 +87,31 @@ def details_size(details: Mapping[str, Any]) -> int:
     return len(json.dumps(details, separators=(",", ":")).encode())
 
 
+def _json_text_bytes(text: str) -> int:
+    """Return the bytes ``text`` takes as a JSON string, without its quotes."""
+    return details_size({"": text}) - len('{"":""}')
+
+
+def bounded_text(value: object, max_bytes: int) -> str | None:
+    """Return text cut to at most ``max_bytes`` of JSON, or None for non-text.
+
+    JSON escapes every character outside ASCII, so a byte bound, unlike a
+    character bound, also bounds wide characters.
+    """
+    if not isinstance(value, str):
+        return None
+    if _json_text_bytes(value) <= max_bytes:
+        return value
+    shortest, longest = 0, len(value)
+    while shortest < longest:
+        middle = (shortest + longest + 1) // 2
+        if _json_text_bytes(value[:middle]) <= max_bytes:
+            shortest = middle
+        else:
+            longest = middle - 1
+    return value[:shortest]
+
+
 def sanitize_details(
     value: Mapping[str, Any], *, limit: int = MAX_TELEMETRY_DETAILS_BYTES
 ) -> dict[str, Any]:
