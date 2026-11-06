@@ -28,6 +28,7 @@ from microcosm_emitter.telemetry.protocol import (
     EVENT_TYPE_RUN,
     EVENT_TYPE_STAGE,
     MAX_TELEMETRY_CHECK_ID_CHARS,
+    MAX_TELEMETRY_DETAILS_BYTES,
     MAX_TELEMETRY_MESSAGE_CHARS,
     SEQUENTIAL_STATUS_MAP,
     STAGE_BLOCKED,
@@ -56,6 +57,7 @@ from microcosm_emitter.telemetry.requests import (
 )
 from microcosm_emitter.telemetry.service.clocks import ClockReading
 from microcosm_emitter.telemetry.service.sanitization import (
+    details_size,
     sanitize_details,
     sanitize_text,
 )
@@ -142,6 +144,21 @@ class LifecycleState:
     latest_progress: ProgressRecord | None = None
 
 
+def _with_emitter_keys(
+    details: Mapping[str, Any], emitter_details: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Return sanitized ``details`` with the emitter's own keys added.
+
+    When both together exceed the details limit, the build's part is compacted
+    further, so the emitter's keys are kept and the whole stays within it.
+    """
+    combined = {**details, **emitter_details}
+    if details_size(combined) <= MAX_TELEMETRY_DETAILS_BYTES:
+        return combined
+    budget = MAX_TELEMETRY_DETAILS_BYTES - details_size(emitter_details)
+    return {**sanitize_details(details, limit=budget), **emitter_details}
+
+
 def current_stage(state: LifecycleState) -> str:
     """Return the innermost open stage, or the last stage when none is open."""
     return state.open_stages[-1].stage_id if state.open_stages else state.last_stage
@@ -163,7 +180,9 @@ def started_event(
         {"identity": identity},
     )
     if environment is not None:
-        event["details"]["environment"] = dict(environment)
+        event["details"] = _with_emitter_keys(
+            event["details"], {"environment": dict(environment)}
+        )
     return event
 
 
@@ -174,10 +193,12 @@ def heartbeat_event(
 ) -> dict[str, Any]:
     """Create a heartbeat at the current stage, with its reading and any sleep."""
     event = _event(EVENT_TYPE_HEARTBEAT, STATUS_PROGRESS, current_stage(state))
+    emitter_details: dict[str, Any] = {}
     if reading is not None:
-        event["details"]["reading"] = dict(reading)
+        emitter_details["reading"] = dict(reading)
     if sleep is not None:
-        event["details"]["sleep"] = dict(sleep)
+        emitter_details["sleep"] = dict(sleep)
+    event["details"] = _with_emitter_keys(event["details"], emitter_details)
     return event
 
 
@@ -387,9 +408,9 @@ class _RequestProcessor:
             },
         )
         event = self.events[-1]
-        details = event["details"]
         if outer is not None:
-            details["outer"] = outer
+            event["details"] = _with_emitter_keys(event["details"], {"outer": outer})
+        details = event["details"]
         self.state = replace(
             self.state,
             latest_progress=ProgressRecord(
@@ -453,7 +474,9 @@ class _RequestProcessor:
 
     def _append(self, event: dict[str, Any], span: Mapping[str, Any] | None) -> None:
         if span is not None:
-            event["details"]["stage_span"] = dict(span)
+            event["details"] = _with_emitter_keys(
+                event["details"], {"stage_span": dict(span)}
+            )
         self.events.append(event)
         event_type, status = event["event_type"], event["status"]
         if event_type == EVENT_TYPE_RUN and status in {

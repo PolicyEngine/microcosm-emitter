@@ -113,17 +113,16 @@ class ProcessTreeSampler:
         samples: dict[tuple[int, float], _ProcessSample] = {}
         for process in processes:
             try:
-                with process.oneshot():
-                    cpu = process.cpu_times()
-                    memory = process.memory_info()
-                    user += float(cpu.user) + float(getattr(cpu, "children_user", 0.0))
-                    system += float(cpu.system) + float(
-                        getattr(cpu, "children_system", 0.0)
-                    )
-                    rss += int(memory.rss)
-                    samples[(process.pid, process.create_time())] = self._process(
-                        process, cpu, int(memory.rss)
-                    )
+                cpu = process.cpu_times()
+                memory = process.memory_info()
+                user += float(cpu.user) + float(getattr(cpu, "children_user", 0.0))
+                system += float(cpu.system) + float(
+                    getattr(cpu, "children_system", 0.0)
+                )
+                rss += int(memory.rss)
+                samples[(process.pid, process.create_time())] = self._process(
+                    process, cpu, int(memory.rss)
+                )
             except (psutil.Error, OSError):
                 continue
         self._record(samples)

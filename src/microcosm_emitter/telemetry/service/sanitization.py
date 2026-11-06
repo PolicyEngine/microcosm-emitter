@@ -82,28 +82,33 @@ def _sanitize_scalar(value: object) -> JsonValue:
     return sanitize_text(str(value))
 
 
-def sanitize_details(value: Mapping[str, Any]) -> dict[str, Any]:
-    """Return a redacted details object within the wire-size limit."""
+def details_size(details: Mapping[str, Any]) -> int:
+    """Return the size of ``details`` in compact JSON, as the limit measures it."""
+    return len(json.dumps(details, separators=(",", ":")).encode())
+
+
+def sanitize_details(
+    value: Mapping[str, Any], *, limit: int = MAX_TELEMETRY_DETAILS_BYTES
+) -> dict[str, Any]:
+    """Return a redacted details object within ``limit`` bytes of compact JSON.
+
+    The limit is the wire-size limit unless the emitter must leave room for
+    its own keys.
+    """
     sanitized = sanitize_json(value)
     # An invariant, not a caller's type error: sanitize_json returns a dict for
     # every mapping, so this raises only if that changes. AssertionError, as the
     # assert it replaces raised.
     if not isinstance(sanitized, dict):
         raise AssertionError  # noqa: TRY004
-    if (
-        len(json.dumps(sanitized, separators=(",", ":")).encode())
-        <= MAX_TELEMETRY_DETAILS_BYTES
-    ):
+    if details_size(sanitized) <= limit:
         return sanitized
     compact: dict[str, Any] = {_DETAILS_TRUNCATED_KEY: True}
     for key, item in sanitized.items():
         if not (isinstance(item, (str, int, float, bool)) or item is None):
             continue
         candidate = {**compact, key: item}
-        if (
-            len(json.dumps(candidate, separators=(",", ":")).encode())
-            > MAX_TELEMETRY_DETAILS_BYTES
-        ):
+        if details_size(candidate) > limit:
             break
         compact[key] = item
     return compact
