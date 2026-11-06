@@ -1,0 +1,21 @@
+{
+  "protocol_version": 1,
+  "module": "telemetry",
+  "kind": "message",
+  "sequence": 0,
+  "body": {
+    "command": "progress",
+    "stage_id": "post_export_scoring",
+    "done": 74,
+    "total": 177,
+    "unit": "scoring_batch",
+    "details": {
+      "pass_name": "reform_validation"
+    },
+    "outer": {
+      "done": 57,
+      "total": 101,
+      "unit": "pass"
+    }
+  }
+}

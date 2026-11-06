@@ -43,3 +43,7 @@ class ProcessTreeSampler:
             "rss_bytes": rss,
             "peak_rss_bytes": self._peak_rss,
         }
+
+    def tree_reading(self, interval_seconds: float) -> dict[str, Any]:  # noqa: ARG002
+        """Not yet implemented."""
+        return {}

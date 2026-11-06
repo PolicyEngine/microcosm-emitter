@@ -27,7 +27,11 @@ from microcosm_emitter_interface.staging import (
     StageRunFiles,
 )
 from microcosm_emitter_interface.submissions import CollectorProvenance
-from microcosm_emitter_interface.telemetry import TelemetryRun, TelemetrySettings
+from microcosm_emitter_interface.telemetry import (
+    OuterProgress,
+    TelemetryRun,
+    TelemetrySettings,
+)
 
 FIXTURE_STAGING_REPOSITORY = "policyengine/fixture-staging"
 FIXTURE_PRIVATE_REPOSITORY = "policyengine/fixture-private"
@@ -185,6 +189,16 @@ SENT_BY: dict[str, Callable[[EmitterClient, Path], Any]] = {
     "telemetry-progress": lambda client, directory: client.telemetry.progress(
         "calibrating", done=2, total=10, unit="epochs", phase="solve"
     ),
+    "telemetry-progress-with-outer": lambda client, directory: (
+        client.telemetry.progress(
+            "post_export_scoring",
+            done=74,
+            total=177,
+            unit="scoring_batch",
+            outer=OuterProgress(57, 101, "pass"),
+            pass_name="reform_validation",
+        )
+    ),
     "telemetry-calibration-progress": lambda client, directory: (
         client.telemetry.calibration_progress(
             {"kind": "calibration_epoch", "epoch": 10, "epochs": 100, "loss": 0.25}
@@ -309,6 +323,7 @@ CONFIGURED_BY: dict[str, Callable[[Path], dict[str, Any]]] = {
         run=fixture_run(),
         identity={"host": "fixture"},
         development_collector_url="http://127.0.0.1:1",
+        heartbeat_seconds=60.0,
     ).configuration(spool_path),
     "orrery-configuration": lambda spool_path: OrrerySettings(
         development_collector_url="http://127.0.0.1:1",

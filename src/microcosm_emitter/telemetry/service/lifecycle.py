@@ -69,6 +69,7 @@ class LifecycleState:
     transition_stage: str | None = None
     last_stage: str = STAGE_CREATED
     finished: bool = False
+    open_stages: tuple[object, ...] = ()
 
 
 def started_event(identity: Mapping[str, Any]) -> dict[str, Any]:
@@ -179,7 +180,9 @@ def _event(
 
 
 def process_request(
-    state: LifecycleState, request: Mapping[str, Any]
+    state: LifecycleState,
+    request: Mapping[str, Any],
+    clock: object = None,  # noqa: ARG001
 ) -> tuple[LifecycleState, list[dict[str, Any]]]:
     """Return proposed state and events; the caller commits before adopting state."""
     if state.finished:

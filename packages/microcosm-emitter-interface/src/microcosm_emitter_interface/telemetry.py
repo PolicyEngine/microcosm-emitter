@@ -122,14 +122,32 @@ class StageTransition:
 
 
 @dataclass(frozen=True)
+class OuterProgress:
+    """The counter one level above a stage's own: ``done`` of ``total``.
+
+    For example, a stage that scores 177 batches in each of 101 passes reports
+    the batch as its progress and the pass as this, so "74 of 177" also says
+    "pass 57 of 101".
+    """
+
+    done: int
+    total: int
+    unit: str | None = None
+
+
+@dataclass(frozen=True)
 class StageProgress:
-    """Progress within one stage: ``done`` of ``total``, in the optional ``unit``."""
+    """Progress within one stage: ``done`` of ``total``, in the optional ``unit``.
+
+    ``outer`` is the optional counter one level above it, sent only when given.
+    """
 
     stage_id: str
     done: int
     total: int
     unit: str | None = None
     details: Mapping[str, Any] = field(default_factory=dict)
+    outer: OuterProgress | None = None
 
 
 @dataclass(frozen=True)
@@ -346,15 +364,17 @@ class TelemetryRecorder:
         done: int,
         total: int,
         unit: str | None = None,
+        outer: OuterProgress | None = None,
         **details: object,
     ) -> bool:
         """Send ``done`` of ``total`` progress within a stage; True once committed.
 
-        The keyword arguments beyond ``done``, ``total`` and ``unit`` become
-        the event's details.
+        ``outer`` is the counter one level above, such as the pass a batch
+        belongs to. The keyword arguments beyond ``done``, ``total``, ``unit``
+        and ``outer`` become the event's details.
         """
         return self._client.emit_telemetry(
-            StageProgress(stage_id, done, total, unit, details)
+            StageProgress(stage_id, done, total, unit, details, outer)
         )
 
     def calibration_progress(self, event: Mapping[str, Any]) -> bool:
