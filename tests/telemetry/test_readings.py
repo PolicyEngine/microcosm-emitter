@@ -415,6 +415,9 @@ def test_wide_characters_and_long_numbers_keep_a_reading_within_the_limit(module
     progress = reading["progress"] or {}
     assert (progress.get("done"), progress.get("total")) == (None, 1.5)
     assert progress.get("unit", "").startswith("é")
+    # 100 bytes of JSON: 16 escaped characters of 6 bytes each.
+    assert progress["unit"] == "é" * 16
+    assert progress["outer"]["unit"] == "😀" * 8
 
 
 def fake_psutil(processes):

@@ -13,6 +13,7 @@ from microcosm_emitter.telemetry.client import TelemetryRun
 from microcosm_emitter.telemetry.service.clocks import ClockReading
 from microcosm_emitter.telemetry.service.lifecycle import (
     LifecycleState,
+    heartbeat_event,
     process_request,
     started_event,
 )
@@ -395,6 +396,8 @@ def test_progress_records_the_outer_counter():
         {"done": 57},
         {"done": 57, "total": 101, "unit": 3},
         {"done": True, "total": 101},
+        {"done": 10**30, "total": 101},
+        {"done": 1, "total": -(2**63)},
     ],
 )
 def test_an_invalid_outer_counter_is_refused(outer):
@@ -587,3 +590,17 @@ def test_a_run_failure_sent_through_emit_carries_its_message_to_the_innermost_st
     assert (build_end["stage_id"], build_end["message"]) == ("build", None)
     assert "error_type" not in build_end["details"]
     assert run_end["message"] == "Synthetic failure."
+
+
+def test_a_heartbeat_leaves_out_its_outermost_stages_until_it_fits():
+    stage_ids = [f"{index:02d}" + "s" * 190 for index in range(32)]
+    reading = {"stages": stage_ids, "machine": {"filler": "x" * 3000}}
+    event = heartbeat_event(LifecycleState(), reading)
+    details = event["details"]
+    assert details_bytes(details) <= 8192
+    kept = details["reading"]["stages"]
+    assert 0 < len(kept) < 32
+    assert kept == stage_ids[32 - len(kept) :]
+    assert details["reading"]["machine"] == {"filler": "x" * 3000}
+    assert "telemetry_details_truncated" not in details
+    assert reading["stages"] == stage_ids
