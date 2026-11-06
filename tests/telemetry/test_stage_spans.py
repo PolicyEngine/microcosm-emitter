@@ -1,5 +1,6 @@
 """Every stage start the emitter sees gets one end, with its parent and timing."""
 
+import json
 import os
 import time
 from datetime import UTC, datetime, timedelta
@@ -13,6 +14,7 @@ from microcosm_emitter.telemetry.service.clocks import ClockReading
 from microcosm_emitter.telemetry.service.lifecycle import (
     LifecycleState,
     process_request,
+    started_event,
 )
 from microcosm_emitter.telemetry.service.module import TelemetryModule
 
@@ -294,12 +296,69 @@ def test_build_details_may_not_use_the_emitters_own_keys(key, request_for):
         process_request(state, request_for({key: 1}), clock(0))
 
 
+def large_details():
+    """Return details far beyond the 8 KiB limit, whose values the limit truncates."""
+    return {f"large_{index}": "x" * 2000 for index in range(10)}
+
+
+def details_bytes(details):
+    return len(json.dumps(details, separators=(",", ":")).encode())
+
+
 def test_the_span_survives_when_the_builds_details_are_compacted():
-    large = {f"large_{index}": "x" * 2000 for index in range(10)}
-    _, events = apply([(stage("score", **large), clock(0))])
+    _, events = apply([(stage("score", **large_details()), clock(0))])
     details = events[-1]["details"]
     assert details["telemetry_details_truncated"]
     assert details.get("stage_span") == {"parent_stage_id": None, "occurrence": 1}
+
+
+@pytest.mark.parametrize(
+    ("requests", "emitter_key"),
+    [
+        ([(stage("x" * 192, **large_details()), clock(0))], "stage_span"),
+        (
+            [
+                (stage("x" * 192), clock(0)),
+                (stage("y" * 192), clock(1)),
+                (stage("y" * 192, "completed", **large_details()), clock(2)),
+            ],
+            "stage_span",
+        ),
+        (
+            [
+                (
+                    {
+                        "command": "progress",
+                        "stage_id": "score",
+                        "done": 1,
+                        "total": 2,
+                        "unit": "u" * 200,
+                        "outer": {"done": 1, "total": 2, "unit": "p" * 200},
+                        "details": large_details(),
+                    },
+                    clock(0),
+                )
+            ],
+            "outer",
+        ),
+    ],
+    ids=["stage start", "stage end", "progress"],
+)
+def test_the_emitters_keys_keep_details_within_the_limit(requests, emitter_key):
+    _, events = apply(requests)
+    details = events[-1]["details"]
+    assert emitter_key in details
+    assert details["telemetry_details_truncated"]
+    assert details_bytes(details) <= 8192
+
+
+def test_the_machine_description_keeps_the_run_start_within_the_limit():
+    event = started_event(
+        {"identity": large_details()},
+        {"kind": "local", "cpu_model": "m" * 200, "os": "Linux"},
+    )
+    assert event["details"]["environment"]["cpu_model"] == "m" * 200
+    assert details_bytes(event["details"]) <= 8192
 
 
 def test_progress_records_the_outer_counter():
