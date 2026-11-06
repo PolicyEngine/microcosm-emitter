@@ -98,7 +98,8 @@ _MAX_UNIT_CHARS: Final = 200
 #: A reading's progress units, as JSON, are at most this many bytes, so a
 #: unit of wide characters can't push a heartbeat past the details limit.
 _MAX_READING_UNIT_BYTES: Final = 100
-#: A reading's progress counts are kept only within a 64-bit integer's range.
+#: Integer progress counts are kept in a reading, and outer counts accepted,
+#: only within a 64-bit integer's range.
 _MAX_READING_COUNT: Final = 2**63
 #: Each run end's status for the stages it closes, and why it closes them.
 _RUN_END_CLOSURES: Final = {
@@ -137,9 +138,10 @@ class ProgressRecord:
     def as_reading(self) -> dict[str, Any]:
         """Return the progress as a reading's ``progress``.
 
-        ``done`` and ``total`` are kept only when they are numbers a 64-bit
-        integer can hold, and the units only when they are text, cut to 100
-        bytes of JSON, so a reading stays small.
+        ``done`` and ``total`` are kept only when they are floats or integers
+        within a 64-bit range, and the units only when they are text, cut to
+        100 bytes of JSON, so a reading stays small. The outer counter's counts
+        are already within that range.
         """
         outer = None
         if self.outer is not None:
@@ -291,9 +293,14 @@ def _outer(value: object) -> dict[str, Any] | None:
         raise TypeError(error_message)
     done, total, unit = value.get("done"), value.get("total"), value.get("unit")
     if any(
-        isinstance(count, bool) or not isinstance(count, int) for count in (done, total)
+        isinstance(count, bool)
+        or not isinstance(count, int)
+        or abs(count) >= _MAX_READING_COUNT
+        for count in (done, total)
     ):
-        error_message = "outer progress needs integer done and total counts"
+        error_message = (
+            "outer progress needs integer done and total counts within a 64-bit range"
+        )
         raise ValueError(error_message)
     if unit is not None and not isinstance(unit, str):
         error_message = "outer progress unit must be a string or null"

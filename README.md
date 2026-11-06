@@ -49,7 +49,7 @@ The queue upgrades the existing `20261007_01` Alembic revision to `20261008_02`,
 Each heartbeat the service sends, every 30 seconds by default (`heartbeat_seconds`), carries a reading of the build and its machine as `details.reading` (a heartbeat a build sends itself through `emit` carries none):
 
 - `interval_seconds` and `late_seconds`: the awake seconds since the previous reading, and how late this one came.
-- `stages` and `progress`: the open stages, outermost first, and the latest progress, from `progress` or `emit`. It is shown while its own stage is the heartbeat's stage or open, or while the stage that was innermost when it was reported is open, so graph-node progress inside a stage counts. It has its `outer` counter and `reported_at` time; `done` and `total` appear only as numbers a 64-bit integer can hold, and the units are cut to 100 bytes of JSON. A reading that would still exceed the 8 KiB details limit leaves out its outermost open stages.
+- `stages` and `progress`: the open stages, outermost first, and the latest progress, from `progress` or `emit`. It is shown while its own stage is the heartbeat's stage or open, or while the stage that was innermost when it was reported is open, so graph-node progress inside a stage counts. It has its `outer` counter and `reported_at` time; `done` and `total` appear only as floats or integers within a 64-bit range, and the units are cut to 100 bytes of JSON. A reading that would still exceed the 8 KiB details limit leaves out its outermost open stages.
 - `process_tree`: the build and every descendant process.
   - `processes`.
   - `memory_bytes`: physical footprint on macOS (RSS for a process whose footprint can't be read), RSS on Linux.
@@ -76,7 +76,7 @@ Every stage the service sees start, from `stage`, `transition_stage` or `emit`, 
 - **Closed by the service:** moving to another transition stage ends the last one with `next_stage_started`, or `other_stage_updated` when the new event is not a start. When the run completes, is refused or fails, whether by `complete`, `block`, `fail`, an `emit` of a run end or an unexpected exit, every open stage ends, innermost first, with `run_completed`, `run_blocked` or `run_failed`. The innermost stage carries a failure's message and details. The transition stage is identified by its occurrence, so a stage of the same ID opened inside it ends first.
 - **Limit:** at most 32 stages are tracked.
 
-Progress may carry an outer counter (`StageProgress.outer`, an `OuterProgress`), recorded as `details.outer`. A build's own details may not use `reading`, `sleep`, `environment`, `stage_span` or `outer`, which the service adds after sanitizing them. When the build's details and these keys together exceed the 8 KiB details limit (measured in compact JSON), the build's part is compacted further, so the service's keys are kept and the whole stays within the limit.
+Progress may carry an outer counter (`StageProgress.outer`, an `OuterProgress`), recorded as `details.outer`; its counts must be integers within a 64-bit range. A build's own details may not use `reading`, `sleep`, `environment`, `stage_span` or `outer`, which the service adds after sanitizing them. When the build's details and these keys together exceed the 8 KiB details limit (measured in compact JSON), the build's part is compacted further, so the service's keys are kept and the whole stays within the limit.
 
 ## Builds on machines without a Hugging Face credential
 
