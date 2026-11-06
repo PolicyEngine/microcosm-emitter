@@ -398,7 +398,8 @@ def test_wide_characters_and_long_numbers_keep_a_reading_within_the_limit(module
             "stage_id": stage_ids[-1],
             "done": 10**400,
             "total": 1.5,
-            "unit": "é" * 2000,
+            # 3,600 bytes of JSON: within the progress event's own limit.
+            "unit": "é" * 600,
             "outer": {"done": 1, "total": 2, "unit": "\U0001f600" * 200},
         }
     )
