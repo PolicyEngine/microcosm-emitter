@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Final, Protocol
 
 import psutil
 
+from microcosm_emitter.telemetry.service.environment import is_modal_container
 from microcosm_emitter.telemetry.service.lifecycle import current_stage
 from microcosm_emitter.telemetry.service.system_readers import (
     MEMORY_PRESSURE_LEVELS,
@@ -154,13 +155,21 @@ class MachineReader:
         parent_pid: int,
         *,
         system_platform: str = sys.platform,
-        environ: Mapping[str, str] = os.environ,  # noqa: ARG002
-        vmstat: Path = Path("/proc/vmstat"),  # noqa: ARG002
+        environ: Mapping[str, str] = os.environ,
+        vmstat: Path = Path("/proc/vmstat"),
     ) -> None:
-        """Hold the build's process ID and take the first CPU and swap counters."""
+        """Hold the build's process ID and take the first CPU and swap counters.
+
+        In a Modal container (``environ`` names one) the load average is
+        unknown: gVisor, which runs Modal's containers, reports a fixed 0.00.
+        Without the kernel's ``vmstat`` file, as in gVisor, swap traffic is
+        unknown: psutil then reports 0.
+        """
         self.parent_pid = parent_pid
         self._macos = system_platform == "darwin"
         self._linux = system_platform.startswith("linux")
+        self._load_readable = not is_modal_container(environ)
+        self._swap_traffic_readable = self._linux and vmstat.is_file()
         self._cgroup = cgroup_directory() if self._linux else None
         self._cpu = _cpu_times()
         swap = _swap_memory() if self._linux else None
@@ -200,7 +209,7 @@ class MachineReader:
             "swap_in_bytes": swap_in,
             "swap_out_bytes": swap_out,
             "cpu_busy_share": busy,
-            "load_average_1m": _load_average(),
+            "load_average_1m": _load_average() if self._load_readable else None,
             "on_battery": _on_battery(),
             "disk_free_bytes": _disk_free_bytes(self.parent_pid),
             "cgroup_memory_bytes": cgroup.memory_bytes,
@@ -209,7 +218,7 @@ class MachineReader:
 
     def _swap_change(self, swap: _SwapCounters | None) -> tuple[int | None, int | None]:
         """Return the bytes swapped in and out since the previous reading (Linux)."""
-        if not self._linux or swap is None:
+        if not self._swap_traffic_readable or swap is None:
             return None, None
         counters = (int(swap.sin), int(swap.sout))
         previous, self._swap = self._swap, counters

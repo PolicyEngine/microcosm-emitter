@@ -60,6 +60,11 @@ def _modal(environ: Mapping[str, str]) -> dict[str, str | None] | None:
     }
 
 
+def is_modal_container(environ: Mapping[str, str]) -> bool:
+    """Whether ``environ`` is a Modal container's: ``MODAL_TASK_ID`` is set."""
+    return _modal(environ) is not None
+
+
 def _os_version(system_platform: str) -> str | None:
     if system_platform == "darwin":
         return _text(platform.mac_ver()[0])

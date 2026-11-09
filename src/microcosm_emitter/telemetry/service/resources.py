@@ -122,20 +122,20 @@ class ProcessTreeSampler:
         rss = 0
         samples: dict[int, tuple[psutil.Process, _ProcessSample]] = {}
         for process in processes:
+            # Only psutil's reads may fail here; the emitter's own arithmetic
+            # stays outside, so a defect in it is not taken for a process gone.
             try:
                 cpu = process.cpu_times()
                 memory = process.memory_info()
-                user += float(cpu.user) + float(getattr(cpu, "children_user", 0.0))
-                system += float(cpu.system) + float(
-                    getattr(cpu, "children_system", 0.0)
-                )
-                rss += int(memory.rss)
-                samples[process.pid] = (
-                    process,
-                    self._process(process, cpu, int(memory.rss)),
-                )
             except PSUTIL_READ_ERRORS:
                 continue
+            user += float(cpu.user) + float(getattr(cpu, "children_user", 0.0))
+            system += float(cpu.system) + float(getattr(cpu, "children_system", 0.0))
+            rss += int(memory.rss)
+            samples[process.pid] = (
+                process,
+                self._process(process, cpu, int(memory.rss)),
+            )
         self._record(samples)
         self._peak_rss = max(self._peak_rss, rss)
         return {

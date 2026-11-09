@@ -2,10 +2,13 @@
 
 Each supported platform has a clock that stops while the machine sleeps and one
 that keeps running: on macOS ``CLOCK_UPTIME_RAW`` (which ``time.monotonic()``
-reads) and ``CLOCK_MONOTONIC``, and on Linux ``CLOCK_MONOTONIC`` and
+reads) and ``CLOCK_MONOTONIC_RAW``, and on Linux ``CLOCK_MONOTONIC`` and
 ``CLOCK_BOOTTIME``. Between two readings, the second clock's advance minus the
 first's is the time the machine slept. Neither clock is stepped by time
-synchronisation, unlike the wall clock, which is read only to date a sleep.
+synchronisation, unlike the wall clock, which is read only to date a sleep. Each
+pair runs at one rate: macOS's two raw clocks ignore synchronisation's frequency
+corrections, which ``CLOCK_MONOTONIC`` there follows, and Linux applies them to
+both of its clocks alike.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ from typing import Final
 SLEEP_THRESHOLD_SECONDS: Final = 5.0
 
 _CLOCK_NAMES: Final = {
-    "darwin": ("CLOCK_UPTIME_RAW", "CLOCK_MONOTONIC"),
+    "darwin": ("CLOCK_UPTIME_RAW", "CLOCK_MONOTONIC_RAW"),
     "linux": ("CLOCK_MONOTONIC", "CLOCK_BOOTTIME"),
 }
 
