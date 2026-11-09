@@ -8,7 +8,10 @@ from typing import Any, Final, Protocol
 
 import psutil
 
-from microcosm_emitter.telemetry.service.system_readers import macos_process_usage
+from microcosm_emitter.telemetry.service.system_readers import (
+    PSUTIL_READ_ERRORS,
+    macos_process_usage,
+)
 
 _CORES_DIGITS: Final = 4
 
@@ -72,7 +75,7 @@ def _still_running(process: psutil.Process) -> bool:
     """
     try:
         return psutil.Process(process.pid) == process
-    except (psutil.Error, OSError):
+    except PSUTIL_READ_ERRORS:
         return False
 
 
@@ -112,7 +115,7 @@ class ProcessTreeSampler:
         try:
             parent = psutil.Process(self.parent_pid)
             processes = [parent, *parent.children(recursive=True)]
-        except (psutil.Error, OSError):
+        except PSUTIL_READ_ERRORS:
             pass
         user = 0.0
         system = 0.0
@@ -131,7 +134,7 @@ class ProcessTreeSampler:
                     process,
                     self._process(process, cpu, int(memory.rss)),
                 )
-            except (psutil.Error, OSError):
+            except PSUTIL_READ_ERRORS:
                 continue
         self._record(samples)
         self._peak_rss = max(self._peak_rss, rss)
@@ -162,7 +165,7 @@ class ProcessTreeSampler:
             )
         try:
             io = process.io_counters()
-        except (psutil.Error, OSError, AttributeError):
+        except (*PSUTIL_READ_ERRORS, AttributeError):
             return _ProcessSample(
                 _ProcessTotals(user, system), rss, disk_readable=False
             )

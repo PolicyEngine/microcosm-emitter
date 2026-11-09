@@ -19,6 +19,7 @@ import psutil
 from microcosm_emitter.telemetry.service.lifecycle import current_stage
 from microcosm_emitter.telemetry.service.system_readers import (
     MEMORY_PRESSURE_LEVELS,
+    PSUTIL_READ_ERRORS,
     CgroupReadings,
     cgroup_directory,
     read_cgroup,
@@ -73,7 +74,7 @@ class _SwapCounters(Protocol):
 def _cpu_times() -> _Counters | None:
     try:
         return psutil.cpu_times()
-    except (psutil.Error, OSError):
+    except PSUTIL_READ_ERRORS:
         return None
 
 
@@ -98,14 +99,14 @@ def _busy_share(previous: _Counters | None, current: _Counters | None) -> float 
 def _swap_memory() -> _SwapCounters | None:
     try:
         return psutil.swap_memory()
-    except (psutil.Error, OSError, RuntimeError):
+    except PSUTIL_READ_ERRORS:
         return None
 
 
 def _available_memory_bytes() -> int | None:
     try:
         return int(psutil.virtual_memory().available)
-    except (psutil.Error, OSError):
+    except PSUTIL_READ_ERRORS:
         return None
 
 
@@ -123,7 +124,7 @@ def _on_battery() -> bool | None:
         return None
     try:
         battery = read_battery()
-    except (psutil.Error, OSError, NotImplementedError):
+    except PSUTIL_READ_ERRORS:
         return None
     if battery is None or battery.power_plugged is None:
         return None
@@ -134,7 +135,7 @@ def _disk_free_bytes(pid: int) -> int | None:
     """Return the free space on the volume of the build's working directory."""
     try:
         directory = psutil.Process(pid).cwd()
-    except (psutil.Error, OSError):
+    except PSUTIL_READ_ERRORS:
         return None
     try:
         return int(shutil.disk_usage(directory).free)

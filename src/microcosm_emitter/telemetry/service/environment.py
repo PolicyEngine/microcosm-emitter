@@ -21,6 +21,7 @@ import psutil
 
 from microcosm_emitter.telemetry.service.sanitization import sanitize_text
 from microcosm_emitter.telemetry.service.system_readers import (
+    PSUTIL_READ_ERRORS,
     CgroupReadings,
     cgroup_directory,
     read_cgroup,
@@ -82,7 +83,7 @@ def _cpu_model(system_platform: str) -> str | None:
 def _memory_total_bytes() -> int | None:
     try:
         return int(psutil.virtual_memory().total)
-    except (psutil.Error, OSError):
+    except PSUTIL_READ_ERRORS:
         return None
 
 

@@ -42,7 +42,9 @@ def telemetry_smoke() -> None:
     Importing the telemetry client must not import SQLAlchemy or huggingface_hub.
     After a stage and completion, the service process must exit with 0, the
     database must be at revision 20261008_02, no queued event may still be
-    eligible for delivery, and the run's events must have sequences 1 to 3.
+    eligible for delivery, and the run's events must have sequences 1 to 4:
+    the start, the stage, the stage's end when the run completes, and the
+    completion.
     """
     from microcosm_emitter.telemetry.client import LocalTelemetryEmitter, TelemetryRun
 

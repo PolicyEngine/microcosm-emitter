@@ -19,6 +19,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+import psutil
+
+#: What a psutil read can raise when a value can't be read, besides psutil's own
+#: errors: an operating-system error, and in psutil 7.2.2 a ValueError or
+#: RuntimeError for a missing or malformed system file (such as gVisor's
+#: per-process I/O file before 2026-03-19) or a failed macOS system query, and
+#: NotImplementedError where a platform lacks the reading. A reader that gets
+#: one reads the value as unknown, never fails the module.
+PSUTIL_READ_ERRORS: Final = (
+    psutil.Error,
+    OSError,
+    RuntimeError,
+    ValueError,
+    NotImplementedError,
+)
 #: ``kern.memorystatus_vm_pressure_level``'s values on macOS.
 MEMORY_PRESSURE_LEVELS: Final = {1: "normal", 2: "warning", 4: "critical"}
 _RUSAGE_INFO_V2: Final = 2
