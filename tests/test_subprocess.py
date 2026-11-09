@@ -120,9 +120,17 @@ def test_simultaneous_builds_share_queue_without_auth_or_uploads(tmp_path, colle
     try:
         assert not spool.pending_runs()
         for number in range(4):
+            recorded = spool.batch("concurrent", str(number))
+            # Completing the run ends the stage the build left open.
             assert [
-                event["sequence"] for event in spool.batch("concurrent", str(number))
-            ] == [1, 2, 3]
+                (event["sequence"], event["stage_id"], event["status"])
+                for event in recorded
+            ] == [
+                (1, "created", "started"),
+                (2, "compile", "started"),
+                (3, "compile", "completed"),
+                (4, "complete", "completed"),
+            ]
     finally:
         spool.close()
 

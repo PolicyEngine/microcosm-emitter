@@ -16,6 +16,7 @@ import microcosm_emitter_interface.orrery as interface_orrery
 import microcosm_emitter_interface.serialization as interface_serialization
 import microcosm_emitter_interface.telemetry as interface_telemetry
 from microcosm_emitter_interface.protocol_fixtures import materialize, protocol_fixtures
+from microcosm_emitter_interface.telemetry import OuterProgress
 
 
 class MultiElementArray:
@@ -93,6 +94,14 @@ IN_PROCESS_SENDS: dict[str, Callable[[Any], None]] = {
     ),
     "telemetry-progress": lambda emitter: emitter.progress(
         "calibrating", done=2, total=10, unit="epochs", phase="solve"
+    ),
+    "telemetry-progress-with-outer": lambda emitter: emitter.progress(
+        "post_export_scoring",
+        done=74,
+        total=177,
+        unit="scoring_batch",
+        outer=OuterProgress(57, 101, "pass"),
+        pass_name="reform_validation",
     ),
     "telemetry-calibration-progress": lambda emitter: emitter.calibration_progress(
         {"kind": "calibration_epoch", "epoch": 10, "epochs": 100, "loss": 0.25}

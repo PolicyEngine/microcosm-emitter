@@ -127,6 +127,9 @@ RELEASED_FIXTURE_DIGESTS = {
     "protocol-v1/telemetry-progress.json": (
         "fcb9f3b69b2c4e941b9a7f4af300a87781861d6b1b69acdeb1ba2f3fb7d52166"
     ),
+    "protocol-v1/telemetry-progress-with-outer.json": (
+        "7dddde2a8e77e3e8d51ecbc4901ae547656225bcb03b83431874659e19f32794"
+    ),
     "protocol-v1/telemetry-refusal.json": (
         "33c6bc9750b9e342a8a86e7cc9c25c23a76a03419b6bdb1690bfb9ec3353c82c"
     ),

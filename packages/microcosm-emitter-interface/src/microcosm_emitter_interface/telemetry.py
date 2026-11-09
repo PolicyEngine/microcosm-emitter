@@ -25,7 +25,7 @@ type TelemetryEventType = Literal[
 ]
 type TelemetryStatus = Literal["started", "progress", "completed", "failed", "blocked"]
 
-DEFAULT_HEARTBEAT_SECONDS = 60.0
+DEFAULT_HEARTBEAT_SECONDS = 30.0
 DEFAULT_FAILURE_CLASS = "build_failure"
 
 
@@ -122,14 +122,32 @@ class StageTransition:
 
 
 @dataclass(frozen=True)
+class OuterProgress:
+    """The counter one level above a stage's own: ``done`` of ``total``.
+
+    For example, a stage that scores 177 batches in each of 101 passes reports
+    the batch as its progress and the pass as this, so "74 of 177" also says
+    "pass 57 of 101".
+    """
+
+    done: int
+    total: int
+    unit: str | None = None
+
+
+@dataclass(frozen=True)
 class StageProgress:
-    """Progress within one stage: ``done`` of ``total``, in the optional ``unit``."""
+    """Progress within one stage: ``done`` of ``total``, in the optional ``unit``.
+
+    ``outer`` is the optional counter one level above it, sent only when given.
+    """
 
     stage_id: str
     done: int
     total: int
     unit: str | None = None
     details: Mapping[str, Any] = field(default_factory=dict)
+    outer: OuterProgress | None = None
 
 
 @dataclass(frozen=True)
@@ -188,6 +206,25 @@ type TelemetryCommand = (
 )
 
 
+def _progress_message(command: StageProgress) -> dict[str, Any]:
+    """Return a progress request, with ``outer`` only when the command has one."""
+    message: dict[str, Any] = {
+        "command": "progress",
+        "stage_id": command.stage_id,
+        "done": command.done,
+        "total": command.total,
+        "unit": command.unit,
+        "details": dict(command.details),
+    }
+    if command.outer is not None:
+        message["outer"] = {
+            "done": command.outer.done,
+            "total": command.outer.total,
+            "unit": command.outer.unit,
+        }
+    return message
+
+
 def telemetry_message(command: TelemetryCommand) -> dict[str, Any]:
     """Return the telemetry module's request for one typed command.
 
@@ -221,14 +258,7 @@ def telemetry_message(command: TelemetryCommand) -> dict[str, Any]:
                 "details": dict(command.details),
             }
         case StageProgress():
-            message = {
-                "command": "progress",
-                "stage_id": command.stage_id,
-                "done": command.done,
-                "total": command.total,
-                "unit": command.unit,
-                "details": dict(command.details),
-            }
+            message = _progress_message(command)
         case CalibrationProgress():
             message = {
                 "command": (
@@ -346,15 +376,17 @@ class TelemetryRecorder:
         done: int,
         total: int,
         unit: str | None = None,
+        outer: OuterProgress | None = None,
         **details: object,
     ) -> bool:
         """Send ``done`` of ``total`` progress within a stage; True once committed.
 
-        The keyword arguments beyond ``done``, ``total`` and ``unit`` become
-        the event's details.
+        ``outer`` is the counter one level above, such as the pass a batch
+        belongs to. The keyword arguments beyond ``done``, ``total``, ``unit``
+        and ``outer`` become the event's details.
         """
         return self._client.emit_telemetry(
-            StageProgress(stage_id, done, total, unit, details)
+            StageProgress(stage_id, done, total, unit, details, outer)
         )
 
     def calibration_progress(self, event: Mapping[str, Any]) -> bool:
