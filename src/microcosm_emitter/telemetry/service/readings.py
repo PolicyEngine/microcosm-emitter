@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
 import psutil
@@ -28,6 +29,8 @@ from microcosm_emitter.telemetry.service.system_readers import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from microcosm_emitter.telemetry.service.lifecycle import LifecycleState
 
 _SHARE_DIGITS: Final = 4
@@ -146,7 +149,14 @@ def _disk_free_bytes(pid: int) -> int | None:
 class MachineReader:
     """Read the machine's memory, swap, pressure, CPU, power and disk."""
 
-    def __init__(self, parent_pid: int, *, system_platform: str = sys.platform) -> None:
+    def __init__(
+        self,
+        parent_pid: int,
+        *,
+        system_platform: str = sys.platform,
+        environ: Mapping[str, str] = os.environ,  # noqa: ARG002
+        vmstat: Path = Path("/proc/vmstat"),  # noqa: ARG002
+    ) -> None:
         """Hold the build's process ID and take the first CPU and swap counters."""
         self.parent_pid = parent_pid
         self._macos = system_platform == "darwin"

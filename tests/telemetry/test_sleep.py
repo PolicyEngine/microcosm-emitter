@@ -41,8 +41,10 @@ class FakeClocks:
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS clocks")
-def test_macos_compares_the_uptime_clock_with_the_monotonic_clock():
-    assert clock_ids("darwin") == (time.CLOCK_UPTIME_RAW, time.CLOCK_MONOTONIC)
+def test_macos_compares_the_uptime_clock_with_the_raw_monotonic_clock():
+    # Both are raw: time synchronisation's frequency corrections, which
+    # CLOCK_MONOTONIC follows, would show as time awake or asleep.
+    assert clock_ids("darwin") == (time.CLOCK_UPTIME_RAW, time.CLOCK_MONOTONIC_RAW)
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux clocks")

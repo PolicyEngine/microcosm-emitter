@@ -551,3 +551,26 @@ def test_a_machine_read_that_raises_reads_as_unknown(monkeypatch, function, key,
     reader = MachineReader(os.getpid())
     reader.reading()
     assert reader.reading()[key] is None
+
+
+def test_a_modal_container_has_no_load_average():
+    """gVisor, which runs Modal's containers, reports a fixed load of 0.00."""
+    reader = MachineReader(os.getpid(), environ={"MODAL_TASK_ID": "ta-fixture"})
+    reader.reading()
+    assert reader.reading()["load_average_1m"] is None
+
+
+def test_a_local_machine_keeps_its_load_average():
+    reader = MachineReader(os.getpid(), environ={})
+    reader.reading()
+    assert reader.reading()["load_average_1m"] is not None
+
+
+def test_swap_traffic_is_unknown_without_the_kernels_counters(tmp_path):
+    """Without ``/proc/vmstat``, as in gVisor, psutil reports 0 swap traffic."""
+    reader = MachineReader(
+        os.getpid(), system_platform="linux", environ={}, vmstat=tmp_path / "vmstat"
+    )
+    reader.reading()
+    reading = reader.reading()
+    assert (reading["swap_in_bytes"], reading["swap_out_bytes"]) == (None, None)
