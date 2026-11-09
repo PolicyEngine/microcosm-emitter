@@ -8,6 +8,7 @@ import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import psutil
 import pytest
 
 from microcosm_emitter.host.contracts import ModuleContext
@@ -425,7 +426,8 @@ def fake_psutil(processes):
 
     Each state holds ``start`` (its start time since boot, which psutil uses
     to tell processes apart), ``user`` CPU seconds and ``disk``, the bytes
-    read so far, or None when reading them fails.
+    read so far, None when reading them fails with ``OSError``, or the
+    exception reading them raises.
     """
 
     class FakeProcess:
@@ -460,6 +462,8 @@ def fake_psutil(processes):
             disk = processes[self.pid]["disk"]
             if disk is None:
                 raise OSError(3, "No such process")
+            if isinstance(disk, Exception):
+                raise disk
             return SimpleNamespace(read_bytes=disk, write_bytes=0)
 
     return SimpleNamespace(Process=FakeProcess, Error=OSError)
@@ -494,3 +498,56 @@ def test_a_reused_process_id_counts_the_new_process_from_its_start(monkeypatch):
     processes[11] = {"start": 50.0, "user": 5.0, "disk": 0}
     sampler.sample()
     assert sampler.tree_reading(10.0)["cpu_user_cores"] == 0.5
+
+
+# psutil 7.2.2 raises ValueError for a per-process I/O file without an
+# ``rchar`` field, as gVisor wrote before 2026-03-19, and RuntimeError for an
+# empty one, and RuntimeError on macOS when a system query fails.
+READ_ERRORS = [ValueError("no rchar field"), RuntimeError("empty file")]
+
+
+@pytest.mark.parametrize("error", READ_ERRORS, ids=["ValueError", "RuntimeError"])
+def test_disk_counters_that_raise_read_as_unknown(monkeypatch, error):
+    processes = {
+        10: {"start": 1.0, "user": 1.0, "disk": error},
+        11: {"start": 2.0, "user": 2.0, "disk": error},
+    }
+    monkeypatch.setattr(resources_module, "psutil", fake_psutil(processes))
+    sampler = ProcessTreeSampler(10, system_platform="linux")
+    assert sampler.sample()["cpu_user_seconds"] == 3.0
+    reading = sampler.tree_reading(30.0)
+    assert reading["processes"] == 2
+    assert (reading["disk_read_bytes"], reading["disk_written_bytes"]) == (None, None)
+
+
+@pytest.mark.parametrize("error", READ_ERRORS, ids=["ValueError", "RuntimeError"])
+def test_the_real_sampler_survives_io_counters_that_raise(monkeypatch, error):
+    def refuse(self):
+        raise error
+
+    monkeypatch.setattr(psutil.Process, "io_counters", refuse, raising=False)
+    sampler = ProcessTreeSampler(os.getpid(), system_platform="linux")
+    assert sampler.sample()["rss_bytes"] > 0
+    assert sampler.tree_reading(1.0)["processes"] >= 1
+
+
+@pytest.mark.parametrize("error", [RuntimeError, ValueError])
+@pytest.mark.parametrize(
+    ("function", "key"),
+    [
+        ("sensors_battery", "on_battery"),
+        ("virtual_memory", "memory_available_bytes"),
+        ("cpu_times", "cpu_busy_share"),
+        ("swap_memory", "swap_used_bytes"),
+        ("Process", "disk_free_bytes"),
+    ],
+)
+def test_a_machine_read_that_raises_reads_as_unknown(monkeypatch, function, key, error):
+    def refuse(*args, **kwargs):
+        message = "refused"
+        raise error(message)
+
+    monkeypatch.setattr(psutil, function, refuse)
+    reader = MachineReader(os.getpid())
+    reader.reading()
+    assert reader.reading()[key] is None

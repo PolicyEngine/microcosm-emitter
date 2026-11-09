@@ -98,3 +98,14 @@ def test_the_run_started_event_carries_the_description_beside_the_identity(
     environment = started["details"].get("environment") or {}
     assert environment.get("kind") == "modal_container"
     assert (environment.get("modal") or {}).get("task_id") == "ta-fixture-task"
+
+
+def test_a_memory_total_that_cant_be_read_is_unknown(monkeypatch):
+    def refuse():
+        message = "host_statistics64 failed"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(psutil, "virtual_memory", refuse)
+    environment = machine_environment({})
+    assert environment["memory_total_bytes"] is None
+    assert environment["kind"] == "local"
