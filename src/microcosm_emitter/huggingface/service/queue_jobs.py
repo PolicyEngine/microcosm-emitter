@@ -349,3 +349,11 @@ class HandoverJobs:
         with self._sessions() as session:
             job = session.get(HandoverJob, (handover_id, destination))
             return None if job is None else dict(job.receipt)
+
+    def job_request(
+        self, handover_id: str, destination: str = DESTINATION_HUGGING_FACE
+    ) -> dict[str, Any] | None:
+        """Return the request queued for ``handover_id``, or ``None`` if none is."""
+        with self._sessions() as session:
+            job = session.get(HandoverJob, (handover_id, destination))
+            return None if job is None else dict(job.request)

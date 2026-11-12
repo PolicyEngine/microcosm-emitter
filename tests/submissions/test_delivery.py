@@ -603,7 +603,7 @@ def test_a_collector_queue_error_leaves_the_bundle_answer_alone(
         error_message = "database is locked"
         raise RuntimeError(error_message)
 
-    controls.module.collector_delivery.enqueue_for_bundle = locked_database
+    controls.module.collector_delivery.enqueue_for_handover = locked_database
     request = bundle(controls)
 
     receipt = stage(controls, request)

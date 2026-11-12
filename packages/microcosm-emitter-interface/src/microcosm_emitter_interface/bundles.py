@@ -122,7 +122,8 @@ class StageDatasetBundle:
 
     With ``collector``, the emitter also submits the calibration diagnostics
     and Orrery inputs the bundle names to the collector, once the Hugging
-    Face commit lands and while its collector submissions are switched on.
+    Face commit lands and while its collector submissions are switched on
+    (``HuggingFaceSettings.collector_submissions``).
     """
 
     repository: str

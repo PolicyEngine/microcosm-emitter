@@ -2,12 +2,14 @@
 
 The collector's artifact intake (PolicyEngine/microcosm-collector,
 ``docs/artifact-submissions.md``) records which build produced each
-submission. A bundle hand-over says so with ``CollectorProvenance``; without
-it, the bundle goes only to Hugging Face. The emitter submits only while its
-collector submissions are switched on.
+submission. A bundle hand-over or release publication says so with
+``CollectorProvenance``; without it, the files go only to Hugging Face. The
+emitter submits only while its collector submissions are switched on
+(``HuggingFaceSettings.collector_submissions``).
 
 ``CollectorSubmissionReceipt`` is what ``EmitterClient.collector_submission_receipt``
-answers: the emitter's latest record of what the collector made of a bundle.
+answers: the emitter's latest record of what the collector made of a bundle
+or publication.
 """
 
 from __future__ import annotations
@@ -37,8 +39,9 @@ class CollectorProvenance:
     microdata. The collector keeps the Orrery outputs of such a build private
     until output clearance; calibration data may be public whether or not
     the build used licensed data (decision D10); and native evidence is never
-    published. ``release`` is ``None`` for a staged build that is not a
-    release.
+    published. ``release`` is the candidate release a staged build was
+    staged for, or ``None`` when it names none. A release publication's
+    provenance names that publication's release and build.
     """
 
     country_code: str
@@ -135,16 +138,22 @@ class CollectorSubmission(TypedDict):
 
 
 class CollectorSubmissionReceipt(TypedDict):
-    """The emitter's latest record of a bundle hand-over's collector submissions.
+    """The emitter's latest record of a hand-over's collector submissions.
 
-    ``status`` sums up its ``submissions``: ``pending`` while one is still
-    being sent, then ``awaiting_final_status`` while the emitter checks one's
-    status. Once every one is settled it is ``rejected`` if the collector
-    rejected one, else ``failed`` if one failed, else ``timed_out`` if one
-    timed out, else ``succeeded``; ``error_code`` is then that submission's.
-    ``skipped`` means nothing was sent: Hugging Face refused the bundle
-    (``NOT_STAGED_ON_HUGGING_FACE``), or its folder is longer than the
-    collector accepts (``COLLECTOR_FOLDER_TOO_LONG``).
+    The hand-over is a bundle or a release publication that carries
+    ``CollectorProvenance``. ``status`` sums up its ``submissions``:
+    ``pending`` while one is still being sent (``WAITING_FOR_HUGGING_FACE``
+    until its Hugging Face commit lands), then ``awaiting_final_status``
+    while the emitter checks one's status. Once every one is settled it is
+    ``rejected`` if the collector rejected one, else ``failed`` if one
+    failed, else ``timed_out`` if one timed out, else ``succeeded``;
+    ``error_code`` is then that submission's. ``skipped`` means nothing was
+    sent: Hugging Face refused the bundle (``NOT_STAGED_ON_HUGGING_FACE``) or
+    the publication (``NOT_PUBLISHED_ON_HUGGING_FACE``), its folder is
+    longer than the collector accepts (``COLLECTOR_FOLDER_TOO_LONG``), or
+    collector submissions are switched on but the emitter refused its
+    collector settings, such as an untrusted collector origin or unusable
+    given-token variables (``COLLECTOR_SETTINGS_REFUSED``, with no attempt).
     """
 
     handover_id: str
