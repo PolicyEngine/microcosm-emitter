@@ -108,12 +108,16 @@ class PublishRelease:
     ``release_manifest``, naming this release and build.
 
     With ``collector``, the emitter also submits the calibration diagnostics
-    and Orrery inputs the files name to the collector, from the build's
-    folder ``releases/<release>/<build>`` and naming the commit that added
-    it, once that commit lands and while its collector submissions are
-    switched on (``HuggingFaceSettings.collector_submissions``). The
-    provenance must name this publication's release and build, since the
-    collector refuses a build folder whose provenance names another.
+    and Orrery inputs the files name to the collector, once the release
+    commit lands and while its collector submissions are switched on
+    (``HuggingFaceSettings.collector_submissions``). The submissions name the
+    build's folder ``releases/<release>/<build>`` and the commit that added
+    it. The provenance must name this publication's release and build, since
+    the collector refuses a build folder whose provenance names another. The
+    emitter copies the submitted files at hand-over, each of at most 32 MiB
+    and together at most 64 MiB, smallest first, so the build may remove or
+    rewrite those once the release has landed; any larger submitted file is
+    read from its path and must stay unchanged until the hand-over settles.
     """
 
     repository: str

@@ -20,9 +20,9 @@ from typing import Any, Final, Literal, NotRequired, TypedDict
 
 from microcosm_emitter_interface.identifiers import safe_identifier
 
-#: Bundle roles of the Orrery inputs the collector projects from. The
-#: collector's ``orrery-inputs`` kind names them ``schema``,
-#: ``execution_overlay``, ``upstream`` and ``evidence``.
+#: File roles, in a bundle or a publication, of the Orrery inputs the collector
+#: projects from. The collector's ``orrery-inputs`` kind names them
+#: ``schema``, ``execution_overlay``, ``upstream`` and ``evidence``.
 ORRERY_SCHEMA_ROLE: Final = "orrery_schema"
 EXECUTION_OVERLAY_ROLE: Final = "execution_overlay"
 ORRERY_UPSTREAM_ROLE: Final = "orrery_upstream"
