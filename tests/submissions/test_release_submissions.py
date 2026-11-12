@@ -8,6 +8,7 @@ import hashlib
 import json
 
 from fake_hugging_face import PRIVATE_REPOSITORY
+from given_token import given_token_variables
 
 from microcosm_emitter_interface.bundles import handover_identifier
 from microcosm_emitter_interface.publication import (
@@ -23,6 +24,8 @@ PROVENANCE = CollectorProvenance(
     country_code="UK", build_id=BUILD, licensed_data=True, release=RELEASE
 )
 DIAGNOSTICS = b'{"schema": 8}'
+#: When the emitter first checks an accepted submission's status.
+FIRST_STATUS_CHECK_SECONDS = 10
 BUILD_MANIFEST = b'{"outputs": {}}'
 
 
@@ -297,3 +300,117 @@ def test_refused_collector_settings_give_a_described_publication_a_skipped_recei
     finally:
         controls.module.close(0)
     assert controls.collector.exchange_requests == []
+
+
+def test_unusable_given_token_variables_give_a_described_publication_a_skipped_receipt(
+    module_factory, collector, monkeypatch
+):
+    # A token the runner obtained from another collector than this module's.
+    for name, value in given_token_variables("https://collector.example.test").items():
+        monkeypatch.setenv(name, value)
+    controls = module_factory.start(
+        collector_submissions=True, development_collector_url=collector.origin
+    )
+    try:
+        message = publication(controls)
+        hand_over(controls, message)
+
+        receipt = collector_receipt(controls, message)
+    finally:
+        controls.module.close(0)
+    assert (receipt["status"], receipt["error_code"]) == (
+        "skipped",
+        "COLLECTOR_SETTINGS_REFUSED",
+    )
+
+
+def test_refused_settings_answer_with_the_row_another_emitter_queued(
+    module_factory, collector
+):
+    """Emitters on one machine share the hand-over database."""
+    earlier = module_factory.start(
+        collector_submissions=True, development_collector_url=collector.origin
+    )
+    message = publication(earlier)
+    try:
+        hand_over(earlier, message)
+        cycle(earlier)
+        submitted = collector_receipt(earlier, message)
+    finally:
+        earlier.module.close(0)
+    refused = module_factory.start(
+        collector_submissions=True, collector_origin="https://collector.example.test"
+    )
+    try:
+        answered = collector_receipt(refused, message)
+    finally:
+        refused.module.close(0)
+
+    assert submitted["status"] == "awaiting_final_status"
+    assert answered == submitted
+
+
+def test_a_publication_whose_provenance_names_another_build_is_refused(
+    submitting_module,
+):
+    controls = submitting_module
+    another = CollectorProvenance(
+        country_code="UK",
+        build_id="uk-frs-calibration-attempt-another",
+        licensed_data=True,
+        release=RELEASE,
+    )
+    message = publication(controls, collector=another)
+
+    receipt = controls.module.query(message)["receipt"]
+
+    assert (receipt["status"], receipt["error_code"]) == ("refused", "INVALID_REQUEST")
+    assert collector_receipt(controls, message) is None
+
+
+def test_a_publications_copies_are_removed_once_both_rows_have_settled(
+    submitting_module,
+):
+    controls = submitting_module
+    message = publication(controls)
+    hand_over(controls, message)
+    cycle(controls)
+    queue = controls.module.queue
+    kept = sorted(queue.copied_files(handover_id_of(message)))
+    (submission_id,) = controls.collector.submissions
+    controls.collector.finish(submission_id, "succeeded")
+
+    controls.clock.advance(FIRST_STATUS_CHECK_SECONDS)
+    controls.module.collector_delivery.run_cycle()
+
+    assert release_receipt(controls, message)["status"] == "published"
+    assert collector_receipt(controls, message)["status"] == "succeeded"
+    assert kept == [
+        "build_manifest.json",
+        "calibration_diagnostics.json",
+        "release_manifest.json",
+    ]
+    assert queue.copied_files(handover_id_of(message)) == {}
+
+
+def test_handing_a_publication_over_again_copies_nothing_more(
+    submitting_module, monkeypatch
+):
+    from microcosm_emitter.huggingface.service import module as module_module
+
+    controls = submitting_module
+    message = publication(controls)
+    copied = []
+    copy = module_module.copy_publication_files
+
+    def recording_copy(change, names):
+        copied.append(change.build)
+        return copy(change, names)
+
+    monkeypatch.setattr(module_module, "copy_publication_files", recording_copy)
+
+    hand_over(controls, message)
+    hand_over(controls, message)
+
+    assert copied == [BUILD]
+    assert collector_receipt(controls, message)["status"] == "pending"

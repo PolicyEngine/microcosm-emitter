@@ -258,3 +258,11 @@ def test_the_collector_switch_must_be_a_boolean(switch: object) -> None:
         ValueError, match=re.escape("collector_submissions must be True or False.")
     ):
         HuggingFaceSettings(collector_submissions=switch)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("url", [1, b"http://127.0.0.1:8080", ["http://127.0.0.1"]])
+def test_a_development_collector_url_must_be_a_string(url: object) -> None:
+    with pytest.raises(
+        ValueError, match=re.escape("development_collector_url must be a string.")
+    ):
+        HuggingFaceSettings(development_collector_url=url)  # type: ignore[arg-type]
