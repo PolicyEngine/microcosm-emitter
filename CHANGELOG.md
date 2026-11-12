@@ -1,3 +1,10 @@
+## [0.15.0] - 2026-11-12
+
+### Added
+
+- - `HuggingFaceSettings(collector_submissions=True)` switches the Hugging Face module's collector submissions on, and `development_collector_url` points them at a loopback collector, as for telemetry and Orrery graphs. Both are sent only when set, so a build that sets neither starts the emitter as before. A release publication can carry `CollectorProvenance` (`PublishRelease.collector`), which must name its own release and build: once its release commit lands, the emitter submits the build's calibration diagnostics and Orrery inputs from `releases/<release>/<build>`, naming that commit, and keeps copies of the files it submits, within the bundle copy limits (each at most 32 MiB, at most 64 MiB in all), so the build may remove those after the release lands; a submitted file left out by those limits must stay until the hand-over settles. A repeat of an already published build with provenance waits until the Hub reports the commit that added its folder, and is refused with `REQUEST_EXPIRED` if that takes an hour. A publication Hugging Face refuses is `skipped` with `NOT_PUBLISHED_ON_HUGGING_FACE`. When collector submissions are switched on but the collector settings are refused, `collector_submission_receipt` answers a hand-over that describes its build with a `skipped` receipt and `COLLECTOR_SETTINGS_REFUSED`, instead of nothing (microcosm-emitter#91).
+
+
 ## [0.14.0] - 2026-11-09
 
 ### Added
