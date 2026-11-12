@@ -1,0 +1,10 @@
+{
+  "protocol_version": 1,
+  "module": "huggingface",
+  "kind": "configuration",
+  "body": {
+    "handover_database_path": "{directory}/events.handovers.sqlite3",
+    "collector_submissions": true,
+    "development_collector_url": "http://127.0.0.1:1"
+  }
+}

@@ -632,6 +632,54 @@ def test_an_unusable_collector_setting_switches_submissions_off(module_factory, 
     assert "collector submissions are off" in capsys.readouterr().err
 
 
+def test_refused_collector_settings_give_a_described_bundle_a_skipped_receipt(
+    module_factory, refused_collector_settings
+):
+    controls = module_factory.start(
+        collector_submissions=True, **refused_collector_settings
+    )
+    try:
+        request = bundle(controls)
+        assert stage(controls, request)["status"] == "pending"
+        plain = bundle(controls, collector=None, run_id="uk-run-2")
+        stage(controls, plain)
+
+        assert collector_receipt(controls, request) == {
+            "handover_id": request.handover_id(),
+            "destination": "collector",
+            "status": "skipped",
+            "error_code": "COLLECTOR_SETTINGS_REFUSED",
+            "attempts": 0,
+            "submissions": [],
+        }
+        # Nothing to skip: a bundle that describes no build, or no hand-over.
+        assert collector_receipt(controls, plain) is None
+        unknown = controls.module.query(
+            {
+                "protocol_version": 1,
+                "command": "collector_submission_receipt",
+                "handover_id": "0" * 32,
+            }
+        )
+        assert unknown["receipt"] is None
+    finally:
+        controls.module.close(0)
+    assert controls.collector.exchange_requests == []
+
+
+def test_refused_collector_settings_with_submissions_off_give_no_receipt(
+    module_factory, refused_collector_settings
+):
+    controls = module_factory.start(**refused_collector_settings)
+    try:
+        request = bundle(controls)
+        stage(controls, request)
+
+        assert collector_receipt(controls, request) is None
+    finally:
+        controls.module.close(0)
+
+
 def test_an_unexpected_error_in_a_submission_releases_its_row(
     submitting_module,
 ):
