@@ -4,8 +4,10 @@
 already assigns), whether to make the build current, and each file with its
 role. The emitter writes the files to ``releases/<release>/<build>/`` and the
 updated ``releases.json`` in one commit, after the checks in
-``microcosm_emitter_interface.releases``. ``PromoteBuild`` and
-``WithdrawBuild`` change only ``releases.json``.
+``microcosm_emitter_interface.releases``. With ``CollectorProvenance``, the
+emitter also submits the build's calibration diagnostics and Orrery inputs to
+the collector after that commit. ``PromoteBuild`` and ``WithdrawBuild``
+change only ``releases.json``.
 
 Publication is not best-effort: the receipt says whether the change was
 ``published``, is still ``pending`` (retried from the emitter's queue) or was
@@ -40,6 +42,7 @@ from microcosm_emitter_interface.releases import (
     RELEASE_MANIFEST_NAME,
     is_pointer_file,
 )
+from microcosm_emitter_interface.submissions import CollectorProvenance
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -103,6 +106,22 @@ class PublishRelease:
     ``national_default``); a release keeps the role it was first published
     with. The files must include ``release_manifest.json`` with the role
     ``release_manifest``, naming this release and build.
+
+    With ``collector``, the emitter also submits the calibration diagnostics
+    and Orrery inputs the files name to the collector, once the release
+    commit lands and while its collector submissions are switched on
+    (``HuggingFaceSettings.collector_submissions``). The submissions name the
+    build's folder ``releases/<release>/<build>`` and the commit that added
+    it. The provenance must name this publication's release and build, since
+    the collector refuses a build folder whose provenance names another. The
+    emitter copies the submitted files at hand-over, each of at most 32 MiB
+    and together at most 64 MiB, smallest first, so the build may remove or
+    rewrite those once the release has landed; a submitted file left out by
+    those limits is read from its path and must stay unchanged until the
+    hand-over settles. Handing an already published build over again with
+    ``collector`` waits until the Hub reports the commit that added its
+    folder, and is ``refused`` with ``REQUEST_EXPIRED`` if that takes an
+    hour, even with submissions off.
     """
 
     repository: str
@@ -112,16 +131,18 @@ class PublishRelease:
     make_current: bool
     files: Sequence[ReleaseFile]
     request_id: str = field(default_factory=new_request_id)
+    collector: CollectorProvenance | None = None
     protocol_version: int = field(default=PROTOCOL_VERSION, repr=False)
 
     def __post_init__(self) -> None:
         """Store ``files`` as a tuple; raise ``ValueError`` if a field is invalid.
 
         The repository, release, build, request ID and role must follow the
-        identifier rules, ``make_current`` must be a bool, and the files must
+        identifier rules, ``make_current`` must be a bool, the files must
         be ``ReleaseFile`` values with distinct names, among them
         ``release_manifest.json``, which alone has the role
-        ``release_manifest``.
+        ``release_manifest``, and a given ``collector`` must be a
+        ``CollectorProvenance`` naming this release and build.
         """
         _check_reference(self.repository, self.release, self.build, self.request_id)
         role_identifier(self.release_role, label="release_role")
@@ -147,10 +168,29 @@ class PublishRelease:
         if [item.role for item in self.files].count(RELEASE_MANIFEST_ROLE) != 1:
             error_message = f"Only {RELEASE_MANIFEST_NAME} has its role."
             raise ValueError(error_message)
+        self._check_collector()
+
+    def _check_collector(self) -> None:
+        if self.collector is not None and not isinstance(
+            self.collector, CollectorProvenance
+        ):
+            error_message = "collector must be a CollectorProvenance value."
+            raise ValueError(error_message)
+        if self.collector is not None and (
+            self.collector.release != self.release
+            or self.collector.build_id != self.build
+        ):
+            error_message = (
+                "collector must name the publication's own release and build."
+            )
+            raise ValueError(error_message)
 
     def message(self) -> dict[str, Any]:
-        """Return the ``publish_release`` request, with absolute local paths."""
-        return {
+        """Return the ``publish_release`` request, with absolute local paths.
+
+        The ``collector`` key is present only when ``collector`` is given.
+        """
+        message = {
             "protocol_version": self.protocol_version,
             "command": "publish_release",
             "request_id": self.request_id,
@@ -170,6 +210,11 @@ class PublishRelease:
                 for item in self.files
             ],
         }
+        # Only when given, so a publication without it keeps its message and
+        # hand-over ID.
+        if self.collector is not None:
+            message["collector"] = self.collector.message()
+        return message
 
     def handover_id(self) -> str:
         """Return the hand-over identifier the emitter also computes for it."""

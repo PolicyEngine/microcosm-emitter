@@ -43,6 +43,9 @@ RELEASED_FIXTURE_DIGESTS = {
     "protocol-v1/huggingface-publish-release.json": (
         "12ccf6c9b613dae4e01709b745e8caacfbeb8f2ceeb6b8bfc8373af134de25c8"
     ),
+    "protocol-v1/huggingface-publish-release-with-collector.json": (
+        "c10f798fe1998cb3c9972c584e767ede1bda810e4a19e220003192a8c9a3a911"
+    ),
     "protocol-v1/huggingface-withdraw-build.json": (
         "ad15257013d831c5830818668b222a12c0c8b53c5236ac0ff9733bbfd76c98be"
     ),
@@ -63,6 +66,9 @@ RELEASED_FIXTURE_DIGESTS = {
     ),
     "protocol-v1/huggingface-configuration.json": (
         "0ecea1a8e7ba6c4458c530b58fa90079207ee3f48da3e522479e9afde581551a"
+    ),
+    "protocol-v1/huggingface-configuration-with-collector-submissions.json": (
+        "fc096053a06aaccce2c28f6276fd95d67f01b372131aa7184f9236c12ff69b1d"
     ),
     "protocol-v1/huggingface-read-back-run-files.json": (
         "ab643a81520cbf35fada4362d6bf08f63c84d45ed41d9ddf1a0a592855c91313"
@@ -156,8 +162,17 @@ def fixtures_of(module: str, kind: str):
     )
 
 
-def configuration_of(module: str, tmp_path: Path) -> dict:
-    (fixture,) = fixtures_of(module, "configuration")
+def configuration_of(module: str, tmp_path: Path, name: str | None = None) -> dict:
+    """Materialize one of a module's configuration fixtures.
+
+    By default, ``<module>-configuration``; ``name`` selects another.
+    """
+    wanted = name or f"{module}-configuration"
+    (fixture,) = [
+        fixture
+        for fixture in fixtures_of(module, "configuration")
+        if fixture.name == wanted
+    ]
     return materialize(
         fixture, directory=tmp_path, spool_path=tmp_path / "events.sqlite3"
     )
@@ -247,6 +262,24 @@ def test_hugging_face_module_answers_each_query_fixture_in_order(tmp_path):
                 assert response["read_back"]["status"] in {"pending", "passed"}
             if "access" in response:
                 assert response["access"]["status"] == "checked"
+    finally:
+        module.close(time.monotonic())
+
+
+def test_hugging_face_module_starts_submissions_from_the_switch_fixture(tmp_path):
+    module = HuggingFaceModule(
+        configuration_of(
+            "huggingface",
+            tmp_path,
+            "huggingface-configuration-with-collector-submissions",
+        ),
+        ModuleContext(os.getpid()),
+        api_factory=lambda: None,
+        background_workers=False,
+    )
+    module.initialize()
+    try:
+        assert module.collector_delivery is not None
     finally:
         module.close(time.monotonic())
 

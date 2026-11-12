@@ -692,7 +692,11 @@ def _already_published(
     the receipt was lost) finds its build listed with a byte-identical
     manifest: that is ``published``, not refused, even if another build has
     been made current since. Publishing never promotes an already published
-    build; ``promote_build`` does that.
+    build; ``promote_build`` does that. The receipt's commit is the one that
+    added the build's folder (a build folder is never rewritten, so it last
+    changed the manifest). A publication with collector provenance, whose
+    submissions name that commit, stays pending until the Hub reports it;
+    one without provenance reports the head instead, as before.
     """
     release, build = change.release, change.build
     entry = record.releases.get(release)
@@ -714,6 +718,12 @@ def _already_published(
         return _pending(REPOSITORY_UNAVAILABLE)
     if not same:
         return _refused("BUILD_FOLDER_EXISTS", exists_message)
+    if not commit:
+        if change.collector is not None:
+            # Its collector submissions must name the commit that added the
+            # folder, never a later head.
+            return _pending(REPOSITORY_UNAVAILABLE)
+        commit = head
     message = None
     if change.make_current and entry.current != build:
         message = (
@@ -721,5 +731,5 @@ def _already_published(
             f"build is {entry.current}."
         )
     return ReleaseOutcome(
-        "published", message=message, commit=commit or head, current=entry.current
+        "published", message=message, commit=commit, current=entry.current
     )

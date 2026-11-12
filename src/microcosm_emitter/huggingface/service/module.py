@@ -41,6 +41,7 @@ from microcosm_emitter.huggingface.service.releases import (
 )
 from microcosm_emitter.huggingface.service.requests import (
     RequestRefusedError,
+    copy_publication_files,
     parse_release_change,
     parse_stage_dataset_bundle,
     parse_stage_run_files,
@@ -55,11 +56,16 @@ from microcosm_emitter.submissions.client import (
 from microcosm_emitter.submissions.delivery import (
     COLLECTOR_SUBMISSION,
     COLLECTOR_SUBMISSIONS_ENABLED_BY_DEFAULT,
+    DESTINATION_COLLECTOR,
     CollectorSubmissionDelivery,
+    settings_refused_receipt,
 )
-from microcosm_emitter.submissions.planning import wants_collector_submission
+from microcosm_emitter.submissions.planning import (
+    submitted_file_names,
+    wants_collector_submission,
+)
 from microcosm_emitter_interface.identifiers import repository_identifier
-from microcosm_emitter_interface.publication import RELEASE_CHANGE
+from microcosm_emitter_interface.publication import RELEASE_CHANGE, PublishRelease
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -82,12 +88,13 @@ COLLECTOR_WORKER_ERROR_MESSAGE = (
     "stay queued for a later attempt."
 )
 COLLECTOR_QUEUE_ERROR_MESSAGE = (
-    "A bundle could not be queued for the collector ({error_type}); its Hugging "
-    "Face upload is queued as usual."
+    "A hand-over could not be queued for the collector ({error_type}); its "
+    "Hugging Face upload is queued as usual."
 )
 COLLECTOR_SETTING_MESSAGE = (
     "Microcosm collector submissions are off: the collector settings are "
-    "unusable ({error_type}). Hugging Face uploads continue."
+    "unusable ({error_type}). Hugging Face uploads continue, and hand-overs for "
+    "the collector are skipped with COLLECTOR_SETTINGS_REFUSED."
 )
 
 
@@ -131,12 +138,17 @@ class HuggingFaceModule:
     instead of starting the module's own workers; tests that drive the
     module by hand use it.
 
-    With ``collector_submissions`` true in the configuration, bundles that
-    describe their build are also submitted to the collector after their
-    Hugging Face commit, at the origin ``configured_collector_origin`` chooses
-    for every module: ``collector_origin`` selects one of the trusted
-    collector origins, and ``development_collector_url`` points at a loopback
-    collector. Collector submissions are off by default.
+    With ``collector_submissions`` true in the configuration
+    (``HuggingFaceSettings.collector_submissions``), bundles and release
+    publications that describe their build are also submitted to the
+    collector after their Hugging Face commit, at the origin
+    ``configured_collector_origin`` chooses for every module:
+    ``collector_origin`` selects one of the trusted collector origins, and
+    ``development_collector_url`` points at a loopback collector. Collector
+    submissions are off by default. When they are switched on but those
+    settings or the given-token variables are refused, they stay off, and a
+    hand-over that describes its build gets a ``skipped`` receipt with
+    ``COLLECTOR_SETTINGS_REFUSED``.
     """
 
     # The keyword-only parameters are the module's replaceable dependencies and
@@ -163,6 +175,8 @@ class HuggingFaceModule:
         self.queue: HandoverQueue | None = None
         self.delivery: HuggingFaceDelivery | None = None
         self.collector_delivery: CollectorSubmissionDelivery | None = None
+        #: Collector submissions were switched on, but their settings refused.
+        self.collector_settings_refused = False
         self.workers: dict[str, DeliveryWorker] = {}
         self._closed = False
 
@@ -170,7 +184,8 @@ class HuggingFaceModule:
         """Open the hand-over queue, set up delivery and start any background workers.
 
         Collector submissions are set up only when ``collector_submissions`` is
-        true. An unusable collector setting prints a warning and leaves them off.
+        true. An unusable collector setting prints a warning and leaves them
+        off, and ``collector_settings_refused`` records it.
         """
         # The hand-over database, never the shared spool database (see
         # ``HandoverQueue``); ``HuggingFaceSettings`` names it.
@@ -188,6 +203,7 @@ class HuggingFaceModule:
                 self.collector_delivery = self._collector_delivery(self.queue)
             except ValueError as error:
                 # A collector setting never stops the Hugging Face module.
+                self.collector_settings_refused = True
                 self.delivery.warn_once(
                     "collector settings",
                     COLLECTOR_SETTING_MESSAGE.format(error_type=type(error).__name__),
@@ -355,20 +371,44 @@ class HuggingFaceModule:
         if self.collector_delivery is not None and wants_collector_submission(
             hand_over.request
         ):
-            try:
-                self.collector_delivery.enqueue_for_bundle(
-                    hand_over.handover_id, hand_over.request, hand_over.copied
-                )
-            # The Hugging Face row is queued: any failure to queue the collector
-            # row only warns, and the request is answered with its receipt.
-            except Exception as error:  # noqa: BLE001
-                self.delivery.warn_once(
-                    "collector queue",
-                    COLLECTOR_QUEUE_ERROR_MESSAGE.format(
-                        error_type=type(error).__name__
-                    ),
-                )
+            self._queue_for_collector(
+                hand_over.handover_id,
+                hand_over.request,
+                lambda: hand_over.copied,
+            )
         return receipt
+
+    def _queue_for_collector(
+        self,
+        handover_id: str,
+        request: Mapping[str, Any],
+        copies: Callable[[], Mapping[str, bytes]],
+    ) -> None:
+        """Queue a hand-over's collector row, with the file copies it submits.
+
+        Called once its Hugging Face row is queued. ``copies`` returns the
+        bytes copied at hand-over. It is called only when the hand-over has no
+        collector row yet, since a repeated hand-over keeps the row's
+        copies, and inside the error handling, so a failure to copy is
+        handled like a failure to queue.
+        """
+        if (
+            self.collector_delivery is None
+            or self.delivery is None
+            or self.queue is None
+        ):
+            raise AssertionError
+        try:
+            queued = self.queue.job_receipt(handover_id, DESTINATION_COLLECTOR)
+            files = copies() if queued is None else {}
+            self.collector_delivery.enqueue_for_handover(handover_id, request, files)
+        # The Hugging Face row is queued: any failure to queue the collector
+        # row only warns, and the request is answered with its receipt.
+        except Exception as error:  # noqa: BLE001
+            self.delivery.warn_once(
+                "collector queue",
+                COLLECTOR_QUEUE_ERROR_MESSAGE.format(error_type=type(error).__name__),
+            )
 
     def _caller(self) -> ReleaseCaller:
         return ReleaseCaller(user=_user_name(), parent_pid=self.context.parent_pid)
@@ -402,7 +442,7 @@ class HuggingFaceModule:
         reason = self.release_change_policy(hand_over.change, self._caller())
         if reason is not None:
             return refused("NOT_AUTHORIZED", hand_over.handover_id, str(reason))
-        return self.queue.enqueue_job(
+        receipt = self.queue.enqueue_job(
             handover_id=hand_over.handover_id,
             kind=RELEASE_CHANGE,
             target=hand_over.repository,
@@ -421,6 +461,22 @@ class HuggingFaceModule:
             },
             now=self.clock(),
         )
+        change = hand_over.change
+        if (
+            self.collector_delivery is not None
+            and isinstance(change, PublishRelease)
+            and wants_collector_submission(hand_over.request)
+        ):
+            # A publication's files are not copied for Hugging Face; only the
+            # ones the collector takes, after the release lands.
+            self._queue_for_collector(
+                hand_over.handover_id,
+                hand_over.request,
+                lambda: copy_publication_files(
+                    change, submitted_file_names(hand_over.request)
+                ),
+            )
+        return receipt
 
     def _handover_receipt(self, message: JsonObject) -> dict[str, Any] | None:
         if self.queue is None:
@@ -440,9 +496,23 @@ class HuggingFaceModule:
         if not isinstance(handover_id, str) or not handover_id:
             error_message = "handover_id must be a nonempty string"
             raise ValueError(error_message)
-        if self.collector_delivery is None:
+        if self.collector_delivery is not None:
+            return self.collector_delivery.receipt(handover_id)
+        if not self.collector_settings_refused:
             return None
-        return self.collector_delivery.receipt(handover_id)
+        if self.queue is None:
+            raise AssertionError
+        # Another emitter sharing the hand-over database may have queued the
+        # collector row: its receipt is the answer.
+        queued = self.queue.job_receipt(handover_id, DESTINATION_COLLECTOR)
+        if queued is not None:
+            return queued
+        # Nothing was queued for the collector: a hand-over that would have
+        # been submitted says why, instead of looking like submissions are off.
+        request = self.queue.job_request(handover_id)
+        if request is None or not wants_collector_submission(request):
+            return None
+        return settings_refused_receipt(handover_id)
 
     def _check_write_access(self, message: JsonObject) -> dict[str, Any]:
         """Microcosm's staged-dataset preflight: credential, reach and scope."""

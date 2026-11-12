@@ -90,6 +90,29 @@ def submitting_module(tmp_path, collector):
         controls.module.close(0)
 
 
+#: Collector settings the module refuses, each for its own reason.
+REFUSED_COLLECTOR_SETTINGS = {
+    "untrusted origin": {"collector_origin": "https://collector.example.test"},
+    "development URL not on loopback": {
+        "development_collector_url": "https://collector.example.test"
+    },
+    "both origin settings": {
+        "collector_origin": "https://collector.example.test",
+        "development_collector_url": "http://127.0.0.1:1",
+    },
+    "origin that is not a string": {"collector_origin": 1},
+}
+
+
+@pytest.fixture(
+    params=list(REFUSED_COLLECTOR_SETTINGS.values()),
+    ids=list(REFUSED_COLLECTOR_SETTINGS),
+)
+def refused_collector_settings(request):
+    """Return module settings whose collector origin the module refuses."""
+    return request.param
+
+
 @pytest.fixture
 def default_module(tmp_path, collector):
     """Start the module as production starts it: collector submissions off."""

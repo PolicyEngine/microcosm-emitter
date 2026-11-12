@@ -1,6 +1,6 @@
-"""Which collector submissions a staged bundle produces.
+"""Which collector submissions a staged bundle or release publication produces.
 
-This only selects files by the roles the bundle names and maps them to the
+This only selects files by the roles the hand-over names and maps them to the
 collector contract's roles; it never reads or interprets file contents.
 """
 
@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 from microcosm_emitter_interface.bundles import CALIBRATION_DIAGNOSTICS_ROLE
+from microcosm_emitter_interface.releases import build_folder
 from microcosm_emitter_interface.submissions import (
     EXECUTION_OVERLAY_ROLE,
     ORRERY_EVIDENCE_ROLE,
@@ -23,11 +24,14 @@ SUBMISSION_CONTRACT_VERSION: Final = 1
 MAX_FOLDER_CHARACTERS: Final = 512
 CALIBRATION_DIAGNOSTICS_KIND: Final = "calibration-diagnostics"
 ORRERY_INPUTS_KIND: Final = "orrery-inputs"
+#: The command of a release publication; every other hand-over with
+#: collector provenance is a staged bundle.
+PUBLISH_RELEASE_COMMAND: Final = "publish_release"
 
 
 @dataclass(frozen=True)
 class SubmissionKind:
-    """Bundle roles a kind takes, mapped to the collector's role names."""
+    """Hand-over roles a kind takes, mapped to the collector's role names."""
 
     name: str
     roles: Mapping[str, str]
@@ -62,9 +66,9 @@ SUBMISSION_KINDS: Final = (
 class PlannedSubmission:
     """One ``POST /v1/submissions`` body and where each of its files is.
 
-    ``copied`` holds the bytes of files copied when the bundle was handed
-    over; they are submitted as they were then, since the build may have
-    rewritten them since.
+    ``copied`` holds the bytes of files copied when the bundle or publication
+    was handed over; they are submitted as they were then, since the build
+    may have rewritten them since.
     """
 
     kind: str
@@ -78,14 +82,35 @@ def _kinds_named(request: Mapping[str, Any]) -> list[SubmissionKind]:
     return [kind for kind in SUBMISSION_KINDS if kind.required_roles <= roles]
 
 
-def bundle_folder(request: Mapping[str, Any]) -> str:
-    """Return the bundle's Hugging Face folder, ``<prefix>/<run_id>``."""
+def is_publication(request: Mapping[str, Any]) -> bool:
+    """Whether a hand-over is a release publication rather than a staged bundle."""
+    return request.get("command") == PUBLISH_RELEASE_COMMAND
+
+
+def submission_folder(request: Mapping[str, Any]) -> str:
+    """Return the Hugging Face folder that holds the hand-over's files.
+
+    A release publication's is its build folder, ``releases/<release>/<build>``;
+    a bundle's is ``<prefix>/<run_id>``.
+    """
+    if is_publication(request):
+        return build_folder(request["release"], request["build"])
     return f"{request['prefix']}/{request['run_id']}"
 
 
 def wants_collector_submission(request: Mapping[str, Any]) -> bool:
-    """Whether a bundle describes its build and names files the collector takes."""
+    """Whether a hand-over describes its build and names files the collector takes."""
     return isinstance(request.get("collector"), Mapping) and bool(_kinds_named(request))
+
+
+def submitted_file_names(request: Mapping[str, Any]) -> frozenset[str]:
+    """Return the names of the hand-over's files that its submissions send."""
+    kinds = _kinds_named(request)
+    return frozenset(
+        entry["name"]
+        for entry in request.get("files", [])
+        if any(entry["role"] in kind.roles for kind in kinds)
+    )
 
 
 def planned_submissions(
@@ -93,17 +118,19 @@ def planned_submissions(
     revision: str,
     copied: Mapping[str, bytes] | None = None,
 ) -> list[PlannedSubmission]:
-    """Plan the submissions for a bundle committed to Hugging Face at ``revision``.
+    """Plan the submissions for a hand-over committed to Hugging Face at ``revision``.
 
     ``copied`` are the bytes copied at hand-over, by file name. There are no
-    submissions when the request has no ``collector`` mapping.
+    submissions when the request has no ``collector`` mapping. A release
+    publication names no telemetry run, so its build ID is the run ID, as in
+    the collector contract's example (for Microcosm the two are the same).
     """
     copied = {} if copied is None else copied
 
     collector = request.get("collector")
     if not isinstance(collector, Mapping):
         return []
-    run_id = request["run_id"]
+    run_id = collector["build_id"] if is_publication(request) else request["run_id"]
     provenance = {
         "run_id": run_id,
         "build_id": collector["build_id"],
@@ -112,7 +139,7 @@ def planned_submissions(
         "huggingface": {
             "repo": request["repository"],
             "commit": revision,
-            "folder": bundle_folder(request),
+            "folder": submission_folder(request),
         },
     }
     planned = []

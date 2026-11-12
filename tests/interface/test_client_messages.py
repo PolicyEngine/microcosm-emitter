@@ -37,17 +37,29 @@ FIXTURE_STAGING_REPOSITORY = "policyengine/fixture-staging"
 FIXTURE_PRIVATE_REPOSITORY = "policyengine/fixture-private"
 
 
-def fixture_publication(directory: Path) -> PublishRelease:
-    """Return the publication recorded in huggingface-publish-release.json."""
-    fixture = fixtures_by_name()["huggingface-publish-release"]
+def fixture_publication(
+    directory: Path,
+    *,
+    fixture_name: str = "huggingface-publish-release",
+    build: str = "fixture-build",
+    request_id: str = "fixture-request",
+    collector: CollectorProvenance | None = None,
+) -> PublishRelease:
+    """Return the publication recorded in the ``fixture_name`` publication fixture.
+
+    By default, that fixture is huggingface-publish-release.json.
+    """
+    fixture = fixtures_by_name()[fixture_name]
     recorded = materialize(fixture, directory=directory, spool_path=Path("unused"))
+    described = {} if collector is None else {"collector": collector}
     return PublishRelease(
         repository=FIXTURE_PRIVATE_REPOSITORY,
         release="fixture-release",
-        build="fixture-build",
+        build=build,
         release_role="national_default",
         make_current=True,
-        request_id="fixture-request",
+        request_id=request_id,
+        **described,
         files=tuple(
             ReleaseFile(
                 name=entry["name"],
@@ -293,6 +305,23 @@ SENT_BY: dict[str, Callable[[EmitterClient, Path], Any]] = {
     "huggingface-publish-release": lambda client, directory: client.publish_release(
         fixture_publication(directory), wait_seconds=0
     ),
+    "huggingface-publish-release-with-collector": lambda client, directory: (
+        client.publish_release(
+            fixture_publication(
+                directory,
+                fixture_name="huggingface-publish-release-with-collector",
+                build="fixture-build-described",
+                request_id="fixture-request-described",
+                collector=CollectorProvenance(
+                    country_code="UK",
+                    build_id="fixture-build-described",
+                    licensed_data=True,
+                    release="fixture-release",
+                ),
+            ),
+            wait_seconds=0,
+        )
+    ),
     "huggingface-promote-build": lambda client, directory: client.promote_build(
         PromoteBuild(
             repository=FIXTURE_PRIVATE_REPOSITORY,
@@ -331,6 +360,12 @@ CONFIGURED_BY: dict[str, Callable[[Path], dict[str, Any]]] = {
     ).configuration(spool_path),
     "huggingface-configuration": lambda spool_path: HuggingFaceSettings().configuration(
         spool_path
+    ),
+    "huggingface-configuration-with-collector-submissions": lambda spool_path: (
+        HuggingFaceSettings(
+            collector_submissions=True,
+            development_collector_url="http://127.0.0.1:1",
+        ).configuration(spool_path)
     ),
 }
 

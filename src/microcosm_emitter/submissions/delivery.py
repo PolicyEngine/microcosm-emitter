@@ -1,10 +1,12 @@
-"""Deliver bundle hand-overs to the collector, after their Hugging Face commit.
+"""Deliver hand-overs to the collector, after their Hugging Face commit.
 
-A bundle hand-over that describes its build gets a second row in the
-hand-over queue, for the ``collector`` destination. It waits until the same
-hand-over's Hugging Face row has staged the bundle, because the submission's
-provenance names that commit. Then each planned submission is submitted until
-the collector accepts or refuses it.
+A bundle hand-over or release publication that describes its build gets a
+second row in the hand-over queue, for the ``collector`` destination. It
+waits until the same hand-over's Hugging Face row has staged the bundle or
+published the build, because the submission's provenance names that commit:
+the bundle's commit, or the commit that added the build's folder
+``releases/<release>/<build>``. Then each planned submission is submitted
+until the collector accepts or refuses it.
 
 Accepted submissions stay in the queue, ``awaiting_final_status``, and their
 status is checked with the same row's leases, attempts and retries: the
@@ -20,7 +22,8 @@ emitter started with that database whose origin reaches the same collector
 (``same_collector_origins``).
 
 Collector submissions are off unless the module configuration switches them
-on, so an emitter release with this code changes nothing by default.
+on (``HuggingFaceSettings.collector_submissions``), so a build that does not
+switch them on sees no change.
 """
 
 from __future__ import annotations
@@ -45,8 +48,9 @@ from microcosm_emitter.submissions.client import (
 from microcosm_emitter.submissions.planning import (
     MAX_FOLDER_CHARACTERS,
     PlannedSubmission,
-    bundle_folder,
+    is_publication,
     planned_submissions,
+    submission_folder,
 )
 
 if TYPE_CHECKING:
@@ -76,10 +80,17 @@ MAX_JOBS_PER_CYCLE: Final = 8
 #: no answer, or an upload slower than that, fails.
 MAX_CYCLE_SECONDS: Final = 600.0
 STAGED_STATUSES: Final = frozenset({"uploaded", "already_staged"})
+PUBLISHED_STATUSES: Final = frozenset({"published"})
+#: Final Hugging Face statuses of a bundle or publication that did not land.
 NOT_STAGED_STATUSES: Final = frozenset({"failed", "refused"})
 WAITING_FOR_HUGGING_FACE: Final = "WAITING_FOR_HUGGING_FACE"
 NOT_STAGED_ON_HUGGING_FACE: Final = "NOT_STAGED_ON_HUGGING_FACE"
+NOT_PUBLISHED_ON_HUGGING_FACE: Final = "NOT_PUBLISHED_ON_HUGGING_FACE"
 COLLECTOR_FOLDER_TOO_LONG: Final = "COLLECTOR_FOLDER_TOO_LONG"
+#: Collector submissions are switched on, but the module refused its collector
+#: settings or the given-token variables, so nothing is queued for the
+#: collector. Answered for a hand-over that describes its build.
+COLLECTOR_SETTINGS_REFUSED: Final = "COLLECTOR_SETTINGS_REFUSED"
 #: The emitter hit an unexpected error of its own during an attempt.
 LOCAL_ERROR: Final = "LOCAL_ERROR"
 #: When an accepted submission's status is first checked, and the longest
@@ -112,6 +123,29 @@ def print_to_standard_error(message: str) -> None:
     print(message, file=sys.stderr, flush=True)  # noqa: T201
 
 
+def submission_receipt(
+    handover_id: str,
+    status: str,
+    error_code: str | None,
+    attempts: int,
+    submissions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return a collector receipt, the shape of ``CollectorSubmissionReceipt``."""
+    return {
+        "handover_id": handover_id,
+        "destination": DESTINATION_COLLECTOR,
+        "status": status,
+        "error_code": error_code,
+        "attempts": attempts,
+        "submissions": submissions,
+    }
+
+
+def settings_refused_receipt(handover_id: str) -> dict[str, Any]:
+    """Return the ``skipped`` receipt of a hand-over the refused settings left out."""
+    return submission_receipt(handover_id, "skipped", COLLECTOR_SETTINGS_REFUSED, 0, [])
+
+
 def status_check_delay(checks_made: int) -> float:
     """How long to wait for the next status check after ``checks_made``."""
     return min(
@@ -132,7 +166,7 @@ class AttemptResult:
 
 
 class CollectorSubmissionDelivery:
-    """Queue and deliver the ``collector`` rows of bundle hand-overs."""
+    """Queue and deliver the ``collector`` rows of bundles and release publications."""
 
     def __init__(
         self,
@@ -164,7 +198,7 @@ class CollectorSubmissionDelivery:
         """
         return same_collector_origins(self.target) - {self.target}
 
-    def enqueue_for_bundle(
+    def enqueue_for_handover(
         self,
         handover_id: str,
         request: Mapping[str, Any],
@@ -172,7 +206,7 @@ class CollectorSubmissionDelivery:
     ) -> dict[str, Any]:
         """Queue the collector row; ``files`` are the bytes copied at hand-over.
 
-        The copies are shared with the Hugging Face row and kept until both
+        The copies are stored once per hand-over and kept until both its
         rows have settled.
         """
         return self.queue.enqueue_job(
@@ -180,7 +214,7 @@ class CollectorSubmissionDelivery:
             kind=COLLECTOR_SUBMISSION,
             target=self.target,
             request=request,
-            receipt=self._receipt(handover_id, "pending", None, 0, []),
+            receipt=submission_receipt(handover_id, "pending", None, 0, []),
             now=self.clock(),
             destination=DESTINATION_COLLECTOR,
             files=files,
@@ -190,23 +224,6 @@ class CollectorSubmissionDelivery:
     def receipt(self, handover_id: str) -> dict[str, Any] | None:
         """Return the collector row's receipt for ``handover_id``, or ``None``."""
         return self.queue.job_receipt(handover_id, DESTINATION_COLLECTOR)
-
-    @staticmethod
-    def _receipt(
-        handover_id: str,
-        status: str,
-        error_code: str | None,
-        attempts: int,
-        submissions: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        return {
-            "handover_id": handover_id,
-            "destination": DESTINATION_COLLECTOR,
-            "status": status,
-            "error_code": error_code,
-            "attempts": attempts,
-            "submissions": submissions,
-        }
 
     def run_cycle(self, *, stop_requested: Callable[[], bool] = never_stop) -> int:
         """Attempt each due collector hand-over once; return how many.
@@ -263,7 +280,7 @@ class CollectorSubmissionDelivery:
         return attempted
 
     def _finish(self, job: ClaimedJob, result: AttemptResult) -> None:
-        receipt = self._receipt(
+        receipt = submission_receipt(
             job.handover_id,
             result.status,
             result.error_code,
@@ -292,17 +309,39 @@ class CollectorSubmissionDelivery:
                         )
                     )
 
+    def _hugging_face_commit(self, job: ClaimedJob) -> tuple[str | None, str | None]:
+        """Return the commit the hand-over's Hugging Face row landed with.
+
+        ``(commit, None)`` once it landed: a bundle's ``revision``, or a
+        publication's ``commit``, which is the commit that added the build's
+        folder even when the writer found the build already published.
+        ``(None, code)`` when it never will, and ``(None, None)`` while it is
+        still pending.
+        """
+        landed = self.queue.job_receipt(job.handover_id)
+        publication = is_publication(job.request)
+        if landed is None or landed.get("status") in NOT_STAGED_STATUSES:
+            return None, (
+                NOT_PUBLISHED_ON_HUGGING_FACE
+                if publication
+                else NOT_STAGED_ON_HUGGING_FACE
+            )
+        landed_statuses = PUBLISHED_STATUSES if publication else STAGED_STATUSES
+        commit = landed.get("commit" if publication else "revision")
+        if landed.get("status") not in landed_statuses or not commit:
+            return None, None
+        return str(commit), None
+
     def _attempt(self, job: ClaimedJob) -> AttemptResult:
-        if len(bundle_folder(job.request)) > MAX_FOLDER_CHARACTERS:
+        if len(submission_folder(job.request)) > MAX_FOLDER_CHARACTERS:
             # The collector refuses such a folder with a final 422.
             return AttemptResult("skipped", COLLECTOR_FOLDER_TOO_LONG, [], retry=False)
         previous = self.receipt(job.handover_id) or {}
         earlier = {entry["kind"]: entry for entry in previous.get("submissions", [])}
-        staged = self.queue.job_receipt(job.handover_id)
-        if staged is None or staged.get("status") in NOT_STAGED_STATUSES:
-            return AttemptResult("skipped", NOT_STAGED_ON_HUGGING_FACE, [], retry=False)
-        revision = staged.get("revision")
-        if staged.get("status") not in STAGED_STATUSES or not revision:
+        revision, not_landed = self._hugging_face_commit(job)
+        if not_landed is not None:
+            return AttemptResult("skipped", not_landed, [], retry=False)
+        if revision is None:
             return AttemptResult(
                 "pending",
                 WAITING_FOR_HUGGING_FACE,

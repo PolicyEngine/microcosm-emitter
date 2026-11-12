@@ -214,7 +214,7 @@ class BundleHandOver:
     copied: dict[str, bytes] = field(default_factory=dict)
 
 
-def copy_small_files(files: Sequence[BundleFile]) -> dict[str, bytes]:
+def copy_small_files(files: Sequence[BundleFile | ReleaseFile]) -> dict[str, bytes]:
     """Read the smallest files within the copy limits; check each digest.
 
     A copied file must hold exactly its declared bytes now, since the build
@@ -364,6 +364,7 @@ def release_change_from_message(message: Mapping[str, Any]) -> ReleaseChange:
                 release_role=message.get("release_role"),
                 make_current=message.get("make_current"),
                 request_id=message.get("request_id"),
+                collector=_collector_provenance(message.get("collector")),
                 files=tuple(
                     ReleaseFile(
                         name=entry.get("name"),
@@ -420,3 +421,23 @@ def parse_release_change(message: Mapping[str, Any]) -> ReleaseHandOver:
         change=change,
         request=canonical,
     )
+
+
+def copy_publication_files(
+    change: PublishRelease, names: frozenset[str]
+) -> dict[str, bytes]:
+    """Copy the publication's files named ``names``, as a bundle's are copied.
+
+    The copies are limited as a bundle's are (``MAX_COPIED_FILE_BYTES`` each,
+    ``MAX_COPIED_BYTES`` in all, smallest first). The collector row submits
+    them, so the build may remove or rewrite those files once the release has
+    landed; larger files are read from their paths and must stay until the
+    hand-over settles. The release writer still uploads every file from its
+    path. A file that is missing, or whose size or digest no longer matches,
+    copies nothing: the writer then refuses the publication or keeps it
+    pending, and nothing is submitted before it lands.
+    """
+    try:
+        return copy_small_files([item for item in change.files if item.name in names])
+    except RequestRefusedError:
+        return {}

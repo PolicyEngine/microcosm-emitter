@@ -499,6 +499,7 @@ nodes = [
   "tests/interface/test_protocol_fixtures.py::test_telemetry_module_records_each_message_fixture",
   "tests/interface/test_protocol_fixtures.py::test_orrery_module_answers_each_query_fixture_in_order",
   "tests/interface/test_protocol_fixtures.py::test_hugging_face_module_answers_each_query_fixture_in_order",
+  "tests/interface/test_protocol_fixtures.py::test_hugging_face_module_starts_submissions_from_the_switch_fixture",
   "tests/interface/test_protocol_fixtures.py::test_installed_command_answers_the_hello_fixture",
   "tests/interface/test_protocol_fixtures.py::test_installed_command_starts_from_the_launch_fixture",
   "tests/interface/test_protocol_fixtures.py::test_host_answers_each_envelope_fixture",

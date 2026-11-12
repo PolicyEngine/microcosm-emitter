@@ -531,15 +531,19 @@ class EmitterClient:
     def collector_submission_receipt(
         self, handover_id: str
     ) -> CollectorSubmissionReceipt | None:
-        """Return what the collector has made of a bundle's submissions so far.
+        """Return what the collector has made of a hand-over's submissions so far.
 
-        The emitter submits a bundle that carries ``CollectorProvenance`` after
-        its Hugging Face commit, then checks each submission's status in the
-        background until it is final. This call answers at once from the
+        While its collector submissions are switched on, the emitter submits a
+        bundle or release publication that carries ``CollectorProvenance``
+        after its Hugging Face commit, then checks each submission's status in
+        the background until it is final. This call answers at once from the
         emitter's queue and never waits for either: a ``rejected`` or
-        ``failed`` receipt carries the collector's reason. ``None`` when
-        collector submissions are off, the bundle described no build or named
-        no file the collector takes, or no emitter answered.
+        ``failed`` receipt carries the collector's reason, and a ``skipped``
+        one's ``error_code`` says why nothing was sent (the codes are listed
+        on ``CollectorSubmissionReceipt``), including collector settings the
+        emitter refused (``COLLECTOR_SETTINGS_REFUSED``). ``None`` when
+        collector submissions are off, the hand-over described no build or
+        named no file the collector takes, or no emitter answered.
         """
         response = self._query(
             HUGGING_FACE_MODULE,

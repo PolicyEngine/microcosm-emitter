@@ -40,15 +40,44 @@ class HuggingFaceSettings:
     queue file (``events.sqlite3`` → ``events.handovers.sqlite3``). It can
     never be the event queue file itself, which released emitters share and
     which must stay at a migration revision they accept.
+
+    ``collector_submissions`` switches the module's collector submissions on:
+    a bundle hand-over or release publication that carries
+    ``CollectorProvenance`` is then also submitted to the collector, once its
+    Hugging Face commit lands. ``development_collector_url`` points them at a
+    loopback collector, for tests and local development, as
+    ``TelemetrySettings`` and ``OrrerySettings`` do; without it they go to
+    the package's production collector. Each is sent only when set, so
+    settings that set neither start the module as earlier releases did.
     """
 
     handover_database_path: Path | None = None
+    collector_submissions: bool = False
+    development_collector_url: str | None = None
+
+    def __post_init__(self) -> None:
+        """Raise ``ValueError`` if a collector setting has the wrong type.
+
+        ``collector_submissions`` must be ``True`` or ``False``, and a given
+        ``development_collector_url`` a string.
+        """
+        switch = self.collector_submissions
+        if switch is not True and switch is not False:
+            error_message = "collector_submissions must be True or False."
+            raise ValueError(error_message)
+        if self.development_collector_url is not None and not isinstance(
+            self.development_collector_url, str
+        ):
+            error_message = "development_collector_url must be a string."
+            raise ValueError(error_message)
 
     def configuration(self, spool_path: Path) -> dict[str, Any]:
-        """Return the module's startup settings: the hand-over database's path.
+        """Return the module's startup settings, starting with the hand-over database.
 
-        Raise ``ValueError`` when that path resolves to the event queue file
-        at ``spool_path``.
+        ``collector_submissions`` is included only when true, and
+        ``development_collector_url`` only when set. Raise ``ValueError`` when
+        the hand-over database resolves to the event queue file at
+        ``spool_path``.
         """
         handover_database = (
             Path(self.handover_database_path)
@@ -61,7 +90,14 @@ class HuggingFaceSettings:
                 "spool database."
             )
             raise ValueError(error_message)
-        return {"handover_database_path": str(handover_database)}
+        configuration: dict[str, Any] = {
+            "handover_database_path": str(handover_database)
+        }
+        if self.collector_submissions:
+            configuration["collector_submissions"] = True
+        if self.development_collector_url is not None:
+            configuration["development_collector_url"] = self.development_collector_url
+        return configuration
 
 
 @dataclass(frozen=True)

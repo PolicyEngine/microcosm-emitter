@@ -1,0 +1,53 @@
+{
+  "protocol_version": 1,
+  "module": "huggingface",
+  "kind": "query",
+  "sequence": 13,
+  "files": {
+    "release_manifest.json": "{\"release\":\"fixture-release\",\"build\":\"fixture-build-described\"}",
+    "calibration_diagnostics.json": "{\"schema_version\":8}",
+    "build_manifest.json": "{\"outputs\":{}}"
+  },
+  "body": {
+    "protocol_version": 1,
+    "command": "publish_release",
+    "request_id": "fixture-request-described",
+    "repository": "policyengine/fixture-private",
+    "release": "fixture-release",
+    "build": "fixture-build-described",
+    "release_role": "national_default",
+    "make_current": true,
+    "files": [
+      {
+        "name": "release_manifest.json",
+        "role": "release_manifest",
+        "local_path": "{directory}/release_manifest.json",
+        "sha256": "4da113e1ef698492c6d5008c3d7019ba3c738e465421ec32be2860858c841f47",
+        "bytes": 63
+      },
+      {
+        "name": "calibration_diagnostics.json",
+        "role": "calibration_diagnostics",
+        "local_path": "{directory}/calibration_diagnostics.json",
+        "sha256": "2300b80de59210bc04c40b1aade68e7b5fc265901dbc9af4e9f506c0bcc36e7c",
+        "bytes": 20
+      },
+      {
+        "name": "build_manifest.json",
+        "role": "build_manifest",
+        "local_path": "{directory}/build_manifest.json",
+        "sha256": "5dbd51d32a488390bb3bfcea54726682fd3d80e073ddc7caf7df9d40404276b0",
+        "bytes": 14
+      }
+    ],
+    "collector": {
+      "country_code": "UK",
+      "build_id": "fixture-build-described",
+      "licensed_data": true,
+      "release": "fixture-release"
+    }
+  },
+  "response_keys": [
+    "receipt"
+  ]
+}
