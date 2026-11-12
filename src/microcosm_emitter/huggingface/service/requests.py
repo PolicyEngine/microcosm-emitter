@@ -428,11 +428,14 @@ def copy_publication_files(
 ) -> dict[str, bytes]:
     """Copy the publication's files named ``names``, as a bundle's are copied.
 
-    The collector row submits these copies, so the build may remove or
-    rewrite its files once the release has landed. The release writer still
-    uploads every file from its path. A file whose bytes no longer match its
-    digest copies nothing: the writer then refuses the publication
-    (``PRESERVED_BYTES_CHANGED``), and nothing is submitted.
+    The copies are limited as a bundle's are (``MAX_COPIED_FILE_BYTES`` each,
+    ``MAX_COPIED_BYTES`` in all, smallest first). The collector row submits
+    them, so the build may remove or rewrite those files once the release has
+    landed; larger files are read from their paths and must stay until the
+    hand-over settles. The release writer still uploads every file from its
+    path. A file that is missing, or whose size or digest no longer matches,
+    copies nothing: the writer then refuses the publication or keeps it
+    pending, and nothing is submitted before it lands.
     """
     try:
         return copy_small_files([item for item in change.files if item.name in names])

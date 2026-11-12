@@ -56,10 +56,19 @@ class HuggingFaceSettings:
     development_collector_url: str | None = None
 
     def __post_init__(self) -> None:
-        """Raise ``ValueError`` unless ``collector_submissions`` is a bool."""
+        """Raise ``ValueError`` if a collector setting has the wrong type.
+
+        ``collector_submissions`` must be ``True`` or ``False``, and a given
+        ``development_collector_url`` a string.
+        """
         switch = self.collector_submissions
         if switch is not True and switch is not False:
             error_message = "collector_submissions must be True or False."
+            raise ValueError(error_message)
+        if self.development_collector_url is not None and not isinstance(
+            self.development_collector_url, str
+        ):
+            error_message = "development_collector_url must be a string."
             raise ValueError(error_message)
 
     def configuration(self, spool_path: Path) -> dict[str, Any]:

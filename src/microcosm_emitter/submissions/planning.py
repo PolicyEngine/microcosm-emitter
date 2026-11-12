@@ -31,7 +31,7 @@ PUBLISH_RELEASE_COMMAND: Final = "publish_release"
 
 @dataclass(frozen=True)
 class SubmissionKind:
-    """Bundle roles a kind takes, mapped to the collector's role names."""
+    """Hand-over roles a kind takes, mapped to the collector's role names."""
 
     name: str
     roles: Mapping[str, str]
@@ -66,9 +66,9 @@ SUBMISSION_KINDS: Final = (
 class PlannedSubmission:
     """One ``POST /v1/submissions`` body and where each of its files is.
 
-    ``copied`` holds the bytes of files copied when the bundle was handed
-    over; they are submitted as they were then, since the build may have
-    rewritten them since.
+    ``copied`` holds the bytes of files copied when the bundle or publication
+    was handed over; they are submitted as they were then, since the build
+    may have rewritten them since.
     """
 
     kind: str

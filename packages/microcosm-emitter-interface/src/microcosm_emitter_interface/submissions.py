@@ -69,7 +69,7 @@ class CollectorProvenance:
             safe_identifier(self.release, label="release")
 
     def message(self) -> dict[str, Any]:
-        """Return the ``collector`` object of a bundle hand-over request."""
+        """Return the ``collector`` object of a bundle or publication request."""
         return {
             "country_code": self.country_code,
             "build_id": self.build_id,
@@ -92,7 +92,7 @@ class CollectorRejection(TypedDict):
 
 
 class CollectorSubmission(TypedDict):
-    """One submission of a bundle: ``calibration-diagnostics`` or ``orrery-inputs``.
+    """One submission of a hand-over: ``calibration-diagnostics`` or ``orrery-inputs``.
 
     ``status``:
 

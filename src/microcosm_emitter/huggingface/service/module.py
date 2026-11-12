@@ -56,6 +56,7 @@ from microcosm_emitter.submissions.client import (
 from microcosm_emitter.submissions.delivery import (
     COLLECTOR_SUBMISSION,
     COLLECTOR_SUBMISSIONS_ENABLED_BY_DEFAULT,
+    DESTINATION_COLLECTOR,
     CollectorSubmissionDelivery,
     settings_refused_receipt,
 )
@@ -386,13 +387,21 @@ class HuggingFaceModule:
         """Queue a hand-over's collector row, with the file copies it submits.
 
         Called once its Hugging Face row is queued. ``copies`` returns the
-        bytes copied at hand-over; it runs here, so a failure to copy is
+        bytes copied at hand-over. It is called only when the hand-over has no
+        collector row yet, since a repeated hand-over keeps the row's
+        copies, and inside the error handling, so a failure to copy is
         handled like a failure to queue.
         """
-        if self.collector_delivery is None or self.delivery is None:
+        if (
+            self.collector_delivery is None
+            or self.delivery is None
+            or self.queue is None
+        ):
             raise AssertionError
         try:
-            self.collector_delivery.enqueue_for_handover(handover_id, request, copies())
+            queued = self.queue.job_receipt(handover_id, DESTINATION_COLLECTOR)
+            files = copies() if queued is None else {}
+            self.collector_delivery.enqueue_for_handover(handover_id, request, files)
         # The Hugging Face row is queued: any failure to queue the collector
         # row only warns, and the request is answered with its receipt.
         except Exception as error:  # noqa: BLE001
@@ -493,6 +502,11 @@ class HuggingFaceModule:
             return None
         if self.queue is None:
             raise AssertionError
+        # Another emitter sharing the hand-over database may have queued the
+        # collector row: its receipt is the answer.
+        queued = self.queue.job_receipt(handover_id, DESTINATION_COLLECTOR)
+        if queued is not None:
+            return queued
         # Nothing was queued for the collector: a hand-over that would have
         # been submitted says why, instead of looking like submissions are off.
         request = self.queue.job_request(handover_id)
