@@ -539,7 +539,8 @@ class EmitterClient:
         the background until it is final. This call answers at once from the
         emitter's queue and never waits for either: a ``rejected`` or
         ``failed`` receipt carries the collector's reason, and a ``skipped``
-        one says why nothing was sent, including collector settings the
+        one's ``error_code`` says why nothing was sent (the codes are listed
+        on ``CollectorSubmissionReceipt``), including collector settings the
         emitter refused (``COLLECTOR_SETTINGS_REFUSED``). ``None`` when
         collector submissions are off, the hand-over described no build or
         named no file the collector takes, or no emitter answered.

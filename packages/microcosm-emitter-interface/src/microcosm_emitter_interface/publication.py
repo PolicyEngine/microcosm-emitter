@@ -116,8 +116,12 @@ class PublishRelease:
     the collector refuses a build folder whose provenance names another. The
     emitter copies the submitted files at hand-over, each of at most 32 MiB
     and together at most 64 MiB, smallest first, so the build may remove or
-    rewrite those once the release has landed; any larger submitted file is
-    read from its path and must stay unchanged until the hand-over settles.
+    rewrite those once the release has landed; a submitted file left out by
+    those limits is read from its path and must stay unchanged until the
+    hand-over settles. Handing an already published build over again with
+    ``collector`` waits until the Hub reports the commit that added its
+    folder, and is ``refused`` with ``REQUEST_EXPIRED`` if that takes an
+    hour, even with submissions off.
     """
 
     repository: str
