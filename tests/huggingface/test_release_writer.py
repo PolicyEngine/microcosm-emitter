@@ -151,31 +151,6 @@ def test_repeating_a_publication_that_already_landed_reports_it(hub, tmp_path):
     assert len(hub.commits(PRIVATE_REPOSITORY)) == 1
 
 
-@pytest.mark.parametrize("failure", ["error", "no-commit-reported"])
-def test_an_already_published_build_waits_for_the_commit_that_added_its_folder(
-    hub, tmp_path, monkeypatch, failure
-):
-    """A collector submission names that commit, never a later head."""
-    request, _ = publish_request(tmp_path, FIRST_BUILD)
-    first = apply(hub, request)
-    hub.write_directly(PRIVATE_REPOSITORY, {"later.json": b"{}"})
-    if failure == "error":
-        hub.fail_next("get_paths_info", FakeHubHTTPError(503))
-    else:
-        monkeypatch.setattr(DatasetRepository, "last_commit", lambda self, path: None)
-
-    waiting = apply(hub, request, published_at="2026-10-21T00:00:00+00:00")
-    monkeypatch.undo()
-    again = apply(hub, request, published_at="2026-10-21T00:00:01+00:00")
-
-    assert (waiting.status, waiting.error_code, waiting.commit) == (
-        "pending",
-        "REPOSITORY_UNAVAILABLE",
-        None,
-    )
-    assert (again.status, again.commit) == ("published", first.commit)
-
-
 def test_concurrent_publications_of_one_release_both_land(hub, tmp_path):
     other, _ = publish_request(tmp_path, FIRST_BUILD)
     ours, _ = publish_request(tmp_path, SECOND_BUILD, make_current=True)

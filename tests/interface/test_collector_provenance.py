@@ -225,13 +225,13 @@ def test_a_publication_refuses_provenance_of_another_release_or_build(
 
 
 def test_collector_submissions_are_off_unless_switched_on(tmp_path: Path) -> None:
-    spool_path = tmp_path / "events.sqlite3"
+    event_queue_path = tmp_path / "events.sqlite3"
 
     assert "collector_submissions" not in HuggingFaceSettings().configuration(
-        spool_path
+        event_queue_path
     )
     assert HuggingFaceSettings(collector_submissions=True).configuration(
-        spool_path
+        event_queue_path
     ) == {
         "handover_database_path": str(tmp_path / "events.handovers.sqlite3"),
         "collector_submissions": True,
@@ -239,17 +239,17 @@ def test_collector_submissions_are_off_unless_switched_on(tmp_path: Path) -> Non
 
 
 def test_a_development_collector_url_is_passed_only_when_set(tmp_path: Path) -> None:
-    spool_path = tmp_path / "events.sqlite3"
+    event_queue_path = tmp_path / "events.sqlite3"
     settings = HuggingFaceSettings(
         collector_submissions=True, development_collector_url="http://127.0.0.1:8080"
     )
 
-    assert settings.configuration(spool_path)["development_collector_url"] == (
+    assert settings.configuration(event_queue_path)["development_collector_url"] == (
         "http://127.0.0.1:8080"
     )
     assert "development_collector_url" not in HuggingFaceSettings(
         collector_submissions=True
-    ).configuration(spool_path)
+    ).configuration(event_queue_path)
 
 
 @pytest.mark.parametrize("switch", ["true", 1, None])

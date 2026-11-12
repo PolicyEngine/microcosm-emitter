@@ -7,7 +7,8 @@ it, ``collector`` included, so they run against any emitter.
 import hashlib
 import json
 
-from fake_hugging_face import PRIVATE_REPOSITORY
+import pytest
+from fake_hugging_face import PRIVATE_REPOSITORY, FakeHubHTTPError
 from given_token import given_token_variables
 
 from microcosm_emitter_interface.bundles import handover_identifier
@@ -272,6 +273,62 @@ def test_an_already_published_build_names_the_commit_that_added_its_folder(
     assert folder_commit != later_head
     (created,) = controls.collector.created
     assert created["provenance"]["huggingface"]["commit"] == folder_commit
+
+
+@pytest.mark.parametrize("failure", ["error", "no-commit-reported"])
+def test_a_described_repeat_of_a_published_build_waits_for_its_folder_commit(
+    submitting_module, monkeypatch, failure
+):
+    """The provenance names the commit that added the folder, never a later head."""
+    from microcosm_emitter.huggingface.service.hub import DatasetRepository
+
+    controls = submitting_module
+    first = publication(controls, collector=None, request_id="release-request-1")
+    hand_over(controls, first)
+    cycle(controls)
+    folder_commit = release_receipt(controls, first)["commit"]
+    controls.hub.write_directly(PRIVATE_REPOSITORY, {"notes/later.json": b"{}"})
+    again = publication(controls, request_id="release-request-2")
+    hand_over(controls, again)
+    with monkeypatch.context() as patch:
+        if failure == "error":
+            controls.hub.fail_next("get_paths_info", FakeHubHTTPError(503))
+        else:
+            patch.setattr(DatasetRepository, "last_commit", lambda self, path: None)
+        cycle(controls)
+        waiting = release_receipt(controls, again)
+        waiting_collector = collector_receipt(controls, again)
+    controls.clock.advance(600)
+    cycle(controls)
+
+    assert (waiting["status"], waiting["error_code"], waiting["commit"]) == (
+        "pending",
+        "REPOSITORY_UNAVAILABLE",
+        None,
+    )
+    assert waiting_collector["error_code"] == "WAITING_FOR_HUGGING_FACE"
+    assert release_receipt(controls, again)["commit"] == folder_commit
+    (created,) = controls.collector.created
+    assert created["provenance"]["huggingface"]["commit"] == folder_commit
+
+
+def test_an_undescribed_repeat_of_a_published_build_needs_no_reported_commit(
+    submitting_module, monkeypatch
+):
+    """Only collector provenance needs the commit that added the folder."""
+    from microcosm_emitter.huggingface.service.hub import DatasetRepository
+
+    controls = submitting_module
+    first = publication(controls, collector=None, request_id="release-request-1")
+    hand_over(controls, first)
+    cycle(controls)
+    again = publication(controls, collector=None, request_id="release-request-2")
+    hand_over(controls, again)
+    with monkeypatch.context() as patch:
+        patch.setattr(DatasetRepository, "last_commit", lambda self, path: None)
+        cycle(controls)
+
+    assert release_receipt(controls, again)["status"] == "published"
 
 
 def test_refused_collector_settings_give_a_described_publication_a_skipped_receipt(
