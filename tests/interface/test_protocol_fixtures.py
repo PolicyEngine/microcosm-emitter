@@ -40,6 +40,9 @@ RELEASED_FIXTURE_DIGESTS = {
     "protocol-v1/huggingface-promote-build.json": (
         "069248aa33b24c937e18e00bc46dd1e39c6e06febedb5f7b5cab4c1e1fea9f07"
     ),
+    "protocol-v1/huggingface-promote-build-with-collector.json": (
+        "e00ead11a7c978c76544ce58debe4febd199aa517a41d752579221f13328eefe"
+    ),
     "protocol-v1/huggingface-publish-release.json": (
         "12ccf6c9b613dae4e01709b745e8caacfbeb8f2ceeb6b8bfc8373af134de25c8"
     ),
@@ -48,6 +51,9 @@ RELEASED_FIXTURE_DIGESTS = {
     ),
     "protocol-v1/huggingface-withdraw-build.json": (
         "ad15257013d831c5830818668b222a12c0c8b53c5236ac0ff9733bbfd76c98be"
+    ),
+    "protocol-v1/huggingface-withdraw-build-with-collector.json": (
+        "c2146e3ed93634f24a5db6e2b4cf4184a9a03f684da76a673f484e42630ee405"
     ),
     "protocol-v1/huggingface-collector-submission-receipt.json": (
         "b78d274efc46d60d9b3bd02033f87807967434cc1cf4511998702bbad936bcdb"

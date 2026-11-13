@@ -1,5 +1,6 @@
 """Each typed call sends exactly the message its protocol fixture records."""
 
+import dataclasses
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,25 @@ def fixture_publication(
                 bytes=entry["bytes"],
             )
             for entry in recorded["files"]
+        ),
+    )
+
+
+def described_record_change(
+    change_type: type[PromoteBuild] | type[WithdrawBuild],
+) -> PromoteBuild | WithdrawBuild:
+    """Return the promotion or withdrawal its ``-with-collector`` fixture records."""
+    assert "collector" in {field.name for field in dataclasses.fields(change_type)}
+    return change_type(
+        repository=FIXTURE_PRIVATE_REPOSITORY,
+        release="fixture-release",
+        build="fixture-build",
+        request_id="fixture-request-described",
+        collector=CollectorProvenance(
+            country_code="UK",
+            build_id="fixture-build",
+            licensed_data=True,
+            release="fixture-release",
         ),
     )
 
@@ -339,6 +359,12 @@ SENT_BY: dict[str, Callable[[EmitterClient, Path], Any]] = {
             request_id="fixture-request",
         ),
         wait_seconds=0,
+    ),
+    "huggingface-promote-build-with-collector": lambda client, directory: (
+        client.promote_build(described_record_change(PromoteBuild), wait_seconds=0)
+    ),
+    "huggingface-withdraw-build-with-collector": lambda client, directory: (
+        client.withdraw_build(described_record_change(WithdrawBuild), wait_seconds=0)
     ),
     "huggingface-read-back-run-files": lambda client, directory: (
         client.read_back_run_files(
