@@ -264,12 +264,14 @@ def test_a_withdrawal_that_leaves_no_current_build_sends_nothing(submitting_modu
     assert controls.module.queue.copied_files(handover_id_of(message)) == {}
 
 
-def test_promoting_the_current_build_again_submits_the_releases_json_at_mains_head(
+def test_promoting_the_current_build_again_names_the_commit_that_wrote_releases_json(
     submitting_module,
 ):
-    """Nothing is written: the receipt's and the record's commit is ``main``'s head."""
+    """Nothing is written; a later commit that left releases.json is not named."""
     controls = submitting_module
-    publish(controls, CURRENT_BUILD, make_current=True, request_id="publish-current")
+    published = publish(
+        controls, CURRENT_BUILD, make_current=True, request_id="publish-current"
+    )
     controls.hub.write_directly(PRIVATE_REPOSITORY, {"notes/later.json": b"{}"})
     head = controls.hub.commits(PRIVATE_REPOSITORY)[-1].oid
     message = record_change("promote_build", CURRENT_BUILD)
@@ -279,16 +281,73 @@ def test_promoting_the_current_build_again_submits_the_releases_json_at_mains_he
 
     landed = release_receipt(controls, message)
     assert controls.hub.commits(PRIVATE_REPOSITORY)[-1].oid == head
+    assert published["commit"] != head
     assert (landed["status"], landed["commit"], landed["current"]) == (
         "published",
-        head,
+        published["commit"],
         CURRENT_BUILD,
     )
     record = record_at(controls, head)
+    assert record == record_at(controls, published["commit"])
     assert controls.collector.created == [
-        releases_record_body(build=CURRENT_BUILD, commit=head, record=record)
+        releases_record_body(
+            build=CURRENT_BUILD, commit=published["commit"], record=record
+        )
     ]
     assert list(controls.collector.objects.values()) == [record]
+
+
+def test_a_described_change_with_nothing_to_write_waits_for_the_record_commit(
+    submitting_module, monkeypatch
+):
+    """Until the Hub reports the commit that wrote releases.json, it stays pending."""
+    from microcosm_emitter.huggingface.service.hub import DatasetRepository
+
+    controls = submitting_module
+    published = publish(
+        controls, CURRENT_BUILD, make_current=True, request_id="publish-current"
+    )
+    controls.hub.write_directly(PRIVATE_REPOSITORY, {"notes/later.json": b"{}"})
+    message = record_change("promote_build", CURRENT_BUILD)
+    hand_over(controls, message)
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            DatasetRepository,
+            "last_commit",
+            lambda self, path_in_repo, *, revision=None: None,
+        )
+        cycle(controls)
+        waiting = release_receipt(controls, message)
+        waiting_collector = collector_receipt(controls, message)
+    controls.clock.advance(600)
+    cycle(controls)
+
+    assert (waiting["status"], waiting["error_code"], waiting["commit"]) == (
+        "pending",
+        "REPOSITORY_UNAVAILABLE",
+        None,
+    )
+    assert waiting_collector["error_code"] == "WAITING_FOR_HUGGING_FACE"
+    assert release_receipt(controls, message)["commit"] == published["commit"]
+    [created] = controls.collector.created
+    assert created["provenance"]["huggingface"]["commit"] == published["commit"]
+
+
+def test_an_undescribed_promotion_with_nothing_to_write_reports_mains_head(
+    submitting_module,
+):
+    """Only collector provenance needs the commit that wrote releases.json."""
+    controls = submitting_module
+    publish(controls, CURRENT_BUILD, make_current=True, request_id="publish-current")
+    controls.hub.write_directly(PRIVATE_REPOSITORY, {"notes/later.json": b"{}"})
+    head = controls.hub.commits(PRIVATE_REPOSITORY)[-1].oid
+    message = record_change("promote_build", CURRENT_BUILD, collector=None)
+    hand_over(controls, message)
+
+    cycle(controls)
+
+    landed = release_receipt(controls, message)
+    assert (landed["status"], landed["commit"]) == ("published", head)
 
 
 def test_a_refused_promotion_is_not_submitted(submitting_module):
@@ -432,6 +491,39 @@ def test_a_promotion_that_lands_before_its_hand_over_is_answered_is_still_submit
             record=record_at(controls, promotion_commit),
         )
     ]
+
+
+def test_a_change_that_lands_after_its_collector_row_is_claimed_is_submitted(
+    submitting_module, monkeypatch
+):
+    """The release worker may land the change while the collector attempt runs."""
+    controls = submitting_module
+    publish_two_builds(controls)
+    message = record_change("promote_build", LATER_BUILD)
+    hand_over(controls, message)
+    queue = controls.module.queue
+    claim_job = queue.claim_job
+
+    def claim_then_land(target, **options):
+        job = claim_job(target, **options)
+        if job is not None and options.get("destination") == "collector":
+            controls.module.delivery.run_cycle()
+        return job
+
+    monkeypatch.setattr(queue, "claim_job", claim_then_land)
+    controls.module.collector_delivery.run_cycle()
+    monkeypatch.undo()
+
+    landed = release_receipt(controls, message)
+    assert landed["status"] == "published"
+    assert controls.collector.created == [
+        releases_record_body(
+            build=LATER_BUILD,
+            commit=landed["commit"],
+            record=record_at(controls, landed["commit"]),
+        )
+    ]
+    assert collector_receipt(controls, message)["status"] == "awaiting_final_status"
 
 
 def test_a_collector_row_waits_until_its_hugging_face_row_is_queued(

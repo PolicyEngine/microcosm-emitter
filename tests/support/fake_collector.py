@@ -258,6 +258,9 @@ class FakeCollector:
         self.status_checks_released.set()
         #: Store each upload with its bytes reversed, so its SHA-256 differs.
         self.corrupt_uploads = False
+        #: Signs the upload of each file named here under the given name
+        #: instead, as a collector naming a file outside the submission would.
+        self.upload_names: dict[str, str] = {}
         self.sign_stored_files = False
         self.upload_origin: str | None = None
         #: A ``Host`` header value for upload instructions other than the URL's.
@@ -467,7 +470,7 @@ class FakeCollector:
                     continue
                 uploads.append(
                     {
-                        "name": file["name"],
+                        "name": self.upload_names.get(file["name"], file["name"]),
                         "method": "PUT",
                         "url": f"{origin}/storage/{object_name}",
                         "headers": {
