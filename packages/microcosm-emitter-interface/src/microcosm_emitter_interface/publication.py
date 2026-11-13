@@ -323,7 +323,9 @@ class WithdrawBuild:
     build cannot be withdrawn), so the submission names the release's
     current build after the change, not the withdrawn one, with the
     provenance's country and ``licensed_data``. When the release has no
-    current build, nothing is sent.
+    current build, nothing is sent. Withdrawing a withdrawn build again
+    writes nothing, and names the commit that last changed ``releases.json``,
+    as a promotion of the current build does.
     """
 
     repository: str

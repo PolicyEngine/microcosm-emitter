@@ -12,7 +12,7 @@ import hashlib
 import json
 
 import pytest
-from fake_hugging_face import PRIVATE_REPOSITORY
+from fake_hugging_face import PRIVATE_REPOSITORY, FakeHubHTTPError
 from given_token import given_token_variables
 
 from microcosm_emitter_interface.bundles import handover_identifier
@@ -352,6 +352,91 @@ def test_an_undescribed_promotion_with_nothing_to_write_reports_mains_head(
 
     landed = release_receipt(controls, message)
     assert (landed["status"], landed["commit"]) == ("published", head)
+
+
+def test_withdrawing_a_withdrawn_build_again_names_the_commit_that_withdrew_it(
+    submitting_module,
+):
+    controls = submitting_module
+    publish_two_builds(controls)
+    first = record_change(
+        "withdraw_build", LATER_BUILD, collector=None, request_id="withdraw-1"
+    )
+    hand_over(controls, first)
+    cycle(controls)
+    withdrawal_commit = release_receipt(controls, first)["commit"]
+    controls.hub.write_directly(PRIVATE_REPOSITORY, {"notes/later.json": b"{}"})
+    again = record_change("withdraw_build", LATER_BUILD, request_id="withdraw-2")
+    hand_over(controls, again)
+
+    cycle(controls)
+
+    landed = release_receipt(controls, again)
+    assert (landed["status"], landed["commit"], landed["current"]) == (
+        "published",
+        withdrawal_commit,
+        CURRENT_BUILD,
+    )
+    assert controls.collector.created == [
+        releases_record_body(
+            build=CURRENT_BUILD,
+            commit=withdrawal_commit,
+            record=record_at(controls, withdrawal_commit),
+        )
+    ]
+
+
+def test_a_promotion_whose_commit_landed_but_whose_result_was_lost_names_it(
+    submitting_module,
+):
+    """The retry finds nothing to write and names the commit the first attempt made."""
+    controls = submitting_module
+    publish_two_builds(controls)
+    message = record_change("promote_build", LATER_BUILD)
+    hand_over(controls, message)
+    controls.hub.fail_after_next_commit(FakeHubHTTPError(503))
+
+    cycle(controls)
+    lost = release_receipt(controls, message)
+    promotion_commit = controls.hub.commits(PRIVATE_REPOSITORY)[-1].oid
+    controls.hub.write_directly(PRIVATE_REPOSITORY, {"notes/later.json": b"{}"})
+    controls.clock.advance(600)
+    cycle(controls)
+
+    assert (lost["status"], lost["error_code"]) == ("pending", "UPLOAD_FAILED")
+    landed = release_receipt(controls, message)
+    assert (landed["status"], landed["commit"]) == ("published", promotion_commit)
+    assert controls.collector.created == [
+        releases_record_body(
+            build=LATER_BUILD,
+            commit=promotion_commit,
+            record=record_at(controls, promotion_commit),
+        )
+    ]
+
+
+def test_a_failure_to_queue_a_promotions_collector_row_leaves_the_change_to_land(
+    submitting_module, monkeypatch, capsys
+):
+    controls = submitting_module
+    publish_two_builds(controls)
+    message = record_change("promote_build", LATER_BUILD)
+
+    def refuse(*arguments, **options):
+        raise RuntimeError
+
+    monkeypatch.setattr(
+        controls.module.collector_delivery, "enqueue_for_handover", refuse
+    )
+    assert hand_over(controls, message)["status"] == "pending"
+    cycle(controls)
+
+    assert release_receipt(controls, message)["status"] == "published"
+    assert collector_receipt(controls, message) is None
+    assert controls.module.queue.copied_files(handover_id_of(message)) == {}
+    assert "could not be queued for the collector (RuntimeError)" in (
+        capsys.readouterr().err
+    )
 
 
 def test_a_refused_promotion_is_not_submitted(submitting_module):

@@ -72,7 +72,8 @@ class ClaimedJob:
     request: dict[str, Any]
     attempts: int
     lease_until: float
-    #: The bytes of the files copied at hand-over, by name.
+    #: The bytes of the files copied at hand-over, and of any kept since
+    #: (``finish_job``), by name, as they were when the job was claimed.
     files: dict[str, bytes] = field(default_factory=dict)
     #: When the job was handed over, by this machine's clock.
     created_at: float = 0.0
@@ -169,7 +170,11 @@ class HandoverJobs:
         session.flush()
 
     def copied_files(self, handover_id: str) -> dict[str, bytes]:
-        """Return the bytes copied when ``handover_id`` was handed over, by name."""
+        """Return the bytes kept for ``handover_id``, by name.
+
+        Those are the files copied when it was handed over, and any kept since
+        by ``finish_job``.
+        """
         with self._sessions() as session:
             rows = session.scalars(
                 select(HandoverFile).where(HandoverFile.handover_id == handover_id)

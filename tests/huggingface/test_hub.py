@@ -117,6 +117,21 @@ def test_last_commit_names_the_commit_that_last_changed_a_path(hub):
     assert repository.last_commit("never.json") is None
 
 
+def test_last_commit_summary_describes_the_last_change_to_a_path_at_a_revision(hub):
+    repository = DatasetRepository(REPOSITORY, hub)
+    first = hub.write_directly(REPOSITORY, {"a.json": b"1"}, message="First\n\nMore")
+    second = hub.write_directly(REPOSITORY, {"a.json": b"2"}, message="Second")
+    hub.write_directly(REPOSITORY, {"b.json": b"3"})
+
+    assert repository.last_commit_summary("a.json") == (second, "Second", None)
+    assert repository.last_commit_summary("a.json", revision=first) == (
+        first,
+        "First",
+        None,
+    )
+    assert repository.last_commit_summary("never.json") == (None, None, None)
+
+
 @pytest.mark.parametrize(
     ("access_token", "can_write"),
     [
