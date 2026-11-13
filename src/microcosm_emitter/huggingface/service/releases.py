@@ -71,7 +71,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
@@ -172,7 +172,11 @@ class ReleaseOutcome:
 
     ``current`` is set only when ``published``: the release's current build
     in ``releases.json`` once the change was applied (or found applied), or
-    ``None`` when the release has no current build.
+    ``None`` when the release has no current build. ``record`` is the
+    ``releases.json`` at ``commit`` when the writer wrote it there, or found
+    it already as the change would write it; it is ``None`` for a
+    publication of a build found already published, and on every other
+    status.
     """
 
     status: ReleaseStatus
@@ -182,6 +186,7 @@ class ReleaseOutcome:
     retry: bool = False
     committed: bool = False
     current: str | None = None
+    record: bytes | None = field(default=None, repr=False)
 
 
 def _refused(code: str, message: str) -> ReleaseOutcome:
@@ -644,12 +649,16 @@ def _commit_release_record(
     change = write.change
     release = change.release
     current = after.releases[release].current
-    if not write.new_files and state.record_bytes == after.serialize():
+    record = after.serialize()
+    if not write.new_files and state.record_bytes == record:
         # Nothing to write (the build is already current, for example):
-        # the Hub would skip an empty commit and answer with its head.
-        return ReleaseOutcome("published", commit=state.head, current=current)
+        # the Hub would skip an empty commit and answer with its head, at
+        # which releases.json holds these bytes.
+        return ReleaseOutcome(
+            "published", commit=state.head, current=current, record=record
+        )
     operations = [add_operation(path, local) for path, local in write.new_files.items()]
-    operations.append(add_operation(RELEASES_RECORD_PATH, after.serialize()))
+    operations.append(add_operation(RELEASES_RECORD_PATH, record))
     newest_requests = (
         {**order.newest_requests, release: write.requested}
         if order.changes_current and not order.overtaken
@@ -676,7 +685,12 @@ def _commit_release_record(
         else None
     )
     return ReleaseOutcome(
-        "published", message=note, commit=commit, committed=True, current=current
+        "published",
+        message=note,
+        commit=commit,
+        committed=True,
+        current=current,
+        record=record,
     )
 
 

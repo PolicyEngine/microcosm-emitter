@@ -148,6 +148,26 @@ class HandoverJobs:
                     )
             return dict(receipt)
 
+    @staticmethod
+    def _keep_files(
+        session: Session, handover_id: str, files: Mapping[str, bytes]
+    ) -> None:
+        """Store ``files`` with the hand-over, replacing any of the same name."""
+        for name, content in sorted(files.items()):
+            row = session.get(HandoverFile, (handover_id, name))
+            if row is None:
+                session.add(
+                    HandoverFile(
+                        handover_id=handover_id,
+                        name=name,
+                        content=content,
+                        content_sha256=sha256_bytes(content),
+                    )
+                )
+            else:
+                row.content, row.content_sha256 = content, sha256_bytes(content)
+        session.flush()
+
     def copied_files(self, handover_id: str) -> dict[str, bytes]:
         """Return the bytes copied when ``handover_id`` was handed over, by name."""
         with self._sessions() as session:
@@ -271,12 +291,19 @@ class HandoverJobs:
         now: float,
         committed: bool = False,
         retry_after: float | None = None,
+        files: Mapping[str, bytes] | None = None,
     ) -> bool:
         """Record one attempt; only the current lease holder may do so.
 
         A retried job waits ``retry_after`` seconds when given, otherwise the
-        backoff for its number of attempts. Returns whether it was recorded:
-        False when the lease was lost.
+        backoff for its number of attempts. ``files`` are kept with the
+        hand-over in the same transaction, as the copies made at hand-over
+        are, for its other destinations: the release writer keeps the
+        ``releases.json`` a described promotion or withdrawal wrote, for its
+        collector row. Like the copies, they are removed once every
+        destination has settled, at once when none is still pending. Returns
+        whether the attempt was recorded: False when the lease was lost, and
+        then ``files`` are not kept either.
         """
         with self._sessions.begin() as session:
             row = session.scalar(
@@ -293,6 +320,8 @@ class HandoverJobs:
             if row is None:
                 return False
             row.receipt = dict(receipt)
+            if files:
+                self._keep_files(session, job.handover_id, files)
             if retry:
                 row.next_attempt_at = now + (
                     retry_delay(row.attempts) if retry_after is None else retry_after

@@ -32,10 +32,12 @@ from microcosm_emitter.huggingface.service.requests import (
     release_change_from_message,
 )
 from microcosm_emitter.huggingface.service.run_files import commit_run_files
+from microcosm_emitter.submissions.planning import wants_releases_record
 from microcosm_emitter_interface.publication import RELEASE_CHANGE
+from microcosm_emitter_interface.releases import RELEASES_RECORD_PATH
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from huggingface_hub import HfApi
 
@@ -111,7 +113,8 @@ class _JobResult:
     """One attempt at a job, as its receipt and the queue record it.
 
     ``revision`` is the attempt's commit; ``message`` and ``current`` are
-    recorded only for a release change.
+    recorded only for a release change. ``kept_files`` are kept with the
+    hand-over for its other destinations, outside the receipt.
     """
 
     status: str
@@ -121,6 +124,7 @@ class _JobResult:
     revision: str | None = None
     message: str | None = None
     current: str | None = None
+    kept_files: Mapping[str, bytes] | None = None
 
 
 class HeldLeases:
@@ -448,6 +452,7 @@ class HuggingFaceDelivery:
             retry=result.retry,
             now=self.clock(),
             committed=result.committed,
+            files=result.kept_files,
         )
 
     def _deliver_job(self, hub: DatasetRepository, held: HeldLeases) -> bool:
@@ -456,10 +461,19 @@ class HuggingFaceDelivery:
             error_message = "The job is claimed before delivery."
             raise AssertionError(error_message)
         current = None
+        kept_files = None
         if job.kind == RELEASE_CHANGE:
             outcome = self._release_outcome(hub, job)
             revision, message = outcome.commit, outcome.message
             current = outcome.current
+            if (
+                outcome.status == "published"
+                and outcome.record is not None
+                and wants_releases_record(job.request)
+            ):
+                # Its collector row submits the releases.json at the
+                # receipt's commit, which the writer had in hand.
+                kept_files = {RELEASES_RECORD_PATH: outcome.record}
         else:
             outcome = stage_bundle(hub, job.request, job.files)
             revision, message = outcome.revision, None
@@ -481,6 +495,7 @@ class HuggingFaceDelivery:
                 revision=revision,
                 message=message,
                 current=current,
+                kept_files=kept_files,
             ),
         )
         return outcome.committed

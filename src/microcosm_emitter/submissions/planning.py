@@ -1,17 +1,22 @@
-"""Which collector submissions a staged bundle or release publication produces.
+"""Which collector submissions a hand-over produces.
 
-This only selects files by the roles the hand-over names and maps them to the
-collector contract's roles; it never reads or interprets file contents.
+A staged bundle or release publication gives one submission per kind whose
+files it names: this only selects files by the roles the hand-over names and
+maps them to the collector contract's roles; it never reads or interprets
+file contents. A promotion or withdrawal gives one ``releases-record``
+submission of the ``releases.json`` its commit wrote, naming the build that
+is current after the change.
 """
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final
 
 from microcosm_emitter_interface.bundles import CALIBRATION_DIAGNOSTICS_ROLE
-from microcosm_emitter_interface.releases import build_folder
+from microcosm_emitter_interface.releases import RELEASES_RECORD_PATH, build_folder
 from microcosm_emitter_interface.submissions import (
     EXECUTION_OVERLAY_ROLE,
     ORRERY_EVIDENCE_ROLE,
@@ -24,9 +29,15 @@ SUBMISSION_CONTRACT_VERSION: Final = 1
 MAX_FOLDER_CHARACTERS: Final = 512
 CALIBRATION_DIAGNOSTICS_KIND: Final = "calibration-diagnostics"
 ORRERY_INPUTS_KIND: Final = "orrery-inputs"
-#: The command of a release publication; every other hand-over with
-#: collector provenance is a staged bundle.
+RELEASES_RECORD_KIND: Final = "releases-record"
+#: The collector's role for the one file of a ``releases-record`` submission.
+RELEASES_RECORD_ROLE: Final = "releases_record"
+#: The command of a release publication.
 PUBLISH_RELEASE_COMMAND: Final = "publish_release"
+#: The release changes that change only ``releases.json``. Every hand-over
+#: with collector provenance that is neither one of these nor a publication
+#: is a staged bundle.
+RECORD_CHANGE_COMMANDS: Final = frozenset({"promote_build", "withdraw_build"})
 
 
 @dataclass(frozen=True)
@@ -68,7 +79,9 @@ class PlannedSubmission:
 
     ``copied`` holds the bytes of files copied when the bundle or publication
     was handed over; they are submitted as they were then, since the build
-    may have rewritten them since.
+    may have rewritten them since. ``local_paths`` gives the path of each file
+    submitted from the build's disk. A ``releases-record`` submission's one
+    file, the ``releases.json`` its change wrote, is only in ``copied``.
     """
 
     kind: str
@@ -87,6 +100,20 @@ def is_publication(request: Mapping[str, Any]) -> bool:
     return request.get("command") == PUBLISH_RELEASE_COMMAND
 
 
+def is_record_change(request: Mapping[str, Any]) -> bool:
+    """Whether a hand-over is a promotion or withdrawal: a ``releases.json`` change."""
+    return request.get("command") in RECORD_CHANGE_COMMANDS
+
+
+def wants_releases_record(request: Mapping[str, Any]) -> bool:
+    """Whether a hand-over is a promotion or withdrawal that describes its build.
+
+    Such a hand-over is submitted as a ``releases-record`` once it lands, so
+    the ``releases.json`` its commit wrote is kept for its collector row.
+    """
+    return is_record_change(request) and isinstance(request.get("collector"), Mapping)
+
+
 def submission_folder(request: Mapping[str, Any]) -> str:
     """Return the Hugging Face folder that holds the hand-over's files.
 
@@ -99,7 +126,14 @@ def submission_folder(request: Mapping[str, Any]) -> str:
 
 
 def wants_collector_submission(request: Mapping[str, Any]) -> bool:
-    """Whether a hand-over describes its build and names files the collector takes."""
+    """Whether a hand-over describes its build and gives the collector a submission.
+
+    A bundle or publication must name files the collector takes; a described
+    promotion or withdrawal always gives a ``releases-record`` submission
+    unless it leaves no current build, which is known only once it lands.
+    """
+    if wants_releases_record(request):
+        return True
     return isinstance(request.get("collector"), Mapping) and bool(_kinds_named(request))
 
 
@@ -175,3 +209,49 @@ def planned_submissions(
             )
         )
     return planned
+
+
+def planned_releases_record(
+    request: Mapping[str, Any], commit: str, current: str, record: bytes
+) -> PlannedSubmission:
+    """Plan the ``releases-record`` submission of a promotion or withdrawal.
+
+    ``commit`` is the commit the change landed with, ``current`` the release's
+    current build after it, and ``record`` the ``releases.json`` at that
+    commit. The collector requires the folder ``releases/<release>/<build_id>``
+    of the build made current, so the submission names ``current``, which
+    for a withdrawal is not the withdrawn build. A promotion or withdrawal
+    names no telemetry run, so the build ID is the run ID, as for
+    publications. The country and ``licensed_data`` are the provenance's.
+    """
+    collector = request["collector"]
+    release = request["release"]
+    return PlannedSubmission(
+        kind=RELEASES_RECORD_KIND,
+        body={
+            "contract_version": SUBMISSION_CONTRACT_VERSION,
+            "kind": RELEASES_RECORD_KIND,
+            "licensed_data": collector["licensed_data"],
+            "provenance": {
+                "run_id": current,
+                "build_id": current,
+                "country_code": collector["country_code"],
+                "release": release,
+                "huggingface": {
+                    "repo": request["repository"],
+                    "commit": commit,
+                    "folder": build_folder(release, current),
+                },
+            },
+            "files": [
+                {
+                    "name": RELEASES_RECORD_PATH,
+                    "role": RELEASES_RECORD_ROLE,
+                    "size": len(record),
+                    "sha256": hashlib.sha256(record).hexdigest(),
+                }
+            ],
+        },
+        local_paths={},
+        copied={RELEASES_RECORD_PATH: record},
+    )

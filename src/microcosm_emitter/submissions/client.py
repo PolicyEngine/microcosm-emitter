@@ -403,7 +403,7 @@ class CollectorSubmissionClient:
         for upload in uploads:
             if (
                 not isinstance(upload, Mapping)
-                or upload.get("name") not in planned.local_paths
+                or upload.get("name") not in {*planned.local_paths, *planned.copied}
                 or upload.get("method") != "PUT"
                 or not isinstance(upload.get("url"), str)
                 or not isinstance(upload.get("headers"), Mapping)
@@ -421,18 +421,20 @@ class CollectorSubmissionClient:
 
     def _upload(self, upload: Mapping[str, Any], planned: PlannedSubmission) -> None:
         copied = planned.copied.get(upload["name"])
-        path = Path(planned.local_paths[upload["name"]])
         try:
-            size = len(copied) if copied is not None else path.stat().st_size
-            headers = {**upload["headers"], "Content-Length": str(size)}
             if copied is not None:
                 response = self._http.put(
                     upload["url"],
                     content=_byte_slices(copied),
-                    headers=headers,
+                    headers={**upload["headers"], "Content-Length": str(len(copied))},
                     timeout=UPLOAD_TIMEOUT,
                 )
             else:
+                path = Path(planned.local_paths[upload["name"]])
+                headers = {
+                    **upload["headers"],
+                    "Content-Length": str(path.stat().st_size),
+                }
                 with path.open("rb") as stream:
                     blocks = iter(lambda: stream.read(UPLOAD_CHUNK_BYTES), b"")
                     response = self._http.put(

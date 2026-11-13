@@ -383,6 +383,7 @@ def release_change_from_message(message: Mapping[str, Any]) -> ReleaseChange:
                 release=message.get("release"),
                 build=message.get("build"),
                 request_id=message.get("request_id"),
+                collector=_collector_provenance(message.get("collector")),
             )
     except RequestRefusedError:
         raise

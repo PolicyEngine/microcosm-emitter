@@ -1,12 +1,21 @@
 """Deliver hand-overs to the collector, after their Hugging Face commit.
 
-A bundle hand-over or release publication that describes its build gets a
-second row in the hand-over queue, for the ``collector`` destination. It
-waits until the same hand-over's Hugging Face row has staged the bundle or
-published the build, because the submission's provenance names that commit:
-the bundle's commit, or the commit that added the build's folder
-``releases/<release>/<build>``. Then each planned submission is submitted
-until the collector accepts or refuses it.
+A bundle hand-over, release publication, promotion or withdrawal that
+describes its build gets a second row in the hand-over queue, for the
+``collector`` destination. It waits until the same hand-over's Hugging Face
+row has staged the bundle or landed the release change, because the
+submission's provenance names that commit: the bundle's commit, the commit
+that added the build's folder ``releases/<release>/<build>``, or the commit
+of a promotion's or withdrawal's ``releases.json``. Then each planned
+submission is submitted until the collector accepts or refuses it.
+
+A promotion or withdrawal gives one ``releases-record`` submission: the
+``releases.json`` the Hugging Face row kept when it landed, naming the
+release's current build after the change. Its collector row is queued before
+its Hugging Face row, so that row finds it and keeps that file for it; until
+the Hugging Face row is queued, the collector row waits, for at most as long
+as a release change may stay pending. A change that leaves the release no
+current build sends nothing (``NO_CURRENT_BUILD``).
 
 Accepted submissions stay in the queue, ``awaiting_final_status``, and their
 status is checked with the same row's leases, attempts and retries: the
@@ -39,6 +48,9 @@ from microcosm_emitter.huggingface.service.delivery import (
     LeaseRenewal,
     never_stop,
 )
+from microcosm_emitter.huggingface.service.releases import (
+    RELEASE_CHANGE_EXPIRY_SECONDS,
+)
 from microcosm_emitter.submissions.client import (
     AWAITING_FINAL_STATUS,
     FINAL_STATUSES,
@@ -49,9 +61,12 @@ from microcosm_emitter.submissions.planning import (
     MAX_FOLDER_CHARACTERS,
     PlannedSubmission,
     is_publication,
+    is_record_change,
+    planned_releases_record,
     planned_submissions,
     submission_folder,
 )
+from microcosm_emitter_interface.releases import RELEASES_RECORD_PATH
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -87,6 +102,13 @@ WAITING_FOR_HUGGING_FACE: Final = "WAITING_FOR_HUGGING_FACE"
 NOT_STAGED_ON_HUGGING_FACE: Final = "NOT_STAGED_ON_HUGGING_FACE"
 NOT_PUBLISHED_ON_HUGGING_FACE: Final = "NOT_PUBLISHED_ON_HUGGING_FACE"
 COLLECTOR_FOLDER_TOO_LONG: Final = "COLLECTOR_FOLDER_TOO_LONG"
+#: A promotion or withdrawal landed and left its release no current build,
+#: so there is no build for a ``releases-record`` submission to name.
+NO_CURRENT_BUILD: Final = "NO_CURRENT_BUILD"
+#: A promotion or withdrawal landed without the ``releases.json`` it wrote
+#: being kept for its collector row, as when an emitter release that keeps
+#: none landed it from a shared hand-over database.
+RELEASES_RECORD_MISSING: Final = "RELEASES_RECORD_MISSING"
 #: Collector submissions are switched on, but the module refused its collector
 #: settings or the given-token variables, so nothing is queued for the
 #: collector. Answered for a hand-over that describes its build.
@@ -332,12 +354,18 @@ class CollectorSubmissionDelivery:
             return None, None
         return str(commit), None
 
+    def _earlier_submissions(self, job: ClaimedJob) -> dict[str, dict[str, Any]]:
+        """Return the submissions the row's receipt already records, by kind."""
+        previous = self.receipt(job.handover_id) or {}
+        return {entry["kind"]: entry for entry in previous.get("submissions", [])}
+
     def _attempt(self, job: ClaimedJob) -> AttemptResult:
+        if is_record_change(job.request):
+            return self._attempt_releases_record(job)
         if len(submission_folder(job.request)) > MAX_FOLDER_CHARACTERS:
             # The collector refuses such a folder with a final 422.
             return AttemptResult("skipped", COLLECTOR_FOLDER_TOO_LONG, [], retry=False)
-        previous = self.receipt(job.handover_id) or {}
-        earlier = {entry["kind"]: entry for entry in previous.get("submissions", [])}
+        earlier = self._earlier_submissions(job)
         revision, not_landed = self._hugging_face_commit(job)
         if not_landed is not None:
             return AttemptResult("skipped", not_landed, [], retry=False)
@@ -348,23 +376,82 @@ class CollectorSubmissionDelivery:
                 list(earlier.values()),
                 retry=True,
             )
-        results: dict[str, dict[str, Any]] = {}
         waits: list[float] = []
-        for planned in planned_submissions(job.request, revision, job.files):
-            entry = earlier.get(planned.kind)
-            if entry is not None and entry["status"] in SETTLED_SUBMISSION_STATUSES:
-                results[planned.kind] = entry
-                continue
-            if entry is None or entry["status"] != AWAITING_FINAL_STATUS:
-                entry = self._submit(planned, waits)
-                if entry["collector_status"] in FINAL_STATUSES:
-                    # Completion already answered with a final status: read
-                    # the receipt now.
-                    entry = self._check(entry, waits)
-            else:
-                entry = self._check(entry, waits)
-            results[planned.kind] = entry
-        return self._result(list(results.values()), waits)
+        results = [
+            self._advance(planned, earlier.get(planned.kind), waits)
+            for planned in planned_submissions(job.request, revision, job.files)
+        ]
+        return self._result(results, waits)
+
+    def _attempt_releases_record(self, job: ClaimedJob) -> AttemptResult:
+        """Submit a promotion's or withdrawal's ``releases.json`` once it landed."""
+        earlier = self._earlier_submissions(job)
+        landed = self._landed_record_change(job, earlier)
+        if isinstance(landed, AttemptResult):
+            return landed
+        commit, current = landed
+        if current is None:
+            return AttemptResult("skipped", NO_CURRENT_BUILD, [], retry=False)
+        record = job.files.get(RELEASES_RECORD_PATH)
+        if record is None:
+            return AttemptResult("skipped", RELEASES_RECORD_MISSING, [], retry=False)
+        planned = planned_releases_record(job.request, commit, current, record)
+        waits: list[float] = []
+        entry = self._advance(planned, earlier.get(planned.kind), waits)
+        return self._result([entry], waits)
+
+    def _landed_record_change(
+        self, job: ClaimedJob, earlier: Mapping[str, Mapping[str, Any]]
+    ) -> tuple[str, str | None] | AttemptResult:
+        """Return the commit a promotion or withdrawal landed with, and ``current``.
+
+        ``current`` is the release's current build after the change, or
+        ``None`` when it has none. Until the change has landed, return the
+        attempt's result instead: waiting, or ``skipped`` when it never
+        will. The collector row is queued before the Hugging Face row, so a
+        missing Hugging Face row is waited for until the change would have
+        expired (``RELEASE_CHANGE_EXPIRY_SECONDS``).
+        """
+        landed = self.queue.job_receipt(job.handover_id)
+        waiting = AttemptResult(
+            "pending", WAITING_FOR_HUGGING_FACE, list(earlier.values()), retry=True
+        )
+        never_landed = AttemptResult(
+            "skipped", NOT_PUBLISHED_ON_HUGGING_FACE, [], retry=False
+        )
+        if landed is None:
+            if self.clock() - job.created_at <= RELEASE_CHANGE_EXPIRY_SECONDS:
+                return waiting
+            return never_landed
+        if landed.get("status") in NOT_STAGED_STATUSES:
+            return never_landed
+        commit = landed.get("commit")
+        if landed.get("status") not in PUBLISHED_STATUSES or not commit:
+            return waiting
+        current = landed.get("current")
+        return str(commit), str(current) if current else None
+
+    def _advance(
+        self,
+        planned: PlannedSubmission,
+        entry: Mapping[str, Any] | None,
+        waits: list[float],
+    ) -> dict[str, Any]:
+        """Take one planned submission a step on from its recorded ``entry``.
+
+        A settled one stays as it is; one not yet accepted is submitted; an
+        accepted one has its status checked.
+        """
+        if entry is not None and entry["status"] in SETTLED_SUBMISSION_STATUSES:
+            return dict(entry)
+        if entry is None or entry["status"] != AWAITING_FINAL_STATUS:
+            submitted = self._submit(planned, waits)
+            if submitted["collector_status"] in FINAL_STATUSES:
+                # Completion already answered with a final status: read the
+                # receipt now.
+                return self._check(submitted, waits)
+            return submitted
+        return self._check(entry, waits)
 
     def _submit(self, planned: PlannedSubmission, waits: list[float]) -> dict[str, Any]:
         """Submit; an accepted submission then awaits its final status."""

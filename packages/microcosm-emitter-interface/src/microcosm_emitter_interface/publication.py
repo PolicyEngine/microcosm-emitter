@@ -7,7 +7,9 @@ updated ``releases.json`` in one commit, after the checks in
 ``microcosm_emitter_interface.releases``. With ``CollectorProvenance``, the
 emitter also submits the build's calibration diagnostics and Orrery inputs to
 the collector after that commit. ``PromoteBuild`` and ``WithdrawBuild``
-change only ``releases.json``.
+change only ``releases.json``; with ``CollectorProvenance``, the emitter
+submits that commit's ``releases.json`` to the collector, naming the build
+that is current after the change.
 
 Publication is not best-effort: the receipt says whether the change was
 ``published``, is still ``pending`` (retried from the emitter's queue) or was
@@ -98,6 +100,43 @@ def _check_reference(
     safe_identifier(request_id, label="request_id")
 
 
+def _check_collector(
+    collector: CollectorProvenance | None,
+    *,
+    release: str,
+    build: str,
+    change_name: str,
+) -> None:
+    """Raise ``ValueError`` unless ``collector`` is ``None`` or names this change.
+
+    A given ``collector`` must be a ``CollectorProvenance`` naming the change's
+    own release and build; ``change_name`` says which change it is in the
+    message.
+    """
+    if collector is not None and not isinstance(collector, CollectorProvenance):
+        error_message = "collector must be a CollectorProvenance value."
+        raise ValueError(error_message)
+    if collector is not None and (
+        collector.release != release or collector.build_id != build
+    ):
+        error_message = (
+            f"collector must name the {change_name}'s own release and build."
+        )
+        raise ValueError(error_message)
+
+
+def _with_collector(
+    message: dict[str, Any], collector: CollectorProvenance | None
+) -> dict[str, Any]:
+    """Add the ``collector`` key to ``message`` only when ``collector`` is given.
+
+    Only when given, so a change without it keeps its message and hand-over ID.
+    """
+    if collector is not None:
+        message["collector"] = collector.message()
+    return message
+
+
 @dataclass(frozen=True)
 class PublishRelease:
     """Publish a new build of a release, optionally as its current build.
@@ -168,29 +207,19 @@ class PublishRelease:
         if [item.role for item in self.files].count(RELEASE_MANIFEST_ROLE) != 1:
             error_message = f"Only {RELEASE_MANIFEST_NAME} has its role."
             raise ValueError(error_message)
-        self._check_collector()
-
-    def _check_collector(self) -> None:
-        if self.collector is not None and not isinstance(
-            self.collector, CollectorProvenance
-        ):
-            error_message = "collector must be a CollectorProvenance value."
-            raise ValueError(error_message)
-        if self.collector is not None and (
-            self.collector.release != self.release
-            or self.collector.build_id != self.build
-        ):
-            error_message = (
-                "collector must name the publication's own release and build."
-            )
-            raise ValueError(error_message)
+        _check_collector(
+            self.collector,
+            release=self.release,
+            build=self.build,
+            change_name="publication",
+        )
 
     def message(self) -> dict[str, Any]:
         """Return the ``publish_release`` request, with absolute local paths.
 
         The ``collector`` key is present only when ``collector`` is given.
         """
-        message = {
+        message: dict[str, Any] = {
             "protocol_version": self.protocol_version,
             "command": "publish_release",
             "request_id": self.request_id,
@@ -210,11 +239,7 @@ class PublishRelease:
                 for item in self.files
             ],
         }
-        # Only when given, so a publication without it keeps its message and
-        # hand-over ID.
-        if self.collector is not None:
-            message["collector"] = self.collector.message()
-        return message
+        return _with_collector(message, self.collector)
 
     def handover_id(self) -> str:
         """Return the hand-over identifier the emitter also computes for it."""
@@ -223,28 +248,59 @@ class PublishRelease:
 
 @dataclass(frozen=True)
 class PromoteBuild:
-    """Make a listed, non-withdrawn build the release's current build."""
+    """Make a listed, non-withdrawn build the release's current build.
+
+    With ``collector``, which must name this promotion's release and build,
+    the emitter also submits the ``releases.json`` of the promotion's commit
+    to the collector as a ``releases-record`` submission, once that commit
+    lands and while its collector submissions are switched on
+    (``HuggingFaceSettings.collector_submissions``). The submission names the
+    repository, that commit, and this build as the release's current build,
+    with the provenance's country and ``licensed_data``; the collector then
+    moves the country's latest calibration tree to follow ``releases.json``.
+    When the build is already current, nothing is written and the commit is
+    ``main``'s head, which the receipt reports. A promotion that is refused
+    sends nothing.
+    """
 
     repository: str
     release: str
     build: str
     request_id: str = field(default_factory=new_request_id)
+    collector: CollectorProvenance | None = None
     protocol_version: int = field(default=PROTOCOL_VERSION, repr=False)
 
     def __post_init__(self) -> None:
-        """Raise ``ValueError`` if an identifier breaks the shared identifier rules."""
+        """Raise ``ValueError`` if an identifier or ``collector`` is invalid.
+
+        The identifiers must follow the shared identifier rules, and a given
+        ``collector`` must be a ``CollectorProvenance`` naming this release
+        and build.
+        """
         _check_reference(self.repository, self.release, self.build, self.request_id)
+        _check_collector(
+            self.collector,
+            release=self.release,
+            build=self.build,
+            change_name="promotion",
+        )
 
     def message(self) -> dict[str, Any]:
-        """Return the ``promote_build`` request."""
-        return {
-            "protocol_version": self.protocol_version,
-            "command": "promote_build",
-            "request_id": self.request_id,
-            "repository": self.repository,
-            "release": self.release,
-            "build": self.build,
-        }
+        """Return the ``promote_build`` request.
+
+        The ``collector`` key is present only when ``collector`` is given.
+        """
+        return _with_collector(
+            {
+                "protocol_version": self.protocol_version,
+                "command": "promote_build",
+                "request_id": self.request_id,
+                "repository": self.repository,
+                "release": self.release,
+                "build": self.build,
+            },
+            self.collector,
+        )
 
     def handover_id(self) -> str:
         """Return the hand-over identifier the emitter also computes for it."""
@@ -253,28 +309,56 @@ class PromoteBuild:
 
 @dataclass(frozen=True)
 class WithdrawBuild:
-    """Mark a build withdrawn; its folder and files stay as published."""
+    """Mark a build withdrawn; its folder and files stay as published.
+
+    With ``collector``, which must name this withdrawal's release and build,
+    the emitter also submits the ``releases.json`` of the withdrawal's commit
+    to the collector as a ``releases-record`` submission, as for
+    ``PromoteBuild``. A withdrawal never changes ``current`` (the current
+    build cannot be withdrawn), so the submission names the release's
+    current build after the change, not the withdrawn one, with the
+    provenance's country and ``licensed_data``. When the release has no
+    current build, nothing is sent.
+    """
 
     repository: str
     release: str
     build: str
     request_id: str = field(default_factory=new_request_id)
+    collector: CollectorProvenance | None = None
     protocol_version: int = field(default=PROTOCOL_VERSION, repr=False)
 
     def __post_init__(self) -> None:
-        """Raise ``ValueError`` if an identifier breaks the shared identifier rules."""
+        """Raise ``ValueError`` if an identifier or ``collector`` is invalid.
+
+        The identifiers must follow the shared identifier rules, and a given
+        ``collector`` must be a ``CollectorProvenance`` naming this release
+        and build.
+        """
         _check_reference(self.repository, self.release, self.build, self.request_id)
+        _check_collector(
+            self.collector,
+            release=self.release,
+            build=self.build,
+            change_name="withdrawal",
+        )
 
     def message(self) -> dict[str, Any]:
-        """Return the ``withdraw_build`` request."""
-        return {
-            "protocol_version": self.protocol_version,
-            "command": "withdraw_build",
-            "request_id": self.request_id,
-            "repository": self.repository,
-            "release": self.release,
-            "build": self.build,
-        }
+        """Return the ``withdraw_build`` request.
+
+        The ``collector`` key is present only when ``collector`` is given.
+        """
+        return _with_collector(
+            {
+                "protocol_version": self.protocol_version,
+                "command": "withdraw_build",
+                "request_id": self.request_id,
+                "repository": self.repository,
+                "release": self.release,
+                "build": self.build,
+            },
+            self.collector,
+        )
 
     def handover_id(self) -> str:
         """Return the hand-over identifier the emitter also computes for it."""

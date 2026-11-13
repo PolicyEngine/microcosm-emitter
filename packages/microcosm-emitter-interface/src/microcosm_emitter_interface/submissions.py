@@ -2,14 +2,14 @@
 
 The collector's artifact intake (PolicyEngine/microcosm-collector,
 ``docs/artifact-submissions.md``) records which build produced each
-submission. A bundle hand-over or release publication says so with
-``CollectorProvenance``; without it, the files go only to Hugging Face. The
-emitter submits only while its collector submissions are switched on
-(``HuggingFaceSettings.collector_submissions``).
+submission. A bundle hand-over, release publication, promotion or withdrawal
+says so with ``CollectorProvenance``; without it, the change goes only to
+Hugging Face. The emitter submits only while its collector submissions are
+switched on (``HuggingFaceSettings.collector_submissions``).
 
 ``CollectorSubmissionReceipt`` is what ``EmitterClient.collector_submission_receipt``
-answers: the emitter's latest record of what the collector made of a bundle
-or publication.
+answers: the emitter's latest record of what the collector made of a
+hand-over.
 """
 
 from __future__ import annotations
@@ -40,8 +40,11 @@ class CollectorProvenance:
     until output clearance; calibration data may be public whether or not
     the build used licensed data (decision D10); and native evidence is never
     published. ``release`` is the candidate release a staged build was
-    staged for, or ``None`` when it names none. A release publication's
-    provenance names that publication's release and build.
+    staged for, or ``None`` when it names none. A release publication's,
+    promotion's or withdrawal's provenance names that change's release and
+    build; a withdrawal's ``releases-record`` submission names the release's
+    current build instead, with this provenance's country and
+    ``licensed_data``.
     """
 
     country_code: str
@@ -92,7 +95,10 @@ class CollectorRejection(TypedDict):
 
 
 class CollectorSubmission(TypedDict):
-    """One submission of a hand-over: ``calibration-diagnostics`` or ``orrery-inputs``.
+    """One submission of a hand-over.
+
+    Its kind is ``calibration-diagnostics`` or ``orrery-inputs`` for a bundle
+    or publication, and ``releases-record`` for a promotion or withdrawal.
 
     ``status``:
 
@@ -140,8 +146,8 @@ class CollectorSubmission(TypedDict):
 class CollectorSubmissionReceipt(TypedDict):
     """The emitter's latest record of a hand-over's collector submissions.
 
-    The hand-over is a bundle or a release publication that carries
-    ``CollectorProvenance``. ``status`` sums up its ``submissions``:
+    The hand-over is a bundle, release publication, promotion or withdrawal
+    that carries ``CollectorProvenance``. ``status`` sums up its ``submissions``:
     ``pending`` while one is still being sent (``WAITING_FOR_HUGGING_FACE``
     until its Hugging Face commit lands), then ``awaiting_final_status``
     while the emitter checks one's status. Once every one is settled it is
@@ -149,8 +155,12 @@ class CollectorSubmissionReceipt(TypedDict):
     failed, else ``timed_out`` if one timed out, else ``succeeded``;
     ``error_code`` is then that submission's. ``skipped`` means nothing was
     sent: Hugging Face refused the bundle (``NOT_STAGED_ON_HUGGING_FACE``) or
-    the publication (``NOT_PUBLISHED_ON_HUGGING_FACE``), its folder is
-    longer than the collector accepts (``COLLECTOR_FOLDER_TOO_LONG``), or
+    the release change (``NOT_PUBLISHED_ON_HUGGING_FACE``), its folder is
+    longer than the collector accepts (``COLLECTOR_FOLDER_TOO_LONG``), a
+    promotion or withdrawal left its release no current build
+    (``NO_CURRENT_BUILD``) or landed without its ``releases.json`` being
+    kept, as by an emitter release that keeps none
+    (``RELEASES_RECORD_MISSING``), or
     collector submissions are switched on but the emitter refused its
     collector settings, such as an untrusted collector origin or unusable
     given-token variables (``COLLECTOR_SETTINGS_REFUSED``, with no attempt).
