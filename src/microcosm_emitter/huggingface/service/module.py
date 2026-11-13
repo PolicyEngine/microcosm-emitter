@@ -139,9 +139,10 @@ class HuggingFaceModule:
     module by hand use it.
 
     With ``collector_submissions`` true in the configuration
-    (``HuggingFaceSettings.collector_submissions``), bundles and release
-    publications that describe their build are also submitted to the
-    collector after their Hugging Face commit, at the origin
+    (``HuggingFaceSettings.collector_submissions``), bundles, release
+    publications, promotions and withdrawals that describe their build are
+    also submitted to the collector after their Hugging Face commit, at the
+    origin
     ``configured_collector_origin`` chooses for every module:
     ``collector_origin`` selects one of the trusted collector origins, and
     ``development_collector_url`` points at a loopback collector. Collector
@@ -386,11 +387,12 @@ class HuggingFaceModule:
     ) -> None:
         """Queue a hand-over's collector row, with the file copies it submits.
 
-        Called once its Hugging Face row is queued. ``copies`` returns the
-        bytes copied at hand-over. It is called only when the hand-over has no
-        collector row yet, since a repeated hand-over keeps the row's
-        copies, and inside the error handling, so a failure to copy is
-        handled like a failure to queue.
+        Called once a bundle's or publication's Hugging Face row is queued,
+        and before a promotion's or withdrawal's (see ``_release_change``).
+        ``copies`` returns the bytes copied at hand-over. It is called only
+        when the hand-over has no collector row yet, since a repeated
+        hand-over keeps the row's copies, and inside the error handling, so a
+        failure to copy is handled like a failure to queue.
         """
         if (
             self.collector_delivery is None
@@ -402,8 +404,9 @@ class HuggingFaceModule:
             queued = self.queue.job_receipt(handover_id, DESTINATION_COLLECTOR)
             files = copies() if queued is None else {}
             self.collector_delivery.enqueue_for_handover(handover_id, request, files)
-        # The Hugging Face row is queued: any failure to queue the collector
-        # row only warns, and the request is answered with its receipt.
+        # The Hugging Face row is queued, or (for a promotion or withdrawal)
+        # is queued next: any failure to queue the collector row only warns,
+        # and the request is answered with its Hugging Face receipt.
         except Exception as error:  # noqa: BLE001
             self.delivery.warn_once(
                 "collector queue",
@@ -442,6 +445,15 @@ class HuggingFaceModule:
         reason = self.release_change_policy(hand_over.change, self._caller())
         if reason is not None:
             return refused("NOT_AUTHORIZED", hand_over.handover_id, str(reason))
+        change = hand_over.change
+        for_collector = self.collector_delivery is not None and (
+            wants_collector_submission(hand_over.request)
+        )
+        if for_collector and not isinstance(change, PublishRelease):
+            # A promotion or withdrawal copies nothing. Its collector row is
+            # queued first, so that the Hugging Face row, however soon it
+            # lands, finds it and keeps the releases.json it wrote for it.
+            self._queue_for_collector(hand_over.handover_id, hand_over.request, dict)
         receipt = self.queue.enqueue_job(
             handover_id=hand_over.handover_id,
             kind=RELEASE_CHANGE,
@@ -461,12 +473,7 @@ class HuggingFaceModule:
             },
             now=self.clock(),
         )
-        change = hand_over.change
-        if (
-            self.collector_delivery is not None
-            and isinstance(change, PublishRelease)
-            and wants_collector_submission(hand_over.request)
-        ):
+        if for_collector and isinstance(change, PublishRelease):
             # A publication's files are not copied for Hugging Face; only the
             # ones the collector takes, after the release lands.
             self._queue_for_collector(

@@ -95,7 +95,9 @@ class HandoverFile(HandoverModel):
 
     The build may rewrite such a file at once (Microcosm rewrites its build
     manifest, checksum listing and build record right after staging), so the
-    delivery uploads these bytes instead of reading the file again. The rows
+    delivery uploads these bytes instead of reading the file again. A
+    described promotion's or withdrawal's row is the ``releases.json`` its
+    change wrote, kept when the change landed for its collector row. The rows
     are deleted once every destination of the hand-over has settled.
     """
 

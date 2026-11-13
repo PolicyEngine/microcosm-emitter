@@ -534,16 +534,18 @@ class EmitterClient:
         """Return what the collector has made of a hand-over's submissions so far.
 
         While its collector submissions are switched on, the emitter submits a
-        bundle or release publication that carries ``CollectorProvenance``
-        after its Hugging Face commit, then checks each submission's status in
-        the background until it is final. This call answers at once from the
-        emitter's queue and never waits for either: a ``rejected`` or
-        ``failed`` receipt carries the collector's reason, and a ``skipped``
-        one's ``error_code`` says why nothing was sent (the codes are listed
-        on ``CollectorSubmissionReceipt``), including collector settings the
-        emitter refused (``COLLECTOR_SETTINGS_REFUSED``). ``None`` when
-        collector submissions are off, the hand-over described no build or
-        named no file the collector takes, or no emitter answered.
+        bundle, release publication, promotion or withdrawal that carries
+        ``CollectorProvenance`` after its Hugging Face commit, then checks
+        each submission's status in the background until it is final. This
+        call answers at once from the emitter's queue and never waits for
+        either: a ``rejected`` or ``failed`` receipt carries the collector's
+        reason, and a ``skipped`` one's ``error_code`` says why nothing was
+        sent (the codes are listed on ``CollectorSubmissionReceipt``),
+        including collector settings the emitter refused
+        (``COLLECTOR_SETTINGS_REFUSED``). ``None`` when collector submissions
+        are off, the hand-over described no build or (for a bundle or
+        publication) named no file the collector takes, or no emitter
+        answered.
         """
         response = self._query(
             HUGGING_FACE_MODULE,
@@ -619,7 +621,10 @@ class EmitterClient:
         """Queue making a build current; wait up to ``wait_seconds`` for it to settle.
 
         A receipt still ``pending`` after the wait means the emitter is still
-        retrying; ask again with ``release_receipt``.
+        retrying; ask again with ``release_receipt``. With
+        ``request.collector``, the emitter also submits the new
+        ``releases.json`` to the collector (``PromoteBuild``); ask
+        ``collector_submission_receipt`` with the receipt's ``handover_id``.
         """
         return self._release_change(request, wait_seconds)
 
@@ -629,7 +634,10 @@ class EmitterClient:
         """Queue a build's withdrawal; wait up to ``wait_seconds`` for it to settle.
 
         A receipt still ``pending`` after the wait means the emitter is still
-        retrying; ask again with ``release_receipt``.
+        retrying; ask again with ``release_receipt``. With
+        ``request.collector``, the emitter also submits the new
+        ``releases.json`` to the collector (``WithdrawBuild``); ask
+        ``collector_submission_receipt`` with the receipt's ``handover_id``.
         """
         return self._release_change(request, wait_seconds)
 

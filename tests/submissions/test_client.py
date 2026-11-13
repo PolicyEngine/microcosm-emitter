@@ -502,6 +502,65 @@ def test_an_instruction_whose_host_differs_from_its_url_is_refused(
     assert collector.uploads == []
 
 
+RELEASES_RECORD = b'{"schema_version": 1, "releases": {}}\n'
+
+
+def kept_record_submission() -> PlannedSubmission:
+    """Return a ``releases-record`` submission whose one file is only kept bytes."""
+    return PlannedSubmission(
+        kind="releases-record",
+        body={
+            "contract_version": 1,
+            "kind": "releases-record",
+            "licensed_data": True,
+            "provenance": {
+                "run_id": "uk-run-1",
+                "build_id": "uk-run-1",
+                "country_code": "UK",
+                "release": "microcosm-uk-2024-25-national",
+                "huggingface": {
+                    "repo": "policyengine/populace-uk-private",
+                    "commit": "0" * 40,
+                    "folder": "releases/microcosm-uk-2024-25-national/uk-run-1",
+                },
+            },
+            "files": [
+                {
+                    "name": "releases.json",
+                    "role": "releases_record",
+                    "size": len(RELEASES_RECORD),
+                    "sha256": hashlib.sha256(RELEASES_RECORD).hexdigest(),
+                }
+            ],
+        },
+        local_paths={},
+        copied={"releases.json": RELEASES_RECORD},
+    )
+
+
+def test_a_file_held_only_as_kept_bytes_is_uploaded(collector) -> None:
+    outcome = submission_client(collector).submit(kept_record_submission())
+
+    assert (outcome.status, outcome.error_code) == ("accepted", None)
+    assert list(collector.objects.values()) == [RELEASES_RECORD]
+
+
+@pytest.mark.parametrize("kept_only", [True, False], ids=["kept bytes", "local path"])
+def test_an_instruction_naming_a_file_outside_the_submission_is_refused(
+    collector, tmp_path, kept_only
+) -> None:
+    planned = kept_record_submission() if kept_only else planned_submission(tmp_path)
+    collector.upload_names = {
+        "releases.json": "other.json",
+        "calibration_diagnostics.json": "other.json",
+    }
+
+    outcome = submission_client(collector).submit(planned)
+
+    assert (outcome.status, outcome.error_code) == ("pending", "INVALID_RESPONSE")
+    assert collector.uploads == []
+
+
 # Slow and stalled uploads ---------------------------------------------------
 #
 # Both sides of the loopback connection get small socket buffers, so the

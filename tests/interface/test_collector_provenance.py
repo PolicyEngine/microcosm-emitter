@@ -1,8 +1,10 @@
-"""The optional build description a bundle or publication carries for the collector.
+"""The optional build description a hand-over carries for the collector.
 
-Also the Hugging Face setting that switches collector submissions on.
+Bundles, publications, promotions and withdrawals carry it. Also the Hugging
+Face setting that switches collector submissions on.
 """
 
+import dataclasses
 import hashlib
 import re
 from pathlib import Path
@@ -11,7 +13,12 @@ import pytest
 
 from microcosm_emitter_interface.bundles import BundleFile, StageDatasetBundle
 from microcosm_emitter_interface.identifiers import SAFE_IDENTIFIER
-from microcosm_emitter_interface.publication import PublishRelease, ReleaseFile
+from microcosm_emitter_interface.publication import (
+    PromoteBuild,
+    PublishRelease,
+    ReleaseFile,
+    WithdrawBuild,
+)
 from microcosm_emitter_interface.staging import HuggingFaceSettings
 from microcosm_emitter_interface.submissions import (
     EXECUTION_OVERLAY_ROLE,
@@ -222,6 +229,83 @@ def test_a_publication_refuses_provenance_of_another_release_or_build(
         match=re.escape("collector must name the publication's own release and build."),
     ):
         publication(collector=provenance(**values))
+
+
+#: The changes to ``releases.json`` alone, and what their messages call them.
+RECORD_CHANGES = {"promotion": PromoteBuild, "withdrawal": WithdrawBuild}
+
+
+def record_change(noun: str, **changes: object) -> PromoteBuild | WithdrawBuild:
+    """Return a promotion or withdrawal of ``BUILD``, with ``changes`` applied."""
+    change_type = RECORD_CHANGES[noun]
+    if "collector" in changes:
+        assert "collector" in {field.name for field in dataclasses.fields(change_type)}
+    values: dict[str, object] = {
+        "repository": "policyengine/populace-uk-private",
+        "release": RELEASE,
+        "build": BUILD,
+        "request_id": "release-request-1",
+    }
+    values.update(changes)
+    return change_type(**values)
+
+
+@pytest.mark.parametrize("noun", sorted(RECORD_CHANGES))
+def test_a_promotion_or_withdrawal_without_provenance_keeps_its_message(
+    noun: str,
+) -> None:
+    change = record_change(noun)
+
+    assert "collector" not in change.message()
+    assert change == record_change(noun, collector=None)
+    assert change.handover_id() == record_change(noun, collector=None).handover_id()
+
+
+@pytest.mark.parametrize("noun", sorted(RECORD_CHANGES))
+def test_a_promotion_or_withdrawal_with_provenance_names_it_in_its_message(
+    noun: str,
+) -> None:
+    described = record_change(
+        noun, collector=provenance(build_id=BUILD, release=RELEASE)
+    )
+
+    assert described.message() == {
+        **record_change(noun).message(),
+        "collector": provenance(build_id=BUILD, release=RELEASE).message(),
+    }
+    assert described.handover_id() != record_change(noun).handover_id()
+
+
+@pytest.mark.parametrize("noun", sorted(RECORD_CHANGES))
+def test_a_promotion_or_withdrawal_refuses_provenance_of_another_type(
+    noun: str,
+) -> None:
+    with pytest.raises(
+        ValueError, match=re.escape("collector must be a CollectorProvenance value.")
+    ):
+        record_change(noun, collector={"country_code": "UK"})
+
+
+@pytest.mark.parametrize("noun", sorted(RECORD_CHANGES))
+@pytest.mark.parametrize(
+    "other",
+    [
+        {"release": None},
+        {"release": "microcosm-uk-2024-25-other"},
+        {"build_id": "uk-frs-calibration-attempt-another"},
+    ],
+    ids=["no release", "another release", "another build"],
+)
+def test_a_promotion_or_withdrawal_refuses_provenance_of_another_release_or_build(
+    noun: str, other: dict[str, object]
+) -> None:
+    """The provenance names the change's own release and build, as a publication's."""
+    values: dict[str, object] = {"build_id": BUILD, "release": RELEASE, **other}
+    with pytest.raises(
+        ValueError,
+        match=re.escape(f"collector must name the {noun}'s own release and build."),
+    ):
+        record_change(noun, collector=provenance(**values))
 
 
 def test_collector_submissions_are_off_unless_switched_on(tmp_path: Path) -> None:

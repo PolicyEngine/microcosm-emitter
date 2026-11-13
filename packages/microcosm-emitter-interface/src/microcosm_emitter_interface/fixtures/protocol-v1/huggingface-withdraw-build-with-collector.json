@@ -1,0 +1,23 @@
+{
+  "protocol_version": 1,
+  "module": "huggingface",
+  "kind": "query",
+  "sequence": 15,
+  "body": {
+    "protocol_version": 1,
+    "command": "withdraw_build",
+    "request_id": "fixture-request-described",
+    "repository": "policyengine/fixture-private",
+    "release": "fixture-release",
+    "build": "fixture-build",
+    "collector": {
+      "country_code": "UK",
+      "build_id": "fixture-build",
+      "licensed_data": true,
+      "release": "fixture-release"
+    }
+  },
+  "response_keys": [
+    "receipt"
+  ]
+}
