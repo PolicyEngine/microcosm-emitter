@@ -159,8 +159,8 @@ class CollectorSubmissionReceipt(TypedDict):
     longer than the collector accepts (``COLLECTOR_FOLDER_TOO_LONG``), a
     promotion or withdrawal left its release no current build
     (``NO_CURRENT_BUILD``) or landed without its ``releases.json`` being
-    kept, as by an emitter release that keeps none
-    (``RELEASES_RECORD_MISSING``), or
+    kept, as by an emitter release that keeps none or while submissions
+    were off (``RELEASES_RECORD_MISSING``), or
     collector submissions are switched on but the emitter refused its
     collector settings, such as an untrusted collector origin or unusable
     given-token variables (``COLLECTOR_SETTINGS_REFUSED``, with no attempt).

@@ -174,9 +174,9 @@ class ReleaseOutcome:
     in ``releases.json`` once the change was applied (or found applied), or
     ``None`` when the release has no current build. ``record`` is the
     ``releases.json`` at ``commit`` when the writer wrote it there, or found
-    it already as the change would write it; it is ``None`` for a
-    publication of a build found already published, and on every other
-    status.
+    it already as the change would write it (see ``_found_unchanged``); it
+    is ``None`` for a publication of a build found already published, and on
+    every other status.
     """
 
     status: ReleaseStatus
@@ -267,29 +267,34 @@ def _parsed_newest_requests(title: str | None) -> dict[str, float]:
 
 def _newest_requests_on_record(
     repository: DatasetRepository, head: str, files: list[str]
-) -> tuple[dict[str, float], float | None]:
-    """Read the newest request times and the date of the last ``releases.json`` commit.
+) -> tuple[dict[str, float], float | None, str | None]:
+    """Read the newest request times, and the date and ID of the record's last commit.
 
     The times, one per release, come from the title of the commit that last
-    changed ``releases.json``, and the date is the Hub's for that commit. The
-    times are empty without a record, or when that commit was not the
-    writer's (P1's one-time migration, for example). A time more than
-    ``CLOCK_TOLERANCE_SECONDS`` after the Hub's date is left out.
+    changed ``releases.json`` at ``head``, and the date is the Hub's for that
+    commit. The times are empty without a record, or when that commit was not
+    the writer's (P1's one-time migration, for example). A time more than
+    ``CLOCK_TOLERANCE_SECONDS`` after the Hub's date is left out. The date and
+    the ID are ``None`` when the Hub does not report them.
     """
     if RELEASES_RECORD_PATH not in files:
-        return {}, None
-    title, committed_at = repository.last_commit_title_and_date(
+        return {}, None, None
+    record_commit, title, committed_at = repository.last_commit_summary(
         RELEASES_RECORD_PATH, revision=head
     )
     newest_requests = _parsed_newest_requests(title)
     if committed_at is None:
-        return newest_requests, None
+        return newest_requests, None, record_commit
     latest_believable = committed_at + CLOCK_TOLERANCE_SECONDS
-    return {
-        release: seconds
-        for release, seconds in newest_requests.items()
-        if seconds <= latest_believable
-    }, committed_at
+    return (
+        {
+            release: seconds
+            for release, seconds in newest_requests.items()
+            if seconds <= latest_believable
+        },
+        committed_at,
+        record_commit,
+    )
 
 
 def _newest_per_release(*sources: Mapping[str, float]) -> dict[str, float]:
@@ -411,7 +416,8 @@ class _ReleaseOrder:
 
     ``newest_requests`` is each release's newest request time so far. The
     order is never changed: the commit's message uses a copy that adds this
-    change's time.
+    change's time. ``record_commit`` is the commit that last changed
+    ``releases.json`` at the head, when the Hub reports it.
     """
 
     newest_requests: Mapping[str, float]
@@ -419,6 +425,7 @@ class _ReleaseOrder:
     changes_current: bool
     overtaken: bool
     makes_current: bool
+    record_commit: str | None
 
 
 def apply_release_change(
@@ -481,13 +488,13 @@ def _attempt_release_change(
     ):
         return _already_published(repository, write.change, record, state.head)
     try:
-        on_record, record_committed_at = _newest_requests_on_record(
+        on_record, record_committed_at, record_commit = _newest_requests_on_record(
             repository, state.head, state.files
         )
     # Any failure reading the Hub leaves the change pending for a retry.
     except Exception:  # noqa: BLE001
         return _pending(REPOSITORY_UNAVAILABLE)
-    order = _release_order(write, on_record, record_committed_at)
+    order = _release_order(write, on_record, record_committed_at, record_commit)
     after = _checked_record(repository, write, state, record, order)
     if isinstance(after, ReleaseOutcome):
         return after
@@ -514,6 +521,7 @@ def _release_order(
     write: _ReleaseWrite,
     on_record: Mapping[str, float],
     record_committed_at: float | None,
+    record_commit: str | None,
 ) -> _ReleaseOrder:
     """Compare the change with the newest landed changes to its release."""
     change = write.change
@@ -534,6 +542,7 @@ def _release_order(
         changes_current=changes_current,
         overtaken=overtaken,
         makes_current=makes_current,
+        record_commit=record_commit,
     )
 
 
@@ -652,10 +661,9 @@ def _commit_release_record(
     record = after.serialize()
     if not write.new_files and state.record_bytes == record:
         # Nothing to write (the build is already current, for example):
-        # the Hub would skip an empty commit and answer with its head, at
-        # which releases.json holds these bytes.
-        return ReleaseOutcome(
-            "published", commit=state.head, current=current, record=record
+        # the Hub would skip an empty commit and answer with its head.
+        return _found_unchanged(
+            change, state.head, order.record_commit, current, record
         )
     operations = [add_operation(path, local) for path, local in write.new_files.items()]
     operations.append(add_operation(RELEASES_RECORD_PATH, record))
@@ -692,6 +700,30 @@ def _commit_release_record(
         current=current,
         record=record,
     )
+
+
+def _found_unchanged(
+    change: ReleaseChange,
+    head: str,
+    record_commit: str | None,
+    current: str | None,
+    record: bytes,
+) -> ReleaseOutcome:
+    """Return the outcome of a change that found ``releases.json`` as it would write it.
+
+    Nothing is committed, so the receipt reports ``main``'s head, except for a
+    promotion or withdrawal with collector provenance: its ``releases-record``
+    submission names the commit that wrote ``releases.json``, never a later
+    head, so its receipt names ``record_commit``, the last commit to change
+    ``releases.json`` at the head, and it stays pending until the Hub reports
+    it, as a publication of an already published build does.
+    """
+    commit = head
+    if not isinstance(change, PublishRelease) and change.collector is not None:
+        if record_commit is None:
+            return _pending(REPOSITORY_UNAVAILABLE)
+        commit = record_commit
+    return ReleaseOutcome("published", commit=commit, current=current, record=record)
 
 
 def _already_published(

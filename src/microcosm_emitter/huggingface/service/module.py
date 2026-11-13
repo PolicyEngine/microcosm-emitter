@@ -404,8 +404,9 @@ class HuggingFaceModule:
             queued = self.queue.job_receipt(handover_id, DESTINATION_COLLECTOR)
             files = copies() if queued is None else {}
             self.collector_delivery.enqueue_for_handover(handover_id, request, files)
-        # The Hugging Face row is queued: any failure to queue the collector
-        # row only warns, and the request is answered with its receipt.
+        # The Hugging Face row is queued, or (for a promotion or withdrawal)
+        # is queued next: any failure to queue the collector row only warns,
+        # and the request is answered with its Hugging Face receipt.
         except Exception as error:  # noqa: BLE001
             self.delivery.warn_once(
                 "collector queue",

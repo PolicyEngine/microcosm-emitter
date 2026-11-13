@@ -310,11 +310,15 @@ def test_a_described_change_with_nothing_to_write_waits_for_the_record_commit(
     controls.hub.write_directly(PRIVATE_REPOSITORY, {"notes/later.json": b"{}"})
     message = record_change("promote_build", CURRENT_BUILD)
     hand_over(controls, message)
+    summary = DatasetRepository.last_commit_summary
+
+    def summary_without_its_commit(self, path_in_repo, *, revision=None):
+        _, title, date = summary(self, path_in_repo, revision=revision)
+        return None, title, date
+
     with monkeypatch.context() as patch:
         patch.setattr(
-            DatasetRepository,
-            "last_commit",
-            lambda self, path_in_repo, *, revision=None: None,
+            DatasetRepository, "last_commit_summary", summary_without_its_commit
         )
         cycle(controls)
         waiting = release_receipt(controls, message)

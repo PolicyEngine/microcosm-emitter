@@ -96,7 +96,7 @@ MAX_JOBS_PER_CYCLE: Final = 8
 MAX_CYCLE_SECONDS: Final = 600.0
 STAGED_STATUSES: Final = frozenset({"uploaded", "already_staged"})
 PUBLISHED_STATUSES: Final = frozenset({"published"})
-#: Final Hugging Face statuses of a bundle or publication that did not land.
+#: Final Hugging Face statuses of a hand-over that did not land.
 NOT_STAGED_STATUSES: Final = frozenset({"failed", "refused"})
 WAITING_FOR_HUGGING_FACE: Final = "WAITING_FOR_HUGGING_FACE"
 NOT_STAGED_ON_HUGGING_FACE: Final = "NOT_STAGED_ON_HUGGING_FACE"
@@ -177,6 +177,18 @@ def status_check_delay(checks_made: int) -> float:
 
 
 @dataclass(frozen=True)
+class LandedRecordChange:
+    """Where a promotion or withdrawal landed on Hugging Face.
+
+    ``commit`` is the commit its receipt reports, and ``current`` the
+    release's current build after it, or ``None`` when it has none.
+    """
+
+    commit: str
+    current: str | None
+
+
+@dataclass(frozen=True)
 class AttemptResult:
     """What one attempt at a collector row ends with."""
 
@@ -188,7 +200,10 @@ class AttemptResult:
 
 
 class CollectorSubmissionDelivery:
-    """Queue and deliver the ``collector`` rows of bundles and release publications."""
+    """Queue and deliver the ``collector`` rows of described hand-overs.
+
+    Those are bundles, release publications, promotions and withdrawals.
+    """
 
     def __init__(
         self,
@@ -389,28 +404,30 @@ class CollectorSubmissionDelivery:
         landed = self._landed_record_change(job, earlier)
         if isinstance(landed, AttemptResult):
             return landed
-        commit, current = landed
-        if current is None:
+        if landed.current is None:
             return AttemptResult("skipped", NO_CURRENT_BUILD, [], retry=False)
-        record = job.files.get(RELEASES_RECORD_PATH)
+        # Read now, not from the claim: the Hugging Face row keeps the file in
+        # the transaction that records its result, which may have committed
+        # after this row was claimed. The file stays while this row is pending.
+        record = self.queue.copied_files(job.handover_id).get(RELEASES_RECORD_PATH)
         if record is None:
             return AttemptResult("skipped", RELEASES_RECORD_MISSING, [], retry=False)
-        planned = planned_releases_record(job.request, commit, current, record)
+        planned = planned_releases_record(
+            job.request, landed.commit, landed.current, record
+        )
         waits: list[float] = []
         entry = self._advance(planned, earlier.get(planned.kind), waits)
         return self._result([entry], waits)
 
     def _landed_record_change(
         self, job: ClaimedJob, earlier: Mapping[str, Mapping[str, Any]]
-    ) -> tuple[str, str | None] | AttemptResult:
-        """Return the commit a promotion or withdrawal landed with, and ``current``.
+    ) -> LandedRecordChange | AttemptResult:
+        """Return where a promotion or withdrawal landed, or the attempt's result.
 
-        ``current`` is the release's current build after the change, or
-        ``None`` when it has none. Until the change has landed, return the
-        attempt's result instead: waiting, or ``skipped`` when it never
-        will. The collector row is queued before the Hugging Face row, so a
-        missing Hugging Face row is waited for until the change would have
-        expired (``RELEASE_CHANGE_EXPIRY_SECONDS``).
+        Until the change has landed, the result is waiting, or ``skipped``
+        when it never will. The collector row is queued before the Hugging
+        Face row, so a missing Hugging Face row is waited for until the
+        change would have expired (``RELEASE_CHANGE_EXPIRY_SECONDS``).
         """
         landed = self.queue.job_receipt(job.handover_id)
         waiting = AttemptResult(
@@ -429,7 +446,9 @@ class CollectorSubmissionDelivery:
         if landed.get("status") not in PUBLISHED_STATUSES or not commit:
             return waiting
         current = landed.get("current")
-        return str(commit), str(current) if current else None
+        return LandedRecordChange(
+            commit=str(commit), current=str(current) if current else None
+        )
 
     def _advance(
         self,

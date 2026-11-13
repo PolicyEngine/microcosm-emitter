@@ -258,9 +258,14 @@ class PromoteBuild:
     repository, that commit, and this build as the release's current build,
     with the provenance's country and ``licensed_data``; the collector then
     moves the country's latest calibration tree to follow ``releases.json``.
-    When the build is already current, nothing is written and the commit is
-    ``main``'s head, which the receipt reports. A promotion that is refused
-    sends nothing.
+    When the build is already current, nothing is written, and the receipt
+    and the submission name the commit that last changed ``releases.json``,
+    never a later head; the promotion stays pending until the Hub reports
+    that commit. A promotion that is refused sends nothing. A hand-over that
+    landed while the emitter answering it had submissions off is not
+    submitted when handed over again with submissions on
+    (``RELEASES_RECORD_MISSING``); request it again with a new
+    ``request_id``.
     """
 
     repository: str

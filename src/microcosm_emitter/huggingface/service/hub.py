@@ -216,10 +216,10 @@ class DatasetRepository:
         oid = self._last_commit_field(path_in_repo, "oid", revision=None)
         return str(oid) if oid else None
 
-    def last_commit_title_and_date(
+    def last_commit_summary(
         self, path_in_repo: str, *, revision: str | None = None
-    ) -> tuple[str | None, float | None]:
-        """Return the title and date of the last commit to change ``path_in_repo``.
+    ) -> tuple[str | None, str | None, float | None]:
+        """Return the ID, title and date of the last commit to change ``path_in_repo``.
 
         The commit is the last one at ``revision`` (``main`` when it is
         ``None``). The title is the first line of its message, and the date is
@@ -227,8 +227,10 @@ class DatasetRepository:
         not report it.
         """
         commit = self._last_commit_info(path_in_repo, revision=revision)
+        oid = _field(commit, "oid")
         title = _field(commit, "title")
         return (
+            str(oid) if oid else None,
             title if isinstance(title, str) and title else None,
             _seconds_since_epoch(_field(commit, "date")),
         )
