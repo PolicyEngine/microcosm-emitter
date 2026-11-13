@@ -42,9 +42,9 @@ class HuggingFaceSettings:
     which must stay at a migration revision they accept.
 
     ``collector_submissions`` switches the module's collector submissions on:
-    a bundle hand-over or release publication that carries
-    ``CollectorProvenance`` is then also submitted to the collector, once its
-    Hugging Face commit lands. ``development_collector_url`` points them at a
+    a bundle hand-over, release publication, promotion or withdrawal that
+    carries ``CollectorProvenance`` is then also submitted to the collector,
+    once its Hugging Face commit lands. ``development_collector_url`` points them at a
     loopback collector, for tests and local development, as
     ``TelemetrySettings`` and ``OrrerySettings`` do; without it they go to
     the package's production collector. Each is sent only when set, so

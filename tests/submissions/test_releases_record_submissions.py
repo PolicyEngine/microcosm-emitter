@@ -281,6 +281,11 @@ def test_promoting_the_current_build_again_names_the_commit_that_wrote_releases_
 
     landed = release_receipt(controls, message)
     assert controls.hub.commits(PRIVATE_REPOSITORY)[-1].oid == head
+    # The commit is read at the head the writer read releases.json at.
+    assert (
+        "get_paths_info",
+        {"repo_id": PRIVATE_REPOSITORY, "paths": ["releases.json"], "revision": head},
+    ) in controls.hub.calls
     assert published["commit"] != head
     assert (landed["status"], landed["commit"], landed["current"]) == (
         "published",

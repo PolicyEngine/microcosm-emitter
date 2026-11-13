@@ -287,7 +287,9 @@ class FakeHuggingFaceApi:
     def get_paths_info(
         self, repo_id: str, paths, *, expand: bool = False, revision=None, **_: Any
     ):
-        self._record("get_paths_info", repo_id=repo_id, paths=list(paths))
+        self._record(
+            "get_paths_info", repo_id=repo_id, paths=list(paths), revision=revision
+        )
         repository = self._repository(repo_id)
         # Only the history up to ``revision`` (``main``'s head by default).
         at = repository.commits.index(self._commit_at(repo_id, revision))

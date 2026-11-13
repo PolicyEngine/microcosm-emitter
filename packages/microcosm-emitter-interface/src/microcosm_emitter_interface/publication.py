@@ -261,7 +261,9 @@ class PromoteBuild:
     When the build is already current, nothing is written, and the receipt
     and the submission name the commit that last changed ``releases.json``,
     never a later head; the promotion stays pending until the Hub reports
-    that commit. A promotion that is refused sends nothing. A hand-over that
+    that commit, even with submissions off, and is ``refused`` with
+    ``REQUEST_EXPIRED`` if that takes an hour. A promotion that is refused
+    sends nothing. A hand-over that
     landed while the emitter answering it had submissions off is not
     submitted when handed over again with submissions on
     (``RELEASES_RECORD_MISSING``); request it again with a new
@@ -325,7 +327,8 @@ class WithdrawBuild:
     provenance's country and ``licensed_data``. When the release has no
     current build, nothing is sent. Withdrawing a withdrawn build again
     writes nothing, and names the commit that last changed ``releases.json``,
-    as a promotion of the current build does.
+    waiting for the Hub to report it as a promotion of the current build
+    does.
     """
 
     repository: str

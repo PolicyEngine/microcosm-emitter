@@ -72,7 +72,7 @@ class CollectorProvenance:
             safe_identifier(self.release, label="release")
 
     def message(self) -> dict[str, Any]:
-        """Return the ``collector`` object of a bundle or publication request."""
+        """Return the ``collector`` object of a bundle or release change request."""
         return {
             "country_code": self.country_code,
             "build_id": self.build_id,

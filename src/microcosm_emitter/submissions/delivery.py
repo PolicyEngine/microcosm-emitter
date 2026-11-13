@@ -106,8 +106,9 @@ COLLECTOR_FOLDER_TOO_LONG: Final = "COLLECTOR_FOLDER_TOO_LONG"
 #: so there is no build for a ``releases-record`` submission to name.
 NO_CURRENT_BUILD: Final = "NO_CURRENT_BUILD"
 #: A promotion or withdrawal landed without the ``releases.json`` it wrote
-#: being kept for its collector row, as when an emitter release that keeps
-#: none landed it from a shared hand-over database.
+#: being kept for its collector row: an emitter release that keeps none
+#: landed it from a shared hand-over database, or it landed while
+#: submissions were off and was handed over again with them on.
 RELEASES_RECORD_MISSING: Final = "RELEASES_RECORD_MISSING"
 #: Collector submissions are switched on, but the module refused its collector
 #: settings or the given-token variables, so nothing is queued for the
