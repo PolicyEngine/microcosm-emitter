@@ -209,7 +209,7 @@ The collector's artifact intake (PolicyEngine/microcosm-collector, `docs/artifac
 
 ## Development
 
-Use Python 3.13 or 3.14 on Linux or macOS, and a uv release that the root `pyproject.toml`'s `[tool.uv] required-version` accepts: it is a lower bound, and an older uv refuses the project. CI installs exactly the release `.github/uv-version.txt` names, which meets that bound (rule `emitter.dependencies.uv-version-pinned`). A job that can finish without running uv, such as the changelog check on a Dependabot pull request or the versioning job on a merge without fragments, turns off setup-uv's cache, because setup-uv fails a job when no uv command created the cache directory it saves (rule `emitter.ci.uv-cache-only-where-uv-runs`).
+Use Python 3.13, 3.14 or 3.15 on Linux or macOS, and a uv release that the root `pyproject.toml`'s `[tool.uv] required-version` accepts: it is a lower bound, and an older uv refuses the project. CI installs exactly the release `.github/uv-version.txt` names, which meets that bound (rule `emitter.dependencies.uv-version-pinned`). A job that can finish without running uv, such as the changelog check on a Dependabot pull request or the versioning job on a merge without fragments, turns off setup-uv's cache, because setup-uv fails a job when no uv command created the cache directory it saves (rule `emitter.ci.uv-cache-only-where-uv-runs`).
 
 ```bash
 uv sync --locked
