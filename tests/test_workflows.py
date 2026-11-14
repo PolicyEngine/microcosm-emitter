@@ -120,7 +120,7 @@ def test_verification_includes_real_collector_and_matrix():
     assert set(jobs) == {"quality", "tests", "build-packages", "collector"}
     assert jobs["tests"]["strategy"]["matrix"] == {
         "os": ["ubuntu-latest", "macos-latest"],
-        "python": ["3.13", "3.14"],
+        "python": ["3.13", "3.14", "3.15"],
     }
     assert jobs["collector"]["needs"] == "build-packages"
     assert jobs["collector"]["env"]["TEST_DATABASE_URL"].endswith("/telemetry_test")

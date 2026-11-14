@@ -753,7 +753,7 @@ invocation = "tools/check-quality.sh"
 [[rule]]
 id = "emitter.quality.tests-pass"
 category = "quality"
-statement = "Every pytest test under tests/ except the collector contract test passes in ci.yml's tests job, on Ubuntu and macOS with Python 3.13 and 3.14, in the environment uv sync --locked installs."
+statement = "Every pytest test under tests/ except the collector contract test passes in ci.yml's tests job, on Ubuntu and macOS with Python 3.13, 3.14 and 3.15, in the environment uv sync --locked installs."
 rationale = "README.md#development"
 scope = ["tests/**/*.py"]
 tier = "mechanical"
@@ -1199,7 +1199,7 @@ invocation = "rhysd/actionlint"
 [[rule]]
 id = "emitter.ci.pull-request-workflow-structure"
 category = "ci"
-statement = "pr.yaml runs on pull requests and calls ci.yml, the changelog check and the rules registry, and its Required checks job runs always and needs each other job; ci.yml is called only by other workflows and has exactly the quality, tests, build-packages and collector jobs, testing on Ubuntu and macOS with Python 3.13 and 3.14, with the collector job after build-packages; pr-description.yaml runs for open pull requests whose base, or whose stack's final target, is main, on every event that can change the description, with read-only permissions, in one job named PR description."
+statement = "pr.yaml runs on pull requests and calls ci.yml, the changelog check and the rules registry, and its Required checks job runs always and needs each other job; ci.yml is called only by other workflows and has exactly the quality, tests, build-packages and collector jobs, testing on Ubuntu and macOS with Python 3.13, 3.14 and 3.15, with the collector job after build-packages; pr-description.yaml runs for open pull requests whose base, or whose stack's final target, is main, on every event that can change the description, with read-only permissions, in one job named PR description."
 rationale = "README.md#publication"
 scope = [".github/workflows/pr.yaml", ".github/workflows/ci.yml", ".github/workflows/pr-description.yaml"]
 tier = "mechanical"
