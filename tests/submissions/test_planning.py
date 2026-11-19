@@ -1,13 +1,34 @@
-"""Which collector submissions a staged bundle produces, and their contents."""
+"""Which collector submissions a bundle or publication produces, and their contents."""
 
 import hashlib
 
 from microcosm_emitter.submissions.planning import (
+    RELEASES_RECORD_KIND,
+    RELEASES_RECORD_ROLE,
+    SUBMISSION_KINDS,
     planned_submissions,
+    submitted_file_names,
     wants_collector_submission,
 )
 
 REVISION = "0123456789abcdef0123456789abcdef01234567"
+#: The roles the collector accepts for each submission kind: the keys of
+#: ``ROLE_RULES`` in ``telemetry_collector/submissions.py`` of
+#: PolicyEngine/microcosm-collector at 71084c1. The collector refuses a whole
+#: submission that names any other role, and the emitter treats that refusal
+#: as final, so update this copy only from the collector's deployed code.
+COLLECTOR_ROLES = {
+    "calibration-diagnostics": {
+        "calibration_diagnostics",
+        "build_manifest",
+        "release_manifest",
+        "demographics",
+        "parent_build_manifest",
+        "reform_validation",
+    },
+    "orrery-inputs": {"schema", "execution_overlay", "upstream", "evidence"},
+    "releases-record": {"releases_record"},
+}
 
 
 def entry(name: str, role: str, content: bytes = b"bytes") -> dict:
@@ -46,6 +67,28 @@ SIDECARS = [
     entry("staged_manifest.json", "staged_manifest"),
     entry("sha256sums.txt", "checksums"),
 ]
+RELEASE = "microcosm-us-2024-national"
+BUILD = "us-ecps-calibration-attempt-1"
+
+
+def publication_request(files: list[dict]) -> dict:
+    return {
+        "protocol_version": 1,
+        "command": "publish_release",
+        "repository": "policyengine/microcosm-us",
+        "release": RELEASE,
+        "build": BUILD,
+        "release_role": "national_default",
+        "make_current": True,
+        "files": files,
+        "request_id": "release-request-1",
+        "collector": {
+            "country_code": "US",
+            "build_id": BUILD,
+            "licensed_data": False,
+            "release": RELEASE,
+        },
+    }
 
 
 def test_a_bundle_naming_diagnostics_gives_a_calibration_submission() -> None:
@@ -167,3 +210,44 @@ def test_a_bundle_with_only_its_dataset_wants_no_submission() -> None:
         wants_collector_submission(bundle_request(SIDECARS, collector=PROVENANCE))
         is False
     )
+
+
+def test_a_publication_submits_its_parent_manifest_and_reform_validation() -> None:
+    request = publication_request(
+        [
+            entry("release_manifest.json", "release_manifest"),
+            entry("microcosm_us_2024.h5", "dataset"),
+            entry("calibration_diagnostics.json", "calibration_diagnostics"),
+            entry("build_manifest.json", "build_manifest"),
+            entry("parent_build_manifest.json", "parent_build_manifest"),
+            entry("reform_validation.json", "reform_validation"),
+        ]
+    )
+
+    [planned] = planned_submissions(request, REVISION)
+
+    assert planned.kind == "calibration-diagnostics"
+    assert planned.body["provenance"]["huggingface"]["folder"] == (
+        f"releases/{RELEASE}/{BUILD}"
+    )
+    assert [(file["name"], file["role"]) for file in planned.body["files"]] == [
+        ("build_manifest.json", "build_manifest"),
+        ("calibration_diagnostics.json", "calibration_diagnostics"),
+        ("parent_build_manifest.json", "parent_build_manifest"),
+        ("reform_validation.json", "reform_validation"),
+        ("release_manifest.json", "release_manifest"),
+    ]
+    assert submitted_file_names(request) == {
+        "build_manifest.json",
+        "calibration_diagnostics.json",
+        "parent_build_manifest.json",
+        "reform_validation.json",
+        "release_manifest.json",
+    }
+
+
+def test_each_kind_sends_every_role_the_collector_accepts_and_no_other() -> None:
+    sent = {kind.name: set(kind.roles.values()) for kind in SUBMISSION_KINDS}
+    sent[RELEASES_RECORD_KIND] = {RELEASES_RECORD_ROLE}
+
+    assert sent == COLLECTOR_ROLES
