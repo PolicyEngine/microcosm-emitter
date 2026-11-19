@@ -30,7 +30,7 @@ FIRST_STATUS_CHECK_SECONDS = 10
 BUILD_MANIFEST = b'{"outputs": {}}'
 PARENT_BUILD_MANIFEST = b'{"build": "us-parent"}'
 REFORM_VALIDATION = b'{"reforms": []}'
-#: The two files a US release build may hand over beyond the usual four.
+#: Two optional calibration-diagnostics files a build may also hand over.
 PARENT_AND_REFORM_FILES = {
     "parent_build_manifest.json": ("parent_build_manifest", PARENT_BUILD_MANIFEST),
     "reform_validation.json": ("reform_validation", REFORM_VALIDATION),
