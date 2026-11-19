@@ -57,6 +57,10 @@ SUBMISSION_KINDS: Final = (
             "build_manifest": "build_manifest",
             "release_manifest": "release_manifest",
             "demographics": "demographics",
+            # A US release build's parent build manifest and reform checks;
+            # the collector stores them with the build's other original files.
+            "parent_build_manifest": "parent_build_manifest",
+            "reform_validation": "reform_validation",
         },
         required_roles=frozenset({CALIBRATION_DIAGNOSTICS_ROLE}),
     ),
