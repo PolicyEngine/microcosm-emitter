@@ -28,6 +28,13 @@ DIAGNOSTICS = b'{"schema": 8}'
 #: When the emitter first checks an accepted submission's status.
 FIRST_STATUS_CHECK_SECONDS = 10
 BUILD_MANIFEST = b'{"outputs": {}}'
+PARENT_BUILD_MANIFEST = b'{"build": "us-parent"}'
+REFORM_VALIDATION = b'{"reforms": []}'
+#: The two files a US release build may hand over beyond the usual four.
+PARENT_AND_REFORM_FILES = {
+    "parent_build_manifest.json": ("parent_build_manifest", PARENT_BUILD_MANIFEST),
+    "reform_validation.json": ("reform_validation", REFORM_VALIDATION),
+}
 
 
 def release_contents(build=BUILD):
@@ -42,12 +49,23 @@ def release_contents(build=BUILD):
     }
 
 
-def publication(controls, *, collector=PROVENANCE, request_id="release-request-1"):
-    """Write the build's files; return the ``publish_release`` message for them."""
+def publication(
+    controls,
+    *,
+    collector=PROVENANCE,
+    request_id="release-request-1",
+    extra_files=None,
+):
+    """Write the build's files; return the ``publish_release`` message for them.
+
+    ``extra_files`` adds files to the build's usual ones, by name, each with
+    its role and content.
+    """
     directory = controls.tmp_path / "releases" / BUILD
     directory.mkdir(parents=True, exist_ok=True)
     files = []
-    for name, (role, content) in release_contents().items():
+    contents = {**release_contents(), **(extra_files or {})}
+    for name, (role, content) in contents.items():
         (directory / name).write_bytes(content)
         files.append(
             ReleaseFile(
@@ -247,6 +265,50 @@ def test_a_publication_submits_its_files_as_they_were_handed_over(
         [
             BUILD_MANIFEST,
             DIAGNOSTICS,
+            release_contents()["release_manifest.json"][1],
+        ]
+    )
+
+
+def test_a_publication_submits_its_parent_build_manifest_and_reform_validation(
+    submitting_module,
+):
+    """Both are optional calibration-diagnostics roles, copied at hand-over."""
+    controls = submitting_module
+    message = publication(controls, extra_files=PARENT_AND_REFORM_FILES)
+    hand_over(controls, message)
+    kept = sorted(controls.module.queue.copied_files(handover_id_of(message)))
+    controls.module.delivery.run_cycle()
+    assert release_receipt(controls, message)["status"] == "published"
+
+    # Once the release has landed, the build may remove the files submitted.
+    build_file(controls, "parent_build_manifest.json").unlink()
+    build_file(controls, "reform_validation.json").unlink()
+    controls.module.collector_delivery.run_cycle()
+
+    assert collector_receipt(controls, message)["status"] == "awaiting_final_status"
+    (created,) = controls.collector.created
+    assert created["kind"] == "calibration-diagnostics"
+    assert [(file["name"], file["role"]) for file in created["files"]] == [
+        ("build_manifest.json", "build_manifest"),
+        ("calibration_diagnostics.json", "calibration_diagnostics"),
+        ("parent_build_manifest.json", "parent_build_manifest"),
+        ("reform_validation.json", "reform_validation"),
+        ("release_manifest.json", "release_manifest"),
+    ]
+    assert kept == [
+        "build_manifest.json",
+        "calibration_diagnostics.json",
+        "parent_build_manifest.json",
+        "reform_validation.json",
+        "release_manifest.json",
+    ]
+    assert sorted(controls.collector.objects.values()) == sorted(
+        [
+            BUILD_MANIFEST,
+            DIAGNOSTICS,
+            PARENT_BUILD_MANIFEST,
+            REFORM_VALIDATION,
             release_contents()["release_manifest.json"][1],
         ]
     )
