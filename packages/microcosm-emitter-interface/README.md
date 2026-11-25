@@ -36,6 +36,20 @@ No call raises into the build: not because the emitter is missing, slow or refus
 | Release publication: release, build, whether current, files with roles, and optional `CollectorProvenance`; promotion and withdrawal, each with optional `CollectorProvenance`, which sends the new `releases.json` to the collector | `publish_release(PublishRelease(...))`, `promote_build`, `withdraw_build`, `release_receipt` | `huggingface` |
 | Orrery inputs | `orrery_inventory`, `hand_over_orrery_inputs`, `orrery_receipt`, `retry_orrery_inputs` | `orrery` |
 
+## Emitter commands
+
+Three calls run one of the installed emitter's commands to its exit, without starting the emitter's host, and return the parsed answer or a `CommandFailure`. None raises into the build. Each finds the command as `EmitterClient.start` does and takes `command`, `timeout` and `environment`: the whole environment the command runs with, or without it the build's own.
+
+| Call | Command | Answer | Failures for its own exit codes |
+|---|---|---|---|
+| `emitter_version()` | `microcosm-emitter version` | `EmitterVersion`: `emitter_version`, `protocol_versions` and `collector_origin`. Any JSON object is an answer, with each field None when it is missing or of another type, so a build can still name an emitter too old for it (`collector_origin` is printed from 0.11.0). | none besides `usage_error` |
+| `emitter_status(event_queue_file=None)` | `microcosm-emitter status` | `EmitterStatus`: one `EventQueueRun` (`run_id`, `producer_id`, `upload_state`, `reason`, `undelivered_events`) per printed run, in its order. Without `event_queue_file`, the command reads the default path of the environment it runs in. | `no_event_queue_file` (8), `unusable_event_queue_file` (9) |
+| `telemetry_token(lifetime_seconds)` | `microcosm-emitter telemetry-token` | `TelemetryToken`: `access_token`, `expires_at` (ISO 8601 with a time zone, also as `expiry`) and `collector_origin` (HTTPS). Its repr leaves the token out. `development_collector_url` asks a loopback collector, for tests. | `missing_credential` (3), `rejected_credential` (4), `collector_unavailable` (5), `lifetime_unsupported` (6), `unexpected_failure` (7) |
+
+Every call can also fail with `invalid_arguments` (nothing was run), `command_not_found`, `could_not_run` (`error_type` names the exception), `timed_out` (the command was stopped), `usage_error` (exit 2, which an emitter without the command also gives), `exited` (an exit code the command does not document, or a signal) and `unusable_output` (exit 0, but not the documented answer; `output_problem` says what is wrong without quoting it). A failure's `message` is the last line the command wrote on standard error, at most 300 characters; it never comes from standard output, and a `telemetry-token` that printed anything there gets none.
+
+Each answer has a field for every key the emitter's README documents for its command and ignores the others, so an emitter that prints more still parses. `fixtures/commands/` records each command's output, which `microcosm_emitter_interface.commands.recorded_command_output(name)` returns for tests that stand in for the emitter. The emitter's CI checks that each command prints exactly the recorded keys, and that each call parses its recording and the real command's answer.
+
 `microcosm_emitter_interface.releases` holds the shape of `releases.json` and the checks every release write must pass, so Microcosm, the emitter and a scheduled repository check run the same code.
 
 ## Compatibility

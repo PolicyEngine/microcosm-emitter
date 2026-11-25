@@ -13,19 +13,25 @@ def main(emitter_command: str) -> None:
     have no dependencies and ship its protocol fixtures. The started emitter must
     run all three modules at the interface's version, accept telemetry, an Orrery
     hand-over and a run file, create its hand-over database, and exit with 0 once
-    the client closes.
+    the client closes. The interface's command calls then read the same emitter:
+    ``version`` reports the interface's version and protocol version 1, and
+    ``status`` lists the run the client recorded.
     """
     assert find_spec("microcosm_emitter") is None, "the build must not hold it"
     interface = distribution("microcosm-emitter-interface")
     assert not interface.requires, interface.requires
     from microcosm_emitter_interface import (
         EmitterClient,
+        EmitterStatus,
+        EmitterVersion,
         HuggingFaceSettings,
         OrrerySettings,
         RunFile,
         StageRunFiles,
         TelemetryRun,
         TelemetrySettings,
+        emitter_status,
+        emitter_version,
     )
     from microcosm_emitter_interface.protocol_fixtures import protocol_fixtures
 
@@ -80,6 +86,19 @@ def main(emitter_command: str) -> None:
         client.close()
     assert process is not None
     assert process.process.wait(timeout=20) == 0
+    # A clean install compiles dependency bytecode on first use.
+    described = emitter_version(command=emitter_command, timeout=60)
+    assert isinstance(described, EmitterVersion), described
+    assert described.emitter_version == interface.version, described
+    assert described.protocol_versions is not None, described
+    assert 1 in described.protocol_versions, described
+    status = emitter_status(
+        command=emitter_command,
+        event_queue_file=Path.cwd() / "interface.sqlite3",
+        timeout=60,
+    )
+    assert isinstance(status, EmitterStatus), status
+    assert [run.run_id for run in status.runs] == ["interface-wheel"], status
 
 
 if __name__ == "__main__":

@@ -33,22 +33,29 @@ from microcosm_emitter.compatibility import (
     VersionReport,
 )
 from microcosm_emitter.core.constants import TELEMETRY_SCOPE
+from microcosm_emitter_interface.commands import (
+    EXIT_COLLECTOR_UNAVAILABLE,
+    EXIT_LIFETIME_UNSUPPORTED,
+    EXIT_MISSING_CREDENTIAL,
+    EXIT_NO_EVENT_QUEUE_FILE,
+    EXIT_REJECTED_CREDENTIAL,
+    EXIT_UNEXPECTED_FAILURE,
+    EXIT_UNUSABLE_EVENT_QUEUE_FILE,
+)
 
 if TYPE_CHECKING:
     from microcosm_emitter.core.auth import ExchangeFailureResult
 
 DISTRIBUTION_NAME = "microcosm-emitter"
 
-#: Exit codes of `telemetry-token`, one per kind of failure; 2 is a usage
+#: Exit codes of `telemetry-token` (EXIT_MISSING_CREDENTIAL to
+#: EXIT_UNEXPECTED_FAILURE) and `status` (EXIT_NO_EVENT_QUEUE_FILE and
+#: EXIT_UNUSABLE_EVENT_QUEUE_FILE) are defined in the interface's
+#: ``commands``, whose calls read them. For `telemetry-token`, 2 is a usage
 #: error, as for every command, and 7 an unexpected error, which the others do
 #: not name. A failed OIDC token exchange while HF_OIDC_RESOURCE is set is 7:
 #: it fails at the CI provider or the Hub before the collector is contacted,
 #: so it is not 5, and it is not a missing or unreadable login, so not 3.
-EXIT_MISSING_CREDENTIAL: Final = 3
-EXIT_REJECTED_CREDENTIAL: Final = 4
-EXIT_COLLECTOR_UNAVAILABLE: Final = 5
-EXIT_LIFETIME_UNSUPPORTED: Final = 6
-EXIT_UNEXPECTED_FAILURE: Final = 7
 #: Each exchange that gave no token: its exit code, and one line for standard
 #: error. The scope is `telemetry:write`, so ``intake_unavailable`` does not
 #: occur. An unsendable credential exits as a refused one: it is not a bearer
@@ -103,12 +110,11 @@ TELEMETRY_TOKEN_UNEXPECTED_FAILURE: Final = (
     "No telemetry token was obtained: an unexpected {error_type} occurred. Its "  # noqa: S105
     "details are not printed, because they can contain the credential."
 )
-#: Exit codes of `status` other than 0 and argparse's 2, each with one line
-#: for standard error: no file exists at the path it reads (8), or the file
-#: cannot be read as an event queue file (9), with the line its ``Problem``
-#: gives. Nothing reaches standard output.
-EXIT_NO_EVENT_QUEUE_FILE: Final = 8
-EXIT_UNUSABLE_EVENT_QUEUE_FILE: Final = 9
+#: `status` exits other than with 0 and argparse's 2 with one line for
+#: standard error: no file exists at the path it reads
+#: (EXIT_NO_EVENT_QUEUE_FILE, 8), or the file cannot be read as an event
+#: queue file (EXIT_UNUSABLE_EVENT_QUEUE_FILE, 9), with the line its
+#: ``Problem`` gives. Nothing reaches standard output.
 NO_EVENT_QUEUE_FILE_MESSAGE: Final = (
     "No event queue file exists at {path}; nothing was read."
 )

@@ -105,6 +105,36 @@ def resolve_command(command: str | os.PathLike[str] | None = None) -> str:
     return resolved
 
 
+def start_command_process(
+    arguments: list[str],
+    *,
+    stdin: int | socket.socket,
+    capture_output: bool,
+    environment: Mapping[str, str] | None = None,
+    new_session: bool = False,
+) -> subprocess.Popen[bytes]:
+    """Start the emitter command as this process's child, never through a shell.
+
+    ``arguments[0]`` is the program ``resolve_command`` returned. With
+    ``capture_output`` the child's standard output and standard error are
+    pipes for the caller to read; without it, its standard output is
+    discarded and its standard error is this process's. Without
+    ``environment`` the child inherits this process's environment. This is
+    the one place the package starts a process: the host for
+    ``start_emitter``, and each command that ``commands`` runs.
+    """
+    # No shell: the program is the emitter command resolve_command found with
+    # shutil.which, and this package chooses every other argument.
+    return subprocess.Popen(  # noqa: S603
+        arguments,
+        stdin=stdin,
+        stdout=subprocess.PIPE if capture_output else subprocess.DEVNULL,
+        stderr=subprocess.PIPE if capture_output else None,
+        env=None if environment is None else dict(environment),
+        start_new_session=new_session,
+    )
+
+
 @dataclass
 class EmitterProcess:
     """A running emitter host owned by this build process."""
@@ -219,10 +249,7 @@ def start_emitter(
         socket_path = directory / SOCKET_FILENAME
         reader, writer = socket.socketpair()
         with reader, writer:
-            # No shell: the program is the emitter command resolve_command found
-            # with shutil.which, and the other arguments are fixed apart from
-            # this run's socket path and this process's ID.
-            process = subprocess.Popen(  # noqa: S603
+            process = start_command_process(
                 [
                     executable,
                     "host",
@@ -233,8 +260,8 @@ def start_emitter(
                     "--skip-unavailable-modules",
                 ],
                 stdin=reader,
-                stdout=subprocess.DEVNULL,
-                start_new_session=True,
+                capture_output=False,
+                new_session=True,
             )
             phase = "configuration_timeout"
             _send_configuration(writer, payload, deadline)

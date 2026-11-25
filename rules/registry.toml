@@ -187,7 +187,7 @@ invocation = 'pytest -m "not collector"'
 [[rule]]
 id = "emitter.boundaries.shared-definitions-written-once"
 category = "boundaries"
-statement = "What both packages use is defined once: the emitter's in-process clients reuse the interface's TelemetryRun, wire_value, Orrery publication types and default_spool_path rather than copies, and each hand-over failure code and limit the packages share is assigned at module level exactly once across both."
+statement = "What both packages use is defined once: the emitter's in-process clients reuse the interface's TelemetryRun, wire_value, Orrery publication types and default_spool_path rather than copies, and each hand-over failure code, command exit code and limit the packages share is assigned at module level exactly once across both."
 rationale = "packages/microcosm-emitter-interface/README.md"
 scope = ["src/microcosm_emitter/**/*.py", "packages/microcosm-emitter-interface/src/**/*.py"]
 tier = "mechanical"
@@ -324,7 +324,7 @@ invocation = 'pytest -m "not collector"'
 [[rule]]
 id = "emitter.distributions.artifacts-verified"
 category = "distributions"
-statement = "Every pull request builds both distributions, each wheel from its source archive, and checks them: twine check --strict passes; tools/check-installed.py finds one wheel and one source archive per distribution, refuses a source archive holding the rules tool, and installs the wheels into two clean environments outside the checkout without Hugging Face credentials; in the emitter's, Microcosm is absent, the project URL is the repository, importing the host and the Orrery client loads no database, Hugging Face, telemetry or service module, and telemetry-only, graph-only, combined and failing services start and record their events and graph jobs in an event queue database at Alembic revision 20261008_02; in a build's, which holds only the interface, the interface has no requirements and ships its protocol fixtures, and the installed emitter it starts reports the interface's version and the telemetry, Orrery and Hugging Face modules, accepts telemetry, an Orrery hand-over and a run-file staging request, and exits with status 0."
+statement = "Every pull request builds both distributions, each wheel from its source archive, and checks them: twine check --strict passes; tools/check-installed.py finds one wheel and one source archive per distribution, refuses a source archive holding the rules tool, and installs the wheels into two clean environments outside the checkout without Hugging Face credentials; in the emitter's, Microcosm is absent, the project URL is the repository, importing the host and the Orrery client loads no database, Hugging Face, telemetry or service module, and telemetry-only, graph-only, combined and failing services start and record their events and graph jobs in an event queue database at Alembic revision 20261008_02; in a build's, which holds only the interface, the interface has no requirements and ships its protocol fixtures, and the installed emitter it starts reports the interface's version and the telemetry, Orrery and Hugging Face modules, accepts telemetry, an Orrery hand-over and a run-file staging request, and exits with status 0, after which the interface's version call reports the interface's version and protocol version 1 and its status call lists the run the build recorded."
 rationale = "README.md#publication"
 scope = ["tools/check-artifacts.sh", "tools/check-installed.py", "tools/installed-smoke.py", "tools/installed-interface-smoke.py"]
 tier = "mechanical"
@@ -503,6 +503,32 @@ nodes = [
   "tests/interface/test_protocol_fixtures.py::test_installed_command_answers_the_hello_fixture",
   "tests/interface/test_protocol_fixtures.py::test_installed_command_starts_from_the_launch_fixture",
   "tests/interface/test_protocol_fixtures.py::test_host_answers_each_envelope_fixture",
+]
+[[rule.ci]]
+workflow = ".github/workflows/ci.yml"
+job = "tests"
+invocation = 'pytest -m "not collector"'
+
+[[rule]]
+id = "emitter.protocol.command-outputs-recorded-and-read"
+category = "protocol"
+statement = "Each emitter command the interface runs, version, status and telemetry-token, has a recorded output in the interface's fixtures/commands/ that its typed call parses, and this emitter's installed command prints exactly the recorded keys and answers the call."
+rationale = "packages/microcosm-emitter-interface/README.md#emitter-commands"
+scope = ["packages/microcosm-emitter-interface/src/microcosm_emitter_interface/fixtures/commands/*.json", "packages/microcosm-emitter-interface/src/microcosm_emitter_interface/commands.py", "src/microcosm_emitter/cli.py"]
+tier = "mechanical"
+status = "enforced"
+autofix = false
+[rule.enforcer]
+kind = "pytest"
+nodes = [
+  "tests/interface/test_command_contracts.py::test_every_command_has_a_recorded_output",
+  "tests/interface/test_command_contracts.py::test_each_call_parses_its_recorded_output",
+  "tests/interface/test_command_contracts.py::test_installed_version_prints_the_recorded_keys",
+  "tests/interface/test_command_contracts.py::test_installed_version_answers_the_call",
+  "tests/interface/test_command_contracts.py::test_installed_status_prints_the_recorded_keys",
+  "tests/interface/test_command_contracts.py::test_installed_status_answers_the_call",
+  "tests/interface/test_command_contracts.py::test_installed_telemetry_token_prints_the_recorded_keys",
+  "tests/interface/test_command_contracts.py::test_installed_telemetry_token_answers_the_call",
 ]
 [[rule.ci]]
 workflow = ".github/workflows/ci.yml"
