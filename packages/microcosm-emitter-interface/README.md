@@ -38,7 +38,7 @@ No call raises into the build: not because the emitter is missing, slow or refus
 
 ## Emitter commands
 
-Three calls run one of the installed emitter's commands to its exit, without starting the emitter's host, and return the parsed answer or a `CommandFailure`. None raises into the build. Each finds the command as `EmitterClient.start` does and takes `command`, `timeout` and `environment`: the whole environment the command runs with, or without it the build's own.
+Three calls run one of the installed emitter's commands to its exit, without starting the emitter's host, and return the parsed answer or a `CommandFailure`. None raises into the build. Each finds the command as `EmitterClient.start` does, runs it with standard input reading nothing (`/dev/null`), and takes `command`, `timeout` (at most a day, `MAX_TIMEOUT_SECONDS`) and `environment`: the whole environment the command runs with, or without it the build's own.
 
 | Call | Command | Answer | Failures for its own exit codes |
 |---|---|---|---|

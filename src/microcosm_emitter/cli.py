@@ -48,14 +48,15 @@ if TYPE_CHECKING:
 
 DISTRIBUTION_NAME = "microcosm-emitter"
 
-#: Exit codes of `telemetry-token` (EXIT_MISSING_CREDENTIAL to
-#: EXIT_UNEXPECTED_FAILURE) and `status` (EXIT_NO_EVENT_QUEUE_FILE and
-#: EXIT_UNUSABLE_EVENT_QUEUE_FILE) are defined in the interface's
-#: ``commands``, whose calls read them. For `telemetry-token`, 2 is a usage
-#: error, as for every command, and 7 an unexpected error, which the others do
-#: not name. A failed OIDC token exchange while HF_OIDC_RESOURCE is set is 7:
-#: it fails at the CI provider or the Hub before the collector is contacted,
-#: so it is not 5, and it is not a missing or unreadable login, so not 3.
+# The exit codes of `telemetry-token` (EXIT_MISSING_CREDENTIAL to
+# EXIT_UNEXPECTED_FAILURE) and `status` (EXIT_NO_EVENT_QUEUE_FILE and
+# EXIT_UNUSABLE_EVENT_QUEUE_FILE) are defined in the interface's ``commands``,
+# whose calls read them. For `telemetry-token`, 2 is a usage error, as for
+# every command, and 7 an unexpected error, which the others do not name. A
+# failed OIDC token exchange while HF_OIDC_RESOURCE is set is 7: it fails at
+# the CI provider or the Hub before the collector is contacted, so it is not
+# 5, and it is not a missing or unreadable login, so not 3.
+
 #: Each exchange that gave no token: its exit code, and one line for standard
 #: error. The scope is `telemetry:write`, so ``intake_unavailable`` does not
 #: occur. An unsendable credential exits as a refused one: it is not a bearer

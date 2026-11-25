@@ -1,14 +1,15 @@
 """Run the installed emitter's ``version``, ``status`` and ``telemetry-token``.
 
 Each call runs its command once, as this process's child with standard input
-closed, and returns the parsed answer or a ``CommandFailure`` that says why
-there is none. No call raises into the build: not when the command is
-missing, cannot start, is slow, fails or prints something else, and not when
-an argument is unusable. The command is the one ``launcher.resolve_command``
-finds: the ``command`` argument, then ``MICROCOSM_EMITTER_COMMAND``, then
-``microcosm-emitter`` on ``PATH``, all read from this process's environment.
-``environment`` is the whole environment the command runs with; without it,
-the command inherits this process's.
+reading nothing (``/dev/null``), and returns the parsed answer or a
+``CommandFailure`` that says why there is none. No call raises into the
+build: not when the command is missing, cannot start, is slow, fails or
+prints something else, and not when an argument is unusable. The command is
+the one ``launcher.resolve_command`` finds: the ``command`` argument, then
+``MICROCOSM_EMITTER_COMMAND``, then ``microcosm-emitter`` on ``PATH``, all
+read from this process's environment. ``environment`` is the whole
+environment the command runs with; without it, the command inherits this
+process's.
 
 Each answer has a field for every key the emitter's README documents for its
 command and ignores any other key, so an emitter that prints more still
@@ -220,10 +221,13 @@ class TelemetryToken:
 
 @dataclass(frozen=True)
 class _Output:
-    """What a command that exited printed, decoded as UTF-8 with replacement."""
+    """What a command that exited printed, decoded as UTF-8 with replacement.
+
+    The repr leaves out standard output, which may hold a token.
+    """
 
     exit_code: int
-    stdout: str
+    stdout: str = field(repr=False)
     stderr: str
 
 
@@ -314,21 +318,9 @@ def telemetry_token(
     are their own reasons. The token is read from standard output only: no
     failure holds it, and the answer's repr leaves it out.
     """
-    if (
-        type(lifetime_seconds) is not int
-        or lifetime_seconds < 1
-        or (
-            development_collector_url is not None
-            and (
-                not isinstance(development_collector_url, str)
-                or not development_collector_url
-            )
-        )
-    ):
+    arguments = _token_arguments(lifetime_seconds, development_collector_url)
+    if arguments is None:
         return CommandFailure("telemetry-token", "invalid_arguments")
-    arguments = ["telemetry-token", f"--lifetime-seconds={lifetime_seconds}"]
-    if development_collector_url is not None:
-        arguments.append(f"--development-collector-url={development_collector_url}")
     output = _run("telemetry-token", arguments, command, timeout, environment)
     if isinstance(output, CommandFailure):
         return output
@@ -410,20 +402,52 @@ def _run(
     )
 
 
+def _token_arguments(
+    lifetime_seconds: object, development_collector_url: object
+) -> list[str] | None:
+    """``telemetry-token``'s arguments, or None if either value is unusable."""
+    if type(lifetime_seconds) is not int or lifetime_seconds < 1:
+        return None
+    try:
+        lifetime_text = str(lifetime_seconds)
+    # A number with more digits than int-to-text conversion allows.
+    except ValueError:
+        return None
+    arguments = ["telemetry-token", f"--lifetime-seconds={lifetime_text}"]
+    if development_collector_url is not None:
+        if not _usable_text(development_collector_url):
+            return None
+        arguments.append(f"--development-collector-url={development_collector_url}")
+    return arguments
+
+
+def _usable_text(value: object) -> bool:
+    """Whether ``value`` is non-empty text a command-line argument can hold."""
+    return isinstance(value, str) and bool(value) and "\x00" not in value
+
+
 def _usable_timeout(timeout: object) -> bool:
     return (
         isinstance(timeout, (int, float))
         and not isinstance(timeout, bool)
         and math.isfinite(timeout)
-        and timeout > 0
+        and 0 < timeout <= MAX_TIMEOUT_SECONDS
     )
 
 
 def _usable_environment(environment: object) -> bool:
+    """Whether ``environment`` is None or names and values a child can get.
+
+    A name must be non-empty text without ``=`` or a null character, and a
+    value text without a null character.
+    """
     return environment is None or (
         isinstance(environment, Mapping)
         and all(
-            isinstance(name, str) and isinstance(value, str)
+            _usable_text(name)
+            and "=" not in name
+            and isinstance(value, str)
+            and "\x00" not in value
             for name, value in environment.items()
         )
     )
@@ -436,7 +460,7 @@ def _path_text(path: str | os.PathLike[str]) -> str | None:
     # Any other object, such as a number, is no path.
     except TypeError:
         return None
-    return text if isinstance(text, str) and text else None
+    return text if _usable_text(text) else None
 
 
 def _message(stderr: str) -> str | None:
