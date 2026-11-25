@@ -22,7 +22,6 @@ for tests that stand in for the emitter.
 from __future__ import annotations
 
 import json
-import math
 import os
 import re
 import subprocess
@@ -427,10 +426,14 @@ def _usable_text(value: object) -> bool:
 
 
 def _usable_timeout(timeout: object) -> bool:
+    """Whether ``timeout`` is a number of seconds above 0, at most a day.
+
+    Only comparisons: a NaN or an infinity fails them, and so does an
+    integer too large to convert to a float, without raising.
+    """
     return (
         isinstance(timeout, (int, float))
         and not isinstance(timeout, bool)
-        and math.isfinite(timeout)
         and 0 < timeout <= MAX_TIMEOUT_SECONDS
     )
 
