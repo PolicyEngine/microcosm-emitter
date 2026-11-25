@@ -255,10 +255,15 @@ def test_an_interruption_while_waiting_stops_the_command_and_is_raised(
         raise Interrupted
 
     monkeypatch.setattr(subprocess.Popen, "communicate", interrupted_communicate)
+    command = stand_in(stdout=printed({}), sleep_seconds=30)
+    started_at = time.monotonic()
 
     with pytest.raises(Interrupted):
-        emitter_version(command=stand_in(stdout=printed({}), sleep_seconds=30))
+        emitter_version(command=command)
 
+    # Popen's own exit waits for a child it was not told to stop, which
+    # would take the stand-in's 30 seconds.
+    assert time.monotonic() - started_at < 15
     [pid] = started
     assert not is_running(pid)
 
@@ -295,6 +300,8 @@ def test_the_command_inherits_this_process_environment_without_one(
         # Longer than select.poll can wait (about 24.8 days).
         ("version", {"timeout": 10**7}),
         ("version", {"timeout": commands.MAX_TIMEOUT_SECONDS + 1}),
+        # Larger than the largest float.
+        ("version", {"timeout": 10**400}),
         ("version", {"environment": {"PATH": 1}}),
         ("version", {"environment": ["PATH"]}),
         ("version", {"environment": {"NAME=VALUE": "x"}}),
