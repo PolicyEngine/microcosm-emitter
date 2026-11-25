@@ -1,0 +1,5 @@
+{
+  "emitter_version": "0.17.0",
+  "protocol_versions": [1],
+  "collector_origin": "https://collector.example"
+}

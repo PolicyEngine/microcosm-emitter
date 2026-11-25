@@ -1,0 +1,5 @@
+{
+  "access_token": "collector-token-recorded-for-tests",
+  "expires_at": "2026-11-27T06:00:00+00:00",
+  "collector_origin": "https://collector.example"
+}
