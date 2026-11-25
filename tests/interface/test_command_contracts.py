@@ -293,14 +293,17 @@ def test_installed_telemetry_token_answers_the_call(installed_command, collector
         environment=token_environment(),
         timeout=COMMAND_TIMEOUT_SECONDS,
     )
+    answered_at = datetime.now(UTC)
 
     assert isinstance(answer, TelemetryToken), answer
     assert answer.collector_origin == collector.origin
     assert answer.access_token.startswith("session-token-")
     assert answer.access_token not in repr(answer)
-    lifetime = answer.expiry - requested_at
-    assert timedelta(seconds=TOKEN_LIFETIME_SECONDS - 2) <= lifetime
-    assert lifetime <= timedelta(seconds=TOKEN_LIFETIME_SECONDS + 1)
+    # The command counts the lifetime from just before its request, which
+    # falls between these two times, and prints the expiry to the second.
+    lifetime = timedelta(seconds=TOKEN_LIFETIME_SECONDS)
+    assert requested_at + lifetime - timedelta(seconds=1) <= answer.expiry
+    assert answer.expiry <= answered_at + lifetime
     assert collector.exchange_requests == [
         {"scope": "telemetry:write", "lifetime_seconds": TOKEN_LIFETIME_SECONDS}
     ]

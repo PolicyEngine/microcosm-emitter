@@ -6,9 +6,11 @@ every kind of unusable output is covered without a collector or an event
 queue file. `test_command_contracts.py` runs the real installed command.
 """
 
+import contextlib
 import json
 import os
 import shutil
+import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -85,6 +87,7 @@ with open({str(calls)!r}, "a") as calls:
     calls.write(json.dumps({{
         "arguments": sys.argv[1:],
         "probe": os.environ.get("COMMAND_PROBE"),
+        "pid": os.getpid(),
     }}) + "\\n")
 time.sleep({sleep_seconds!r})
 sys.stdout.write({stdout!r})
@@ -207,6 +210,59 @@ def test_a_command_that_does_not_answer_in_time_is_stopped(stand_in, call):
     assert time.monotonic() - started < 10
 
 
+def wait_for_calls(recorded_calls, count):
+    """Return the recorded calls once there are ``count``, within 10 seconds."""
+    deadline = time.monotonic() + 10
+    while len(recorded_calls()) < count and time.monotonic() < deadline:
+        time.sleep(0.05)
+    return recorded_calls()
+
+
+def is_running(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def test_a_command_stopped_for_its_timeout_is_gone(stand_in, recorded_calls):
+    # Long enough for the stand-in to record its process ID first.
+    answer = emitter_status(
+        command=stand_in(stdout=printed({}), sleep_seconds=30), timeout=3
+    )
+
+    assert answer == CommandFailure("status", "timed_out")
+    [call] = wait_for_calls(recorded_calls, 1)
+    assert not is_running(call["pid"])
+
+
+class Interrupted(BaseException):
+    """Stands in for a KeyboardInterrupt while a call waits for its command."""
+
+
+def test_an_interruption_while_waiting_stops_the_command_and_is_raised(
+    stand_in, recorded_calls, monkeypatch
+):
+    real_communicate = subprocess.Popen.communicate
+    started = []
+
+    def interrupted_communicate(process, *arguments, **options):
+        started.append(process.pid)
+        # Give the stand-in time to record itself, then interrupt the wait.
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            real_communicate(process, timeout=2)
+        raise Interrupted
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupted_communicate)
+
+    with pytest.raises(Interrupted):
+        emitter_version(command=stand_in(stdout=printed({}), sleep_seconds=30))
+
+    [pid] = started
+    assert not is_running(pid)
+
+
 def test_the_command_inherits_this_process_environment_without_one(
     stand_in, recorded_calls, monkeypatch
 ):
@@ -236,10 +292,20 @@ def test_the_command_inherits_this_process_environment_without_one(
         ("version", {"timeout": float("inf")}),
         ("version", {"timeout": "15"}),
         ("version", {"timeout": True}),
+        # Longer than select.poll can wait (about 24.8 days).
+        ("version", {"timeout": 10**7}),
+        ("version", {"timeout": commands.MAX_TIMEOUT_SECONDS + 1}),
         ("version", {"environment": {"PATH": 1}}),
         ("version", {"environment": ["PATH"]}),
+        ("version", {"environment": {"NAME=VALUE": "x"}}),
+        ("version", {"environment": {"": "x"}}),
+        ("version", {"environment": {"NAME\x00": "x"}}),
+        ("version", {"environment": {"NAME": "x\x00y"}}),
         ("status", {"event_queue_file": 5}),
         ("status", {"event_queue_file": ""}),
+        ("status", {"event_queue_file": "events\x00.sqlite3"}),
+        # More digits than int-to-text conversion allows by default.
+        ("telemetry-token", {"lifetime_seconds": 10**5000}),
         ("telemetry-token", {"lifetime_seconds": 0}),
         ("telemetry-token", {"lifetime_seconds": -1}),
         ("telemetry-token", {"lifetime_seconds": True}),
@@ -247,6 +313,7 @@ def test_the_command_inherits_this_process_environment_without_one(
         ("telemetry-token", {"lifetime_seconds": "3600"}),
         ("telemetry-token", {"development_collector_url": 5}),
         ("telemetry-token", {"development_collector_url": ""}),
+        ("telemetry-token", {"development_collector_url": "http://127.0.0.1:9\x00"}),
     ],
 )
 def test_unusable_arguments_are_a_failure_and_run_nothing(
@@ -697,7 +764,7 @@ def test_output_that_is_not_utf_8_is_read_with_replacement_characters(
     command = emitter_command_script(
         "not-utf-8",
         "import sys\n"
-        'sys.stdout.buffer.write(b\'{"emitter_version": "0.17.0\\\\xff"}\')\n'
+        'sys.stdout.buffer.write(b\'{"emitter_version": "0.17.0\\xff"}\')\n'
         "sys.stderr.buffer.write(b'\\xfe\\n')\n"
         "sys.exit(1 if len(sys.argv) > 1 and sys.argv[1] == 'status' else 0)\n",
     )

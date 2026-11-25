@@ -90,6 +90,9 @@ EXIT_UNUSABLE_EVENT_QUEUE_FILE: Final = 9
 VERSION_TIMEOUT_SECONDS: Final = STARTUP_TIMEOUT_SECONDS
 STATUS_TIMEOUT_SECONDS: Final = 60.0
 TELEMETRY_TOKEN_TIMEOUT_SECONDS: Final = 120.0
+#: The longest timeout a call takes: a day. A longer one is
+#: ``invalid_arguments``, since ``select.poll`` waits at most about 24.8 days.
+MAX_TIMEOUT_SECONDS: Final = 86_400.0
 #: The longest ``CommandFailure.message``, which ends in an ellipsis if cut.
 MAX_MESSAGE_CHARS: Final = 300
 
