@@ -512,7 +512,7 @@ invocation = 'pytest -m "not collector"'
 [[rule]]
 id = "emitter.protocol.command-outputs-recorded-and-read"
 category = "protocol"
-statement = "Each emitter command the interface runs, version, status and telemetry-token, has a recorded output in the interface's fixtures/commands/ that its typed call parses, and this emitter's installed command prints exactly the recorded keys and answers each call, its documented failures included."
+statement = "Each emitter command the interface runs, version, status and telemetry-token, has a recorded output in the interface's fixtures/commands/ that its typed call parses, and this emitter's installed command prints exactly the recorded keys and answers each call, including the documented failures a test can bring about with the real command: status exits 8 and 9, and telemetry-token exits 2 to 6."
 rationale = "packages/microcosm-emitter-interface/README.md#emitter-commands"
 scope = ["packages/microcosm-emitter-interface/src/microcosm_emitter_interface/fixtures/commands/*.json", "packages/microcosm-emitter-interface/src/microcosm_emitter_interface/commands.py", "src/microcosm_emitter/cli.py"]
 tier = "mechanical"
@@ -527,6 +527,7 @@ nodes = [
   "tests/interface/test_command_contracts.py::test_installed_version_answers_the_call",
   "tests/interface/test_command_contracts.py::test_installed_status_prints_the_recorded_keys",
   "tests/interface/test_command_contracts.py::test_installed_status_answers_the_call",
+  "tests/interface/test_command_contracts.py::test_installed_status_reads_the_default_file_of_the_given_environment",
   "tests/interface/test_command_contracts.py::test_installed_status_without_a_file_is_no_event_queue_file",
   "tests/interface/test_command_contracts.py::test_installed_status_of_another_file_is_unusable_event_queue_file",
   "tests/interface/test_command_contracts.py::test_installed_telemetry_token_prints_the_recorded_keys",

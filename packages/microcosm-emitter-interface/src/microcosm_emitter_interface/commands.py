@@ -52,7 +52,7 @@ type CommandFailureReason = Literal[
     "timed_out",
     # Exit 2, argparse's usage error, which every command shares; an emitter
     # without the command (``status`` before 0.13.0, ``telemetry-token``
-    # before 0.11.0, ``version`` before 0.4.0) exits 2 too.
+    # before 0.11.0) exits 2 too.
     "usage_error",
     # ``telemetry-token`` exits 3 to 7.
     "missing_credential",
@@ -140,8 +140,9 @@ _STATUS_TEXT_FIELDS: Final = ("run_id", "producer_id", "upload_state")
 class CommandFailure:
     """Why a command call has no answer.
 
-    ``exit_code`` is the command's exit code, or None when it did not exit
-    on its own. ``message`` is the last line the command wrote on standard
+    ``exit_code`` is the command's exit code, negative (the signal's number)
+    when a signal ended it, and None when it never ran or was stopped for
+    its timeout. ``message`` is the last line the command wrote on standard
     error, with its whitespace collapsed, at most ``MAX_MESSAGE_CHARS``
     characters, or None without one; it never comes from standard output,
     and a ``telemetry-token`` that printed anything on standard output gets
@@ -311,7 +312,10 @@ def telemetry_token(
     The command exchanges the Hugging Face credential of the environment it
     runs in for a token that only writes telemetry and lasts
     ``lifetime_seconds`` (a whole number of 1 or more), or as long as the
-    collector allows: compare ``expiry`` with what was asked for.
+    collector allows. It counts the lifetime from just before its request
+    and prints ``expires_at`` to the whole second, so a token of the full
+    lifetime expires no earlier than the whole second before the call
+    started plus ``lifetime_seconds``.
     ``development_collector_url`` asks a loopback collector instead, for tests;
     only then may the answer's origin be a loopback HTTP one. Exits 2 to 7
     are their own reasons. The token is read from standard output only: no

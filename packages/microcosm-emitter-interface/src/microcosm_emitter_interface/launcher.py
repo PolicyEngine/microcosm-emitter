@@ -1,11 +1,12 @@
 """Start the installed ``microcosm-emitter`` command as the build's child process.
 
 The child is started exactly as the emitter's in-process launcher starts
-``python -m microcosm_emitter.host``: no ``env`` argument, so it inherits every
-environment variable of the build (including ``HF_TOKEN``, ``HUGGINGFACE_TOKEN``
-and ``HF_TOKEN_PATH``) and runs as the same user. Its module configuration
-travels on standard input, never in process-list arguments. It is never a
-separately started system service, which would not see the build's environment.
+``python -m microcosm_emitter.host``: with no environment of its own
+(``env=None``), so it inherits every environment variable of the build
+(including ``HF_TOKEN``, ``HUGGINGFACE_TOKEN`` and ``HF_TOKEN_PATH``) and runs
+as the same user. Its module configuration travels on standard input, never
+in process-list arguments. It is never a separately started system service,
+which would not see the build's environment.
 """
 
 from __future__ import annotations
