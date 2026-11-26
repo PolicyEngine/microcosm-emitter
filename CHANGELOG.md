@@ -1,3 +1,10 @@
+## [0.18.0] - 2026-11-26
+
+### Added
+
+- `microcosm-emitter-interface` runs the emitter's `version`, `status` and `telemetry-token` commands through typed calls, so a build no longer parses their output itself. `emitter_version()`, `emitter_status(event_queue_file=None)` and `telemetry_token(lifetime_seconds)` run the installed command found as `EmitterClient.start` finds it (the `command` argument, `MICROCOSM_EMITTER_COMMAND`, then `PATH`), with the caller's `timeout` (at most a day) and `environment`, and return an `EmitterVersion`, an `EmitterStatus` of `EventQueueRun`s or a `TelemetryToken`, or a `CommandFailure` whose `reason` names each documented exit code (`usage_error`; `missing_credential`, `rejected_credential`, `collector_unavailable`, `lifetime_unsupported` and `unexpected_failure` for `telemetry-token`; `no_event_queue_file` and `unusable_event_queue_file` for `status`), an undocumented one (`exited`), a missing or unrunnable command, a timeout, unusable arguments or output that is not the documented answer. No call raises into the build. `emitter_version` takes any JSON object, with each field None when it is missing or of another type, so an emitter too old for a build can still be named. A failure's message is the last line the command wrote on standard error, never its standard output, and a `TelemetryToken`'s repr leaves the token out. `fixtures/commands/` records each command's output, which `commands.recorded_command_output` returns for tests that stand in for the emitter; the emitter's CI checks that its commands print exactly the recorded keys and that each call parses its recording and the real command's answer. The emitter's command-line module reads its exit codes from the interface.
+
+
 ## [0.17.0] - 2026-11-19
 
 ### Added
