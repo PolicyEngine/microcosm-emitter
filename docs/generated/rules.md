@@ -8,11 +8,11 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 
 | Tier | enforced | ratcheted | advisory | doc-only | Total |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| mechanical | 49 | 1 | 0 | 7 | 57 |
+| mechanical | 50 | 1 | 0 | 7 | 58 |
 | metric | 1 | 0 | 0 | 0 | 1 |
 | judgment | 0 | 0 | 0 | 0 | 0 |
 
-**Blocking:** 51 of 58 rules.
+**Blocking:** 52 of 59 rules.
 
 ## Gaps
 
@@ -51,6 +51,7 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 - `emitter.persistence.no-raw-sql-or-schema-calls`
 - `emitter.process.rules-registry`
 - `emitter.protocol.collector-contract`
+- `emitter.protocol.command-outputs-recorded-and-read`
 - `emitter.protocol.every-fixture-sent-and-answered`
 - `emitter.protocol.released-fixtures-unchanged`
 - `emitter.protocol.trusted-collector-origins`
@@ -84,7 +85,7 @@ Every rule that governs `microcosm-emitter` is listed here with how it is enforc
 | `emitter.boundaries.host-imports-no-domain-code` | The generic runtime, microcosm_emitter.host, imports no telemetry, Orrery, database or authentication code, no Microcosm, SQLAlchemy, Alembic or Hugging Face Hub module, and not the interface package. | mechanical | enforced | yes | pytest `tests/test_boundaries.py` | `ci.yml:tests` | **unproven** |
 | `emitter.boundaries.interface-imports-only-the-standard-library` | The interface package imports only the standard library and itself, and importing it loads no microcosm_emitter module. | mechanical | enforced | yes | pytest `tests/test_boundaries.py` | `ci.yml:tests` | **unproven** |
 | `emitter.boundaries.public-credential-lookup` | Code reads the Hugging Face credential through core.auth.huggingface_token; no module imports the private _huggingface_token. | mechanical | enforced | yes | pytest `tests/test_boundaries.py` | `ci.yml:tests` | **unproven** |
-| `emitter.boundaries.shared-definitions-written-once` | What both packages use is defined once: the emitter's in-process clients reuse the interface's TelemetryRun, wire_value, Orrery publication types and default_spool_path rather than copies, and each hand-over failure code and limit the packages share is assigned at module level exactly once across both. | mechanical | enforced | yes | pytest `tests/interface/test_in_process_clients.py`, `tests/test_boundaries.py` | `ci.yml:tests` | **unproven** |
+| `emitter.boundaries.shared-definitions-written-once` | What both packages use is defined once: the emitter's in-process clients reuse the interface's TelemetryRun, wire_value, Orrery publication types and default_spool_path rather than copies, and each hand-over failure code, command exit code and limit the packages share is assigned at module level exactly once across both. | mechanical | enforced | yes | pytest `tests/interface/test_in_process_clients.py`, `tests/test_boundaries.py` | `ci.yml:tests` | **unproven** |
 | `emitter.boundaries.telemetry-client-imports-no-service-code` | The telemetry client, microcosm_emitter.telemetry outside its service package, imports no service implementation, database or authentication module, and importing the public modules opens no socket, starts no process and creates no directory. | mechanical | enforced | yes | pytest `tests/test_boundaries.py` | `ci.yml:tests` | **unproven** |
 
 ```mermaid
@@ -136,7 +137,7 @@ flowchart LR
 
 | Rule | Statement | Tier | Status | Blocking | Enforced by | CI | Proof |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `emitter.distributions.artifacts-verified` | Every pull request builds both distributions, each wheel from its source archive, and checks them: twine check --strict passes; tools/check-installed.py finds one wheel and one source archive per distribution, refuses a source archive holding the rules tool, and installs the wheels into two clean environments outside the checkout without Hugging Face credentials; in the emitter's, Microcosm is absent, the project URL is the repository, importing the host and the Orrery client loads no database, Hugging Face, telemetry or service module, and telemetry-only, graph-only, combined and failing services start and record their events and graph jobs in an event queue database at Alembic revision 20261008_02; in a build's, which holds only the interface, the interface has no requirements and ships its protocol fixtures, and the installed emitter it starts reports the interface's version and the telemetry, Orrery and Hugging Face modules, accepts telemetry, an Orrery hand-over and a run-file staging request, and exits with status 0. | mechanical | enforced | yes | CI job `build-packages`, `tests` | `ci.yml:build-packages`, `ci.yml:tests` | — |
+| `emitter.distributions.artifacts-verified` | Every pull request builds both distributions, each wheel from its source archive, and checks them: twine check --strict passes; tools/check-installed.py finds one wheel and one source archive per distribution, refuses a source archive holding the rules tool, and installs the wheels into two clean environments outside the checkout without Hugging Face credentials; in the emitter's, Microcosm is absent, the project URL is the repository, importing the host and the Orrery client loads no database, Hugging Face, telemetry or service module, and telemetry-only, graph-only, combined and failing services start and record their events and graph jobs in an event queue database at Alembic revision 20261008_02; in a build's, which holds only the interface, the interface has no requirements and ships its protocol fixtures, and the installed emitter it starts reports the interface's version and the telemetry, Orrery and Hugging Face modules, accepts telemetry, an Orrery hand-over and a run-file staging request, and exits with status 0, after which the interface's version call reports the interface's version and protocol version 1 and its status call lists the run the build recorded. | mechanical | enforced | yes | CI job `build-packages`, `tests` | `ci.yml:build-packages`, `ci.yml:tests` | — |
 | `emitter.distributions.exactly-two-at-one-version` | The repository publishes exactly two distributions, always together and at one version: microcosm-emitter, which installs the generic host and its required telemetry with no extras, and the dependency-free microcosm-emitter-interface, which microcosm-emitter==X requires at ==X; there are no standalone telemetry packages, optional telemetry installs or further distributions. | mechanical | enforced | yes | pytest `tests/test_package_names.py` | `ci.yml:tests` | **unproven** |
 | `emitter.distributions.lock-only-merges-release-nothing` | A Dependabot pull request that changes only uv.lock needs no changelog fragment, since it changes no published package's requirements, and a merge without fragments releases nothing: tools/update-version.sh changes no file and push.yaml makes no version commit, so nothing is tagged or published. | mechanical | enforced | yes | pytest `tests/test_dependabot.py` | `ci.yml:tests` | **unproven** |
 | `emitter.distributions.one-build-script` | Only tools/check-artifacts.sh builds the distributions, with one uv build --all-packages into a dist directory it removes beforehand and no --clear, no workflow runs uv build itself, and tools/check-installed.py checks the interface wheel apart from the emitter. | mechanical | enforced | yes | pytest `tests/test_workflows.py` | `ci.yml:tests` | **unproven** |
@@ -183,6 +184,7 @@ flowchart LR
 | Rule | Statement | Tier | Status | Blocking | Enforced by | CI | Proof |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `emitter.protocol.collector-contract` | The installed wheels deliver telemetry to the collector at the commit tools/check-collector.sh pins, with a disposable PostgreSQL database: events become dashboard documents, rejected identities register nothing, a lost acknowledgement is retried without duplicates, and blocked outcomes and supplied failure codes survive. | mechanical | enforced | yes | pytest `tests/test_collector_contract.py` | `ci.yml:collector` | **unproven** |
+| `emitter.protocol.command-outputs-recorded-and-read` | Each emitter command the interface runs, version, status and telemetry-token, has a recorded output in the interface's fixtures/commands/ that its typed call parses, and this emitter's installed command prints exactly the recorded keys and answers each call, including the documented failures a test can bring about with the real command: status exits 8 and 9, and telemetry-token exits 2 to 6. | mechanical | enforced | yes | pytest `tests/interface/test_command_contracts.py` | `ci.yml:tests` | **unproven** |
 | `emitter.protocol.every-fixture-sent-and-answered` | Every protocol fixture has an interface test that produces it, from a typed call, a module configuration or a host request, and this emitter answers each one: the telemetry, Orrery and Hugging Face modules handle their message and query fixtures, the installed command starts from the launch fixture and answers hello with at least the recorded keys, and the host routes each envelope fixture to its module. | mechanical | enforced | yes | pytest `tests/interface/test_client_messages.py`, `tests/interface/test_host_protocol.py`, `tests/interface/test_in_process_clients.py`, `tests/interface/test_protocol_fixtures.py` | `ci.yml:tests` | **unproven** |
 | `emitter.protocol.no-hosted-events-api` | Preserve the existing collector protocol, and do not add a general hosted events API. | mechanical | doc-only | no | nothing | — | — |
 | `emitter.protocol.released-fixtures-unchanged` | A released protocol fixture is never edited or removed, since each one's SHA-256 is pinned, and every fixture's protocol version is one this emitter accepts. | mechanical | enforced | yes | pytest `tests/interface/test_protocol_fixtures.py` | `ci.yml:tests` | **unproven** |
@@ -193,9 +195,11 @@ flowchart LR
   r_emitter_protocol_collector_contract("emitter.protocol.collector-contract (enforced)")
   e_pytest_tests_test_collector_contract_py["pytest tests/test_collector_contract.py"]
   j_CI_ci_yml_collector["CI ci.yml:collector"]
+  r_emitter_protocol_command_outputs_recorded_and_read("emitter.protocol.command-outputs-recorded-and-read (enforced)")
+  e_pytest_tests_interface_test_command_contracts_py["pytest tests/interface/test_command_contracts.py"]
+  j_CI_ci_yml_tests["CI ci.yml:tests"]
   r_emitter_protocol_every_fixture_sent_and_answered("emitter.protocol.every-fixture-sent-and-answered (enforced)")
   e_pytest_tests_interface_test_client_messages_py__tests_interface_test_host_protocol_py__tests_interface_test_in_process_clients_py__tests_interface_test_protocol_fixtures_py["pytest tests/interface/test_client_messages.py, tests/interface/test_host_protocol.py, tests/interface/test_in_process_clients.py, tests/interface/test_protocol_fixtures.py"]
-  j_CI_ci_yml_tests["CI ci.yml:tests"]
   r_emitter_protocol_no_hosted_events_api("emitter.protocol.no-hosted-events-api (doc-only)")
   gap_unenforced>"not enforced"]
   r_emitter_protocol_released_fixtures_unchanged("emitter.protocol.released-fixtures-unchanged (enforced)")
@@ -204,6 +208,8 @@ flowchart LR
   e_pytest_tests_test_collector_origin_py["pytest tests/test_collector_origin.py"]
   r_emitter_protocol_collector_contract --> e_pytest_tests_test_collector_contract_py
   e_pytest_tests_test_collector_contract_py --> j_CI_ci_yml_collector
+  r_emitter_protocol_command_outputs_recorded_and_read --> e_pytest_tests_interface_test_command_contracts_py
+  e_pytest_tests_interface_test_command_contracts_py --> j_CI_ci_yml_tests
   r_emitter_protocol_every_fixture_sent_and_answered --> e_pytest_tests_interface_test_client_messages_py__tests_interface_test_host_protocol_py__tests_interface_test_in_process_clients_py__tests_interface_test_protocol_fixtures_py
   e_pytest_tests_interface_test_client_messages_py__tests_interface_test_host_protocol_py__tests_interface_test_in_process_clients_py__tests_interface_test_protocol_fixtures_py --> j_CI_ci_yml_tests
   r_emitter_protocol_no_hosted_events_api -.-> gap_unenforced

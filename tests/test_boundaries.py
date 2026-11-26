@@ -179,6 +179,15 @@ def test_hand_over_codes_and_limits_are_defined_once():
         "PRESERVED_FILES_MISSING",
         "PRESERVED_BYTES_CHANGED",
         "RELEASE_CHANGE",
+        # The exit codes of `telemetry-token` and `status`, which the
+        # interface's command calls read.
+        "EXIT_MISSING_CREDENTIAL",
+        "EXIT_REJECTED_CREDENTIAL",
+        "EXIT_COLLECTOR_UNAVAILABLE",
+        "EXIT_LIFETIME_UNSUPPORTED",
+        "EXIT_UNEXPECTED_FAILURE",
+        "EXIT_NO_EVENT_QUEUE_FILE",
+        "EXIT_UNUSABLE_EVENT_QUEUE_FILE",
     }
     paths = [
         *(ROOT / "src/microcosm_emitter").rglob("*.py"),
